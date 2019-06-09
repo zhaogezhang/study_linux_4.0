@@ -440,7 +440,8 @@ static void pagevec_lru_move_fn(struct pagevec *pvec,
 	pagevec_reinit(pvec);
 }
 
-// 如果指定的内存页是 inactive（匿名页或文件页） 链表上的，则把这个页移动到对应链表的末尾位置
+// 如果指定的内存页是 inactive（匿名页或文件页）状态的，则把这个页移动到对应的 inactive 链表的末尾位置
+// 这个函数可以在把 lru active 链表上状态为 inactive 的内存页移动到与其对应的 lru inactive 链表上
 static void pagevec_move_tail_fn(struct page *page, struct lruvec *lruvec,
 				 void *arg)
 {
@@ -457,7 +458,7 @@ static void pagevec_move_tail_fn(struct page *page, struct lruvec *lruvec,
  * pagevec_move_tail() must be called with IRQ disabled.
  * Otherwise this may cause nasty races.
  */
-// 如果指定的内存页是 inactive（匿名页或文件页） 链表上的，则把这个页移动到对应链表的末尾位置
+// 如果指定的内存页状态为 inactive（匿名页或文件页），则把这个页移动到与其对应的 inactive 链表的末尾位置
 static void pagevec_move_tail(struct pagevec *pvec)
 {
 	int pgmoved = 0;
@@ -492,7 +493,9 @@ void rotate_reclaimable_page(struct page *page)
 	}
 }
 
-// 更新内存回收相关的状态统计信息
+// 更新 lru 链表中，scanned 链表和 rotated 链表中的成员计数
+// scanned 链表：所有（匿名链表和文件链表）链表中 active 和 inactive 两个链表中成员统计数
+// rotated 链表：所有（匿名链表和文件链表）链表中 active 链表中成员统计数
 static void update_page_reclaim_stat(struct lruvec *lruvec,
 				     int file, int rotated)
 {
@@ -526,8 +529,9 @@ static void __activate_page(struct page *page, struct lruvec *lruvec,
 #ifdef CONFIG_SMP
 static DEFINE_PER_CPU(struct pagevec, activate_page_pvecs);
 
-// 如果指定 cpu 的 active lru 缓存（pagevec）中有缓存的内存页，则把这些页添加到
-// 与其对应的 active lru 链表中
+// 如果本地 cpu 的 activate_page 页向量（activate_page_pvecs）不为空，那么依次
+// 遍历这个链表上的每一个内存页，并将其从  inactive lru 链表中移除，并添加到与其
+// 对应的 active lru 链表上
 static void activate_page_drain(int cpu)
 {
 	struct pagevec *pvec = &per_cpu(activate_page_pvecs, cpu);
@@ -766,19 +770,26 @@ void lru_cache_add_active_or_unevictable(struct page *page,
  * be write it out by flusher threads as this is much more effective
  * than the single-page writeout from reclaim.
  */
+// 把指定的内存页添加到指定 lru 向量链表的 inactive（匿名或者文件）链表上
+// 如果这个页需要回写或是 dirty 状态，则添加到对应链表的头部，如果这个内存页
+// 是干净的，则把这个内存页添加到对应链表的尾部，这样可以尽快回收（因为回收
+// 内存时是从链表尾部开始扫描的）
 static void lru_deactivate_fn(struct page *page, struct lruvec *lruvec,
 			      void *arg)
 {
 	int lru, file;
 	bool active;
 
+	// 判断指定的内存页是否在 lru 链表上
 	if (!PageLRU(page))
 		return;
 
+	// 判断指定的内存页是否为 unevictable 的
 	if (PageUnevictable(page))
 		return;
 
 	/* Some processes are using the page */
+	// 判断指定内存页是否被其他进程映射使用了
 	if (page_mapped(page))
 		return;
 
@@ -825,13 +836,26 @@ static void lru_deactivate_fn(struct page *page, struct lruvec *lruvec,
  * Either "cpu" is the current CPU, and preemption has already been
  * disabled; or "cpu" is being hot-unplugged, and is already dead.
  */
+// 从这个函数可以看出系统中一共有几种内存页向量做缓存，分别如下：
+// 1. lru_add_pvec：当一个不在 lru 链表上的页要向 lru 链表中添加的时候，就把这个页添加到这个缓存中
+// 2. lru_rotate_pvecs：在这个内存页向量中的页已经在 lru 链表中了，当我们要把 inactive（匿名或者文件）
+//    链表上的内存页移动到这个链表的末尾的时候，就把这个页添加到这个缓存中
+// 3. lru_deactivate_pvecs：在这个内存页向量中的页已经在 lru 链表中了，当我们需要把一个指定的内存页
+//    标记为 inactive 状态时，就把这个页添加到这个缓存中
+// 4. activate_page_pvecs：在这个内存页向量中的页已经在 lru 链表中了，当我们要把一个指定的内存页标记
+//    为 active 状态时，就把这个页添加到这个缓存中
 void lru_add_drain_cpu(int cpu)
 {
 	struct pagevec *pvec = &per_cpu(lru_add_pvec, cpu);
 
+	// 如果本地 cpu 的 lru_add 页向量（lru_add_pvec）不为空，则把这些内存页
+	// 全部添加到 lru 向量链表中
 	if (pagevec_count(pvec))
 		__pagevec_lru_add(pvec);
 
+	// 如果本地 cpu 的 lru_rotate 页向量（lru_rotate_pvecs）不为空，那么依次遍历这个
+	// 链表上的每一个内存页，如果内存页的状态为 inactive，我们就把这个内存页移动到
+	// 与其对应的 inactive lru（匿名或者文件）链表的末尾位置
 	pvec = &per_cpu(lru_rotate_pvecs, cpu);
 	if (pagevec_count(pvec)) {
 		unsigned long flags;
@@ -841,11 +865,17 @@ void lru_add_drain_cpu(int cpu)
 		pagevec_move_tail(pvec);
 		local_irq_restore(flags);
 	}
-
+	
+	// 如果本地 cpu 的 lru_deactivate 页向量（lru_deactivate_pvecs）不为空，那么依次
+	// 遍历这个链表上的每一个内存页，并把这些内存页添加到与其对应（匿名或者文件）的
+	// inactive 链表上
 	pvec = &per_cpu(lru_deactivate_pvecs, cpu);
 	if (pagevec_count(pvec))
 		pagevec_lru_move_fn(pvec, lru_deactivate_fn, NULL);
 
+	// 如果本地 cpu 的 activate_page 页向量（activate_page_pvecs）不为空，那么依次
+	// 遍历这个链表上的每一个内存页，并将其从  inactive lru 链表中移除，并添加到与其
+	// 对应的 active lru 链表上
 	activate_page_drain(cpu);
 }
 
@@ -875,6 +905,7 @@ void deactivate_page(struct page *page)
 	}
 }
 
+// 把系统中所有的页向量缓存中的内存页刷新到与其对应的 lru 链表上
 void lru_add_drain(void)
 {
 	lru_add_drain_cpu(get_cpu());
@@ -1051,6 +1082,8 @@ void lru_add_page_tail(struct page *page, struct page *page_tail,
 }
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
 
+// 把指定的内存页添加到指定的 lru 向量链表中，而这个页被添加到 lru 向量链表的
+// 哪个 lru 链表中是由这个内存页自身决定的（由 flag 信息计算得出）
 static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
 				 void *arg)
 {
@@ -1060,8 +1093,13 @@ static void __pagevec_lru_add_fn(struct page *page, struct lruvec *lruvec,
 
 	VM_BUG_ON_PAGE(PageLRU(page), page);
 
+	// 设置内存页的 lru 标志，表示这个内存页在 lru 链表上
 	SetPageLRU(page);
+
+	// 添加指定的内存页到制定的 lru 链表上
 	add_page_to_lru_list(page, lruvec, lru);
+
+	// 更新 lru 链表中，scanned 链表和 rotated 链表中的成员计数
 	update_page_reclaim_stat(lruvec, file, active);
 	trace_mm_lru_insertion(page, lru);
 }

@@ -28,6 +28,7 @@ struct bio;
 				 SWAP_FLAG_DISCARD | SWAP_FLAG_DISCARD_ONCE | \
 				 SWAP_FLAG_DISCARD_PAGES)
 
+// 判断当前进程是否是 kswapd 进程
 static inline int current_is_kswapd(void)
 {
 	return current->flags & PF_KSWAPD;
@@ -412,6 +413,7 @@ static inline bool vm_swap_full(void)
 	return atomic_long_read(&nr_swap_pages) * 2 < total_swap_pages;
 }
 
+// 获取当前系统，在 swap 分区中空闲空间的内存页数 
 static inline long get_nr_swap_pages(void)
 {
 	return atomic_long_read(&nr_swap_pages);

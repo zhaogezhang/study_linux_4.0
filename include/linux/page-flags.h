@@ -395,30 +395,43 @@ __SETPAGEFLAG(Head, compound)  __CLEARPAGEFLAG(Head, compound)
  * PG_compound & PG_reclaim	=> Tail page
  * PG_compound & ~PG_reclaim	=> Head page
  */
+// 表示复合页的元数据都存在于 Page 结构体中，Page 页中的 flag 标记用来
+// 识别复合页。在复合页中，打头的第一个普通页成为 head page，用
+// PG_head 标记，而后面的所有页被称为 tail pages，用 PG_tail 标记
+// 在 64 位系统中，可以有多余的标记来表示复合页的页头和页尾；但是在
+// 32 位系统中却没有那么多的标记，因此采用了一种复用其他标记的方案
+// 即将复合页中的所有页都用 PG_compound 标记，然后，对于尾页同时也
+// 使用 PG_reclaim 标记，这是因为 PG_reclaim 只有在页缓存中会用到，而
+// 复合页根本就不会在页缓存中使用
 #define PG_head_mask ((1L << PG_compound))
 #define PG_head_tail_mask ((1L << PG_compound) | (1L << PG_reclaim))
 
+// 判断指定的内存页是否是 head page
 static inline int PageHead(struct page *page)
 {
 	return ((page->flags & PG_head_tail_mask) == PG_head_mask);
 }
 
+// 判断指定的内存页是否是 tail page
 static inline int PageTail(struct page *page)
 {
 	return ((page->flags & PG_head_tail_mask) == PG_head_tail_mask);
 }
 
+// 设置指定内存页的 tail 标志位
 static inline void __SetPageTail(struct page *page)
 {
 	page->flags |= PG_head_tail_mask;
 }
 
+// 清楚指定内存页的 tail 标志位
 static inline void __ClearPageTail(struct page *page)
 {
 	page->flags &= ~PG_head_tail_mask;
 }
 
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
+// 设置指定内存页的复合页标志位
 static inline void ClearPageCompound(struct page *page)
 {
 	BUG_ON((page->flags & PG_head_tail_mask) != (1 << PG_compound));

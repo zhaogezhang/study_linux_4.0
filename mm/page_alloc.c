@@ -487,6 +487,7 @@ static inline void clear_page_guard(struct zone *zone, struct page *page,
 				unsigned int order, int migratetype) {}
 #endif
 
+// 设置伙伴系统中指定内存页的阶数标志变量值
 static inline void set_page_order(struct page *page, unsigned int order)
 {
 	set_page_private(page, order);
@@ -603,9 +604,13 @@ static inline void __free_one_page(struct page *page,
 	VM_BUG_ON_PAGE(page_idx & ((1 << order) - 1), page);
 	VM_BUG_ON_PAGE(bad_range(zone, page), page);
 
+	// 依次递归向上判断指定的内存块在伙伴系统中是否可以和相邻的内存块
+	// 合并，生成一个更大阶数的内存块
 	while (order < max_order - 1) {
 		buddy_idx = __find_buddy_index(page_idx, order);
 		buddy = page + (buddy_idx - page_idx);
+
+		// 判断当前内存块是否可以和相邻的内存块合并和一个更大阶的内存块
 		if (!page_is_buddy(page, buddy, order))
 			break;
 		/*
@@ -624,6 +629,8 @@ static inline void __free_one_page(struct page *page,
 		page_idx = combined_idx;
 		order++;
 	}
+
+	// 设置内存块阶数变量值
 	set_page_order(page, order);
 
 	/*
@@ -634,6 +641,12 @@ static inline void __free_one_page(struct page *page,
 	 * so it's less likely to be used soon and more likely to be merged
 	 * as a higher order page
 	 */
+	// 如果当前内存块在伙伴系统中的阶数不够高，那么伙伴系统中的下一个更高阶
+	// 的区域中查找并判断、是否有和当前内存块是伙伴的空闲块，如果有则表示这
+	// 个内存块在短时间内就可以和这个伙伴进行合并，所以为了防止它被很快的分配
+	// 出去，需要把这个内存块放到伙伴系统当前阶链表的末尾位置（因为伙伴系统
+	// 申请内存的时候，是从每阶内存块链表的头部开始申请的），这样做也是为了
+	// 防止伙伴系统的内存碎片化
 	if ((order < MAX_ORDER-2) && pfn_valid_within(page_to_pfn(buddy))) {
 		struct page *higher_page, *higher_buddy;
 		combined_idx = buddy_idx & page_idx;
@@ -647,11 +660,14 @@ static inline void __free_one_page(struct page *page,
 		}
 	}
 
+	// 把指定的内存块在下一阶中没有伙伴块，则添加到伙伴系统对应阶数链表中的头部
+	// 这样做也是为了防止伙伴系统的内存碎片化
 	list_add(&page->lru, &zone->free_area[order].free_list[migratetype]);
 out:
 	zone->free_area[order].nr_free++;
 }
 
+// 在回收内存页之前，对指定的内存页状态进行检查，看是否符合回收要求
 static inline int free_pages_check(struct page *page)
 {
 	const char *bad_reason = NULL;
@@ -745,6 +761,7 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 	spin_unlock(&zone->lock);
 }
 
+// 回收指定的内存块（多阶内存）到伙伴管理系统中
 static void free_one_page(struct zone *zone,
 				struct page *page, unsigned long pfn,
 				unsigned int order,
@@ -752,6 +769,8 @@ static void free_one_page(struct zone *zone,
 {
 	unsigned long nr_scanned;
 	spin_lock(&zone->lock);
+
+	// 更新 NR_PAGES_SCANNED 的统计量（只保留扫描到但是没回收的内存页数）
 	nr_scanned = zone_page_state(zone, NR_PAGES_SCANNED);
 	if (nr_scanned)
 		__mod_zone_page_state(zone, NR_PAGES_SCANNED, -nr_scanned);
@@ -760,6 +779,8 @@ static void free_one_page(struct zone *zone,
 		is_migrate_isolate(migratetype))) {
 		migratetype = get_pfnblock_migratetype(page, pfn);
 	}
+
+	// 回收指定的内存块（多阶内存）到伙伴管理系统中
 	__free_one_page(page, pfn, zone, order, migratetype);
 	spin_unlock(&zone->lock);
 }
@@ -779,21 +800,33 @@ static int free_tail_pages_check(struct page *head_page, struct page *page)
 	return 0;
 }
 
+// 设置指定内存块的 pte 页表内容、内存页内容以及内存页的合法性检查
 static bool free_pages_prepare(struct page *page, unsigned int order)
 {
-	bool compound = PageCompound(page);
+	bool compound = PageCompound(page);  // 表示是否是复合页
 	int i, bad = 0;
 
+	// 如果是复合页的话，那么我们传入的 page 指针必须是 head page 指针
+	// 另外还需要判断我们传入的复合页的阶数是否合法
 	VM_BUG_ON_PAGE(PageTail(page), page);
 	VM_BUG_ON_PAGE(compound && compound_order(page) != order, page);
 
 	trace_mm_page_free(page, order);
+
+	// 设置指定内存页的 pte 中的 PRESENT 并释放相应的内存页
 	kmemcheck_free_shadow(page, order);
+
+	// 把从指定的内存页开始、阶数为 order 的内存空间内容设置为空闲状态（KASAN_FREE_PAGE）
 	kasan_free_pages(page, order);
 
+	// 如果是匿名映射页，则需要设置 anon_vma object 指针为 NULL
 	if (PageAnon(page))
 		page->mapping = NULL;
+	
 	bad += free_pages_check(page);
+
+	// 根据内存块在伙伴系统中的阶数，计算内存块包含多少标准内存页（4KB）
+	// 然后分别遍历每一个内存页对其做合法性检查
 	for (i = 1; i < (1 << order); i++) {
 		if (compound)
 			bad += free_tail_pages_check(page, page + i);
@@ -828,8 +861,13 @@ static void __free_pages_ok(struct page *page, unsigned int order)
 	migratetype = get_pfnblock_migratetype(page, pfn);
 	local_irq_save(flags);
 	__count_vm_events(PGFREE, 1 << order);
+
+	// 设置指定内存块的 migrate 类型值到 page->index 字段中
 	set_freepage_migratetype(page, migratetype);
+
+	// 回收指定的内存块（多阶内存）到伙伴管理系统中
 	free_one_page(page_zone(page), page, pfn, order, migratetype);
+	
 	local_irq_restore(flags);
 }
 
@@ -1502,6 +1540,7 @@ void mark_free_pages(struct zone *zone)
  * Free a 0-order page
  * cold == true ? free a cold page : free a hot page
  */
+// 回收 0 阶的内存页到 per_cpu_pages 缓存中
 void free_hot_cold_page(struct page *page, bool cold)
 {
 	struct zone *zone = page_zone(page);
@@ -1510,6 +1549,7 @@ void free_hot_cold_page(struct page *page, bool cold)
 	unsigned long pfn = page_to_pfn(page);
 	int migratetype;
 
+	// 回收内存页的预备操作
 	if (!free_pages_prepare(page, 0))
 		return;
 
@@ -1533,12 +1573,19 @@ void free_hot_cold_page(struct page *page, bool cold)
 		migratetype = MIGRATE_MOVABLE;
 	}
 
+	// 把回收到的内存页添加到 per_cpu_pages 缓存中
 	pcp = &this_cpu_ptr(zone->pageset)->pcp;
 	if (!cold)
+		// 回收到 pcp->lists[migratetype] 链表头部
 		list_add(&page->lru, &pcp->lists[migratetype]);
 	else
+		// 回收到 pcp->lists[migratetype] 链表尾部
 		list_add_tail(&page->lru, &pcp->lists[migratetype]);
+	
 	pcp->count++;
+
+	// 如果当前 cpu 中空闲内存个数达到预先设定的水印阈值
+	// 则把 batch 个内存页回收到伙伴系统中
 	if (pcp->count >= pcp->high) {
 		unsigned long batch = ACCESS_ONCE(pcp->batch);
 		free_pcppages_bulk(zone, batch, pcp);
@@ -1552,10 +1599,12 @@ out:
 /*
  * Free a list of 0-order pages
  */
+// 回收指定链表（list）中的 0 阶内存页到 per_cpu_pages 缓存中
 void free_hot_cold_page_list(struct list_head *list, bool cold)
 {
 	struct page *page, *next;
 
+	// 遍历指定链表（由 list 参数指定）中的每一个成员
 	list_for_each_entry_safe(page, next, list, lru) {
 		trace_mm_page_free_batched(page, cold);
 		free_hot_cold_page(page, cold);
@@ -2964,9 +3013,12 @@ unsigned long get_zeroed_page(gfp_t gfp_mask)
 }
 EXPORT_SYMBOL(get_zeroed_page);
 
+// 如果指定的内存页引用计数为零，则对其进行回收操作
 void __free_pages(struct page *page, unsigned int order)
 {
 	if (put_page_testzero(page)) {
+		// 如果回收的内存页为 0 阶，则直接回收到 per_cpu_pages 缓存中
+		// 如果回收的内存页大于 0 阶，则直接回收到伙伴系统中
 		if (order == 0)
 			free_hot_cold_page(page, false);
 		else

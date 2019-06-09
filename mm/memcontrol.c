@@ -5628,12 +5628,18 @@ static void uncharge_list(struct list_head *page_list)
 	struct list_head *next;
 	struct page *page;
 
+	// 获取链表上头部第一个内存页指针
 	next = page_list->next;
+
+	// 分别遍历指定链表上的每一个成员
 	do {
 		unsigned int nr_pages = 1;
 
+		// 获得链表上当前内存页指针
 		page = list_entry(next, struct page, lru);
-		next = page->lru.next;
+
+		// 获取链表上当前内存页下一个成员指针
+		next = page->lru.next; 
 
 		VM_BUG_ON_PAGE(PageLRU(page), page);
 		VM_BUG_ON_PAGE(page_count(page), page);
@@ -5651,17 +5657,27 @@ static void uncharge_list(struct list_head *page_list)
 			if (memcg) {
 				uncharge_batch(memcg, pgpgout, nr_anon, nr_file,
 					       nr_huge, page);
+				
+				// 清空局部统计变量
 				pgpgout = nr_anon = nr_file = nr_huge = 0;
 			}
+
+			// 更新为当前内存页的 memcg 变量指针
 			memcg = page->mem_cgroup;
 		}
 
+		// returns true for both transparent huge and hugetlbfs pages
 		if (PageTransHuge(page)) {
+			// 计算指定复合页占用的标准内存页（4KB）个数
 			nr_pages <<= compound_order(page);
+			
 			VM_BUG_ON_PAGE(!PageTransHuge(page), page);
+		
+			// 统计 huge page 占用的标准内存页（4KB）个数
 			nr_huge += nr_pages;
 		}
 
+		// 分别统计匿名映射和文件映射计数值
 		if (PageAnon(page))
 			nr_anon += nr_pages;
 		else

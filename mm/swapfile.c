@@ -47,8 +47,12 @@ static sector_t map_swap_entry(swp_entry_t, struct block_device**);
 
 DEFINE_SPINLOCK(swap_lock);
 static unsigned int nr_swapfiles;
+
+// 当前系统，在 swap 分区中空闲空间的内存页数
 atomic_long_t nr_swap_pages;
+
 /* protected with swap_lock. reading in vm_swap_full() doesn't need lock */
+// 系统 swap 分区空间大小，以 page 为单位计算
 long total_swap_pages;
 static int least_priority;
 

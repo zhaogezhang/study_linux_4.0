@@ -165,8 +165,8 @@ static inline void list_move(struct list_head *list, struct list_head *head)
 static inline void list_move_tail(struct list_head *list,
 				  struct list_head *head)
 {
-	__list_del_entry(list);
-	list_add_tail(list, head);
+	__list_del_entry(list);    // 先从链表中删除
+	list_add_tail(list, head); // 然后在添加到链表的尾部
 }
 
 /**

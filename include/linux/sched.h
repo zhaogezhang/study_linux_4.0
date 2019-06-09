@@ -2758,6 +2758,7 @@ static inline int test_and_clear_tsk_thread_flag(struct task_struct *tsk, int fl
 	return test_and_clear_ti_thread_flag(task_thread_info(tsk), flag);
 }
 
+// 测试指定线程（tsk）的线程信息中指定的标志位（flag）是否被置位
 static inline int test_tsk_thread_flag(struct task_struct *tsk, int flag)
 {
 	return test_ti_thread_flag(task_thread_info(tsk), flag);
@@ -2784,16 +2785,19 @@ static inline int restart_syscall(void)
 	return -ERESTARTNOINTR;
 }
 
+// 判断指定的线程是否有正在挂起的信号
 static inline int signal_pending(struct task_struct *p)
 {
 	return unlikely(test_tsk_thread_flag(p,TIF_SIGPENDING));
 }
 
+// 判断指定的线程挂起的信号中是否有 SIGKILL 成员
 static inline int __fatal_signal_pending(struct task_struct *p)
 {
 	return unlikely(sigismember(&p->pending.signal, SIGKILL));
 }
 
+// 判断指定的线程是否正在挂起了 SIGKILL 信号
 static inline int fatal_signal_pending(struct task_struct *p)
 {
 	return signal_pending(p) && __fatal_signal_pending(p);
@@ -3094,3 +3098,4 @@ static inline unsigned long rlimit_max(unsigned int limit)
 }
 
 #endif
+

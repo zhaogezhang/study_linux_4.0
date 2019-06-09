@@ -292,6 +292,7 @@ void kasan_alloc_pages(struct page *page, unsigned int order)
 		kasan_unpoison_shadow(page_address(page), PAGE_SIZE << order);
 }
 
+// 把从指定的内存页开始、阶数为 order 的内存空间内容设置为空闲状态（KASAN_FREE_PAGE）
 void kasan_free_pages(struct page *page, unsigned int order)
 {
 	if (likely(!PageHighMem(page)))

@@ -158,6 +158,10 @@ void __delete_from_swap_cache(struct page *page)
  * Allocate swap space for the page and add the page to the
  * swap cache.  Caller needs to hold the page lock. 
  */
+// 匿名页即将被 swap-out 时会先被放进 swap cache，调用的 add_to_swap()
+// 会把 swap cache 页面标记成 dirty，再调用 pageout() 回写 dirty page
+// 最后调用 try_to_free_swap() 会把该页从 swap cache 中删除，以完成整个
+// swap 回收流程，返回 0 表示执行失败，返回 1 表示执行成功
 int add_to_swap(struct page *page, struct list_head *list)
 {
 	swp_entry_t entry;

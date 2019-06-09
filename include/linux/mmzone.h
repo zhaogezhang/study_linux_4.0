@@ -158,12 +158,21 @@ enum zone_stat_item {
 	NR_VMSCAN_WRITE,
 	NR_VMSCAN_IMMEDIATE,	/* Prioritise for reclaim when writeback ends */
 	NR_WRITEBACK_TEMP,	/* Writeback using temporary buffers */
+
+	// 在内存时候的时候，我们首先把扫描到的内存页放到 isolate 链表上（临时变量）
+	// 然后在对每一个内存页处理，这连个位置记录了在 isolate 链表上的内存页个数
 	NR_ISOLATED_ANON,	/* Temporary isolated pages from anon lru */
 	NR_ISOLATED_FILE,	/* Temporary isolated pages from file lru */
+	
 	NR_SHMEM,		/* shmem pages (included tmpfs/GEM pages) */
 	NR_DIRTIED,		/* page dirtyings since bootup */
 	NR_WRITTEN,		/* page writings since bootup */
+	
+	// 内存回收的时候，我们需要扫描 lru 链表，NR_PAGES_SCANNED 统计我们在
+	// 链表上一共扫描到但是还没开始回收的内存页个数，如果执行了回收操作
+	// 则需要从 NR_PAGES_SCANNED 中减去回收的内存页数，只保留没回收的那部分
 	NR_PAGES_SCANNED,	/* pages scanned since last reclaim */
+	
 #ifdef CONFIG_NUMA
 	NUMA_HIT,		/* allocated in intended node */
 	NUMA_MISS,		/* allocated in non intended node */
@@ -220,7 +229,7 @@ static inline int is_file_lru(enum lru_list lru)
 	return (lru == LRU_INACTIVE_FILE || lru == LRU_ACTIVE_FILE);
 }
 
-// 判断指定 lru 索引是否是匿名 lru 链表
+// 判断指定 lru 索引是否是 active lru 链表（匿名的或者文件的）
 static inline int is_active_lru(enum lru_list lru)
 {
 	return (lru == LRU_ACTIVE_ANON || lru == LRU_ACTIVE_FILE);
@@ -241,7 +250,11 @@ struct zone_reclaim_stat {
 	 *
 	 * The anon LRU stats live in [0], file LRU stats in [1]
 	 */
+	// 统计 active lru 链表中的成员个数
 	unsigned long		recent_rotated[2];
+
+	// 统计在内存回收过程中，我们一共往 isolate 链表上移动过的
+	// 内存页数（包括 active 和 inactive 两个链表）
 	unsigned long		recent_scanned[2];
 };
 
@@ -873,6 +886,7 @@ extern int init_currently_empty_zone(struct zone *zone, unsigned long start_pfn,
 
 extern void lruvec_init(struct lruvec *lruvec);
 
+// 获取指定 lruvec 所在的 zone 空间指针
 static inline struct zone *lruvec_zone(struct lruvec *lruvec)
 {
 #ifdef CONFIG_MEMCG

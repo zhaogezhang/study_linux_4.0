@@ -297,6 +297,7 @@ struct vm_operations_struct {
 struct mmu_gather;
 struct inode;
 
+// 在伙伴系统中的内存页使用 struct page->private 字段来保存内存块的阶数
 #define page_private(page)		((page)->private)
 #define set_page_private(page, v)	((page)->private = (v))
 
@@ -588,6 +589,7 @@ static inline int PageBuddy(struct page *page)
 	return atomic_read(&page->_mapcount) == PAGE_BUDDY_MAPCOUNT_VALUE;
 }
 
+// 设置指定内存页的伙伴系统标志（_mapcount = PAGE_BUDDY_MAPCOUNT_VALUE）
 static inline void __SetPageBuddy(struct page *page)
 {
 	VM_BUG_ON_PAGE(atomic_read(&page->_mapcount) != -1, page);
@@ -632,24 +634,32 @@ int split_free_page(struct page *page);
  * These are _only_ valid on the head of a PG_compound page.
  */
 
+// 设置复合页的析构函数
 static inline void set_compound_page_dtor(struct page *page,
 						compound_page_dtor *dtor)
 {
 	page[1].compound_dtor = dtor;
 }
 
+// 返回复合页的析构函数
 static inline compound_page_dtor *get_compound_page_dtor(struct page *page)
 {
 	return page[1].compound_dtor;
 }
 
+// 返回指定复合页的阶数
 static inline int compound_order(struct page *page)
 {
-	if (!PageHead(page))
+	// 在复合页中，打头的第一个普通页成为 head page，用 PG_head 标记
+	// 而后面的所有页被称为 tail pages，用 PG_tail 标记
+	if (!PageHead(page))  // 判断指定的页是否是复合页的头页
 		return 0;
+
+	// 复合页的阶数存储在第一个 tail page 的 compound_order 字段中
 	return page[1].compound_order;
 }
 
+// 设置指定复合页的阶数
 static inline void set_compound_order(struct page *page, unsigned long order)
 {
 	page[1].compound_order = order;
@@ -800,6 +810,7 @@ static inline int page_zone_id(struct page *page)
 	return (page->flags >> ZONEID_PGSHIFT) & ZONEID_MASK;
 }
 
+// 获取制定 zone 所在 node 的 id
 static inline int zone_to_nid(struct zone *zone)
 {
 #ifdef CONFIG_NUMA
@@ -1033,6 +1044,7 @@ void page_address_init(void);
 extern struct address_space *page_mapping(struct page *page);
 
 /* Neutral page->mapping pointer to address_space or anon_vma or other */
+// 清空指定内存页中和 PAGE_MAPPING_XXX 相关标志位
 static inline void *page_rmapping(struct page *page)
 {
 	return (void *)((unsigned long)page->mapping & ~PAGE_MAPPING_FLAGS);
@@ -1049,6 +1061,7 @@ struct address_space *page_file_mapping(struct page *page)
 	return page->mapping;
 }
 
+// 判断指定的内存页是否是匿名映射
 static inline int PageAnon(struct page *page)
 {
 	return ((unsigned long)page->mapping & PAGE_MAPPING_ANON) != 0;

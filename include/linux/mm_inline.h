@@ -23,7 +23,7 @@ static inline int page_is_file_cache(struct page *page)
 	return !PageSwapBacked(page);
 }
 
-// 把指定的页添加到指定的 lru 链表的指定类型的链表的头部上，并更新相关的统计变量信息
+// 把指定的页添加到指定的 lru 向量链表的指定链表类型的头部上，并更新相关的统计变量信息
 static __always_inline void add_page_to_lru_list(struct page *page,
 				struct lruvec *lruvec, enum lru_list lru)
 {
@@ -92,7 +92,7 @@ static __always_inline enum lru_list page_off_lru(struct page *page)
  * Returns the LRU list a page should be on, as an index
  * into the array of LRU lists.
  */
-// 返回指定的页在哪个 lru 链表上，返回这个链表的索引值
+// 返回指定的页属于哪个 lru 链表上（五个中的一个），返回这个链表的索引值
 static __always_inline enum lru_list page_lru(struct page *page)
 {
 	enum lru_list lru;

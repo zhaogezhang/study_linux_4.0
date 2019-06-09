@@ -36,6 +36,7 @@ void kmemcheck_alloc_shadow(struct page *page, int order, gfp_t flags, int node)
 	kmemcheck_hide_pages(page, pages);
 }
 
+// 设置指定内存页的 pte 中的 PRESENT 并释放相应的内存页
 void kmemcheck_free_shadow(struct page *page, int order)
 {
 	struct page *shadow;
@@ -47,13 +48,15 @@ void kmemcheck_free_shadow(struct page *page, int order)
 
 	pages = 1 << order;
 
+	// 设置每个指定内存页 PRESENT 标志并清楚 HIDDEN 标志
 	kmemcheck_show_pages(page, pages);
 
+	// 设置每个内存页中的无效指针为 NULL
 	shadow = virt_to_page(page[0].shadow);
-
 	for(i = 0; i < pages; ++i)
 		page[i].shadow = NULL;
 
+	// 释放指定的内存块空间
 	__free_pages(shadow, order);
 }
 

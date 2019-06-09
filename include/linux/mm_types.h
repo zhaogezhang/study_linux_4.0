@@ -53,19 +53,22 @@ struct page {
      * PG_referenced: 表示此页最近是否被访问，每次页面访问都会被置位
      * PG_lru: 表示此页是处于 lru 链表中的
      * PG_mlocked: 表示此页被 mlock() 锁在内存中，禁止换出和释放
-     * PG_swapbacked: 表示此页依靠swap，可能是进程的匿名页(堆、栈、数据段)，匿名 mmap 共享内存映射，shmem 共享内存映射
+     * PG_swapbacked: 表示此页依靠 swap，可能是进程的匿名页(堆、栈、数据段)，匿名 mmap 共享内存映射，shmem 共享内存映射
      */
 	unsigned long flags;		/* Atomic flags, some possibly
 					             * updated asynchronously */
 								 	
 	union {
+		// 在不同场景下，mapping 指向不同类型变量，我们是通过这个变量的低位判断的
+		// 详细的描述请参考 PAGE_MAPPING_ANON
 		struct address_space *mapping;	/* If low bit clear, points to
-						 * inode address_space, or NULL.
-						 * If page mapped as anonymous
-						 * memory, low bit is set, and
-						 * it points to anon_vma object:
-						 * see PAGE_MAPPING_ANON below.
-						 */
+						                 * inode address_space, or NULL.
+						                 * If page mapped as anonymous
+						                 * memory, low bit is set, and
+						                 * it points to anon_vma object:
+						                 * see PAGE_MAPPING_ANON below.
+						                 */
+						                 
 		void *s_mem;			/* slab first object */
 	};
 

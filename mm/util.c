@@ -325,6 +325,7 @@ void kvfree(const void *addr)
 }
 EXPORT_SYMBOL(kvfree);
 
+// 返回指定的内存页所映射的地址空间
 struct address_space *page_mapping(struct page *page)
 {
 	struct address_space *mapping = page->mapping;

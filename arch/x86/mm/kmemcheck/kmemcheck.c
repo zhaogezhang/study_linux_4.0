@@ -262,6 +262,8 @@ void kmemcheck_hide(struct pt_regs *regs)
 		regs->flags |= X86_EFLAGS_IF;
 }
 
+// 从指定的内存页开始，一共遍历 n 个内存页，把每个内存页所对应的 pte
+// 中都设置 PRESENT 标志并且清除每个内存页所对应的 pte 中的 HIDDEN 标志
 void kmemcheck_show_pages(struct page *p, unsigned int n)
 {
 	unsigned int i;
@@ -271,11 +273,16 @@ void kmemcheck_show_pages(struct page *p, unsigned int n)
 		pte_t *pte;
 		unsigned int level;
 
+		// 获取指定内存页映射的虚拟地址
 		address = (unsigned long) page_address(&p[i]);
+
+		// 获取指定虚拟地址对应的 pte 和页大小，并做合法性检查
 		pte = lookup_address(address, &level);
 		BUG_ON(!pte);
 		BUG_ON(level != PG_LEVEL_4K);
 
+		// 设置指定 pte 的 PRESENT 标志
+		// 清楚指定 pte 的 HIDDEN  标志
 		set_pte(pte, __pte(pte_val(*pte) | _PAGE_PRESENT));
 		set_pte(pte, __pte(pte_val(*pte) & ~_PAGE_HIDDEN));
 		__flush_tlb_one(address);
