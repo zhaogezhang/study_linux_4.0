@@ -1,2 +1,5 @@
 # study_linux_4.0
-Add the comments to the code
+Because the native language is Chinese, the code comments are written in Chinese.
+If you are like me and would like to join us, please contact me:
+name : zhaoge.zhang
+email: 18341265598@163.com
