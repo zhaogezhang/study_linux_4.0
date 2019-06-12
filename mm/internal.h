@@ -140,7 +140,7 @@ struct alloc_context {
 	// 了对应迁移类型的页链表
 	int migratetype;         
 
-	// 表示在分配时，所能分配的最高zone，一般从high -> normal -> dma 
+	// 表示在分配时，所能分配的最高 zone，一般从 high -> normal -> dma 
 	// 内存越来越昂贵，所以一般从 high 到 dma 依次分配
 	enum zone_type high_zoneidx;  
 };

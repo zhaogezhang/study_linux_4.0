@@ -2681,7 +2681,10 @@ static inline void threadgroup_unlock(struct task_struct *tsk) {}
 
 #ifndef __HAVE_THREAD_FUNCTIONS
 
+// 获取指定线程的 struct task 结构体中的 thread_info 成员指针
 #define task_thread_info(task)	((struct thread_info *)(task)->stack)
+
+// 获取指定线程的 struct task 结构体中的 stack 成员指针
 #define task_stack_page(task)	((task)->stack)
 
 static inline void setup_thread_stack(struct task_struct *p, struct task_struct *org)
@@ -2738,42 +2741,49 @@ extern void set_task_stack_end_magic(struct task_struct *tsk);
 /* set thread flags in other task's structures
  * - see asm/thread_info.h for TIF_xxxx flags available
  */
+// 设置指定进程的指定 flag 标志位
 static inline void set_tsk_thread_flag(struct task_struct *tsk, int flag)
 {
 	set_ti_thread_flag(task_thread_info(tsk), flag);
 }
 
+// 清除指定进程的指定 flag 标志位
 static inline void clear_tsk_thread_flag(struct task_struct *tsk, int flag)
 {
 	clear_ti_thread_flag(task_thread_info(tsk), flag);
 }
 
+// 设置指定进程的指定 flag 标志位并返回原来的值
 static inline int test_and_set_tsk_thread_flag(struct task_struct *tsk, int flag)
 {
 	return test_and_set_ti_thread_flag(task_thread_info(tsk), flag);
 }
 
+// 清除指定进程的指定 flag 标志位并返回原来的值
 static inline int test_and_clear_tsk_thread_flag(struct task_struct *tsk, int flag)
 {
 	return test_and_clear_ti_thread_flag(task_thread_info(tsk), flag);
 }
 
-// 测试指定线程（tsk）的线程信息中指定的标志位（flag）是否被置位
+// 测试指定进程的指定的标志位是否被置位
 static inline int test_tsk_thread_flag(struct task_struct *tsk, int flag)
 {
 	return test_ti_thread_flag(task_thread_info(tsk), flag);
 }
 
+// 设置指定进程的 TIF_NEED_RESCHED 标志位
 static inline void set_tsk_need_resched(struct task_struct *tsk)
 {
 	set_tsk_thread_flag(tsk,TIF_NEED_RESCHED);
 }
 
+// 清除指定进程的 TIF_NEED_RESCHED 标志位
 static inline void clear_tsk_need_resched(struct task_struct *tsk)
 {
 	clear_tsk_thread_flag(tsk,TIF_NEED_RESCHED);
 }
 
+// 测试指定进程的 TIF_NEED_RESCHED 标志位是否被置位
 static inline int test_tsk_need_resched(struct task_struct *tsk)
 {
 	return unlikely(test_tsk_thread_flag(tsk,TIF_NEED_RESCHED));

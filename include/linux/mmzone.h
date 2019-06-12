@@ -390,6 +390,7 @@ struct zone {
 	/* Read-mostly fields */
 
 	/* zone watermarks, access with *_wmark_pages(zone) macros */
+	// 当前 zone 设置的“不同等级”的水印值，目前从低到高分别是 WMARK_MIN, WMARK_LOW, WMARK_HIGH,
 	unsigned long watermark[NR_WMARK];
 
 	/*
@@ -400,6 +401,18 @@ struct zone {
 	 * on the higher zones). This array is recalculated at runtime if the
 	 * sysctl_lowmem_reserve_ratio sysctl changes.
 	 */
+	// kernel 在分配内存时，可能会涉及到多个 zone，分配会尝试从 zonelis t第一个 zone 
+	// 分配如果失败就会尝试下一个低级的zone（这里的低级仅仅指 zone 内存的位置，实际上
+	// 低地址 zone 是更稀缺的资源）。我们可以想像应用进程通过内存映射申请 Highmem 并
+	// 且加 mlock 分配，如果此时 Highmem zone 无法满足分配，则会尝试从 Normal 进行分配
+	// 这就有一个问题，来自 Highmem 的请求可能会耗尽 Normal zone 的内存，而且由于 mlock
+	// 又无法回收，最终的结果就是 Normal zone 无内存提供给 kernel 的正常分配，而 Highmem
+	// 有大把的可回收内存无法有效利用。
+
+	// 因此针对这个 case，使得 Normal zone 在碰到来自 Highmem 的分配请求时，可以通过
+	// lowmem_reserve 声明：可以使用我的内存，但是必须要保留 lowmem_reserve[NORMAL] 给我
+	// 自己使用。同样当从 Normal 失败后，会尝试从 zonelist 中的 DMA 申请分配，通过
+	// lowmem_reserve[DMA]，限制来自 HIGHMEM 和 Normal 的分配请求。
 	long lowmem_reserve[MAX_NR_ZONES];
 
 #ifdef CONFIG_NUMA
@@ -441,7 +454,8 @@ struct zone {
 #endif /* CONFIG_NUMA */
 
 	/* zone_start_pfn == zone_start_paddr >> PAGE_SHIFT */
-	unsigned long		zone_start_pfn; // 当前 zone 起始物理内存的页帧号
+	// 当前 zone 起始物理内存的页帧号
+	unsigned long		zone_start_pfn;
 
 	/*
 	 * spanned_pages is the total pages spanned by the zone, including

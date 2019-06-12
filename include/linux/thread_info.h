@@ -66,43 +66,59 @@ extern long do_no_restart_syscall(struct restart_block *parm);
  * - pass TIF_xxxx constants to these functions
  */
 
+// 设置指定线程信息中的 flag 标志位
 static inline void set_ti_thread_flag(struct thread_info *ti, int flag)
 {
 	set_bit(flag, (unsigned long *)&ti->flags);
 }
 
+// 清除指定线程信息中的 flag 标志位
 static inline void clear_ti_thread_flag(struct thread_info *ti, int flag)
 {
 	clear_bit(flag, (unsigned long *)&ti->flags);
 }
 
+// 设置指定线程信息中的 flag 标志位并返回原来的值
 static inline int test_and_set_ti_thread_flag(struct thread_info *ti, int flag)
 {
 	return test_and_set_bit(flag, (unsigned long *)&ti->flags);
 }
 
+// 清除指定线程信息中的 flag 标志位并返回原来的值
 static inline int test_and_clear_ti_thread_flag(struct thread_info *ti, int flag)
 {
 	return test_and_clear_bit(flag, (unsigned long *)&ti->flags);
 }
 
 // 测试指定线程信息（ti）中指定的标志位（flag）是否被置位
+// 如果被置位则返回一，否则返回零
 static inline int test_ti_thread_flag(struct thread_info *ti, int flag)
 {
 	return test_bit(flag, (unsigned long *)&ti->flags);
 }
 
+// 设置当前线程线程信息中指定 flag 标志位
 #define set_thread_flag(flag) \
 	set_ti_thread_flag(current_thread_info(), flag)
+
+// 清除当前线程线程信息中指定 flag 标志位
 #define clear_thread_flag(flag) \
 	clear_ti_thread_flag(current_thread_info(), flag)
+
+// 设置当前线程信息的中指定 flag 标志位并返回原来的值
 #define test_and_set_thread_flag(flag) \
 	test_and_set_ti_thread_flag(current_thread_info(), flag)
+
+// 清除当前线程信息的中指定 flag 标志位并返回原来的值
 #define test_and_clear_thread_flag(flag) \
 	test_and_clear_ti_thread_flag(current_thread_info(), flag)
+
+// 测试当前线程信息中指定的标志位（flag）是否被置位
+// 如果被置位则返回 1，否则返回 0
 #define test_thread_flag(flag) \
 	test_ti_thread_flag(current_thread_info(), flag)
 
+// 判断当前线程信息中的 TIF_NEED_RESCHED 标志位是否被置位
 #define tif_need_resched() test_thread_flag(TIF_NEED_RESCHED)
 
 #if defined TIF_RESTORE_SIGMASK && !defined HAVE_SET_RESTORE_SIGMASK
