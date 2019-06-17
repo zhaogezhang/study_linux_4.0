@@ -441,7 +441,9 @@ static void pagevec_lru_move_fn(struct pagevec *pvec,
 }
 
 // 如果指定的内存页是 inactive（匿名页或文件页）状态的，则把这个页移动到对应的 inactive 链表的末尾位置
-// 这个函数可以在把 lru active 链表上状态为 inactive 的内存页移动到与其对应的 lru inactive 链表上
+// 1. 这个函数可以在把 lru active 链表上状态为 inactive 的内存页移动到与其对应的 lru inactive 链表尾部位置
+// 2. 这个函数可以在把 lru_rotate_pvecs 缓存上状态为 inactive 的内存页移动到与其对应的 lru inactive 链表尾部位置
+// 3. ...
 static void pagevec_move_tail_fn(struct page *page, struct lruvec *lruvec,
 				 void *arg)
 {
@@ -483,6 +485,7 @@ void rotate_reclaimable_page(struct page *page)
 
 		// 增加页引用计数
 		page_cache_get(page);
+		
 		local_irq_save(flags);
 		
 		pvec = this_cpu_ptr(&lru_rotate_pvecs);
@@ -507,7 +510,7 @@ static void update_page_reclaim_stat(struct lruvec *lruvec,
 }
 
 // 把指定的内存页从指定的 inactive lru 链表中移除，并添加到与其对应的 active lru 链表上
-// 同时更新相关的状态统计变量信息
+// 同时更新相关的状态统计变量信息（PG_active）
 static void __activate_page(struct page *page, struct lruvec *lruvec,
 			    void *arg)
 {
@@ -572,6 +575,8 @@ static bool need_activate_page_drain(int cpu)
 	return false;
 }
 
+// 把指定的内存页从指定的 inactive lru 链表中移除，并添加到与其对应的 active lru 链表上
+// 同时更新相关的状态统计变量信息（PG_active）
 void activate_page(struct page *page)
 {
 	struct zone *zone = page_zone(page);
@@ -582,6 +587,7 @@ void activate_page(struct page *page)
 }
 #endif
 
+// 设置 lru_add_pvec 缓存中指定的内存页的 PG_active 标志
 static void __lru_cache_activate_page(struct page *page)
 {
 	struct pagevec *pvec = &get_cpu_var(lru_add_pvec);

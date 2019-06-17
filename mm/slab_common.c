@@ -708,6 +708,7 @@ struct kmem_cache *__init create_kmalloc_cache(const char *name, size_t size,
 	return s;
 }
 
+// 每“阶”内存块占用一个 kmem_cache 指针结构
 struct kmem_cache *kmalloc_caches[KMALLOC_SHIFT_HIGH + 1];
 EXPORT_SYMBOL(kmalloc_caches);
 
@@ -758,6 +759,8 @@ static inline int size_index_elem(size_t bytes)
  * Find the kmem_cache structure that serves a given size of
  * allocation
  */
+// 根据我们想要申请的内存大小找到一个满足且最接近的 kmem_cache 结构
+// 并返回这个 kmem_cache 结构的地址
 struct kmem_cache *kmalloc_slab(size_t size, gfp_t flags)
 {
 	int index;
@@ -775,11 +778,15 @@ struct kmem_cache *kmalloc_slab(size_t size, gfp_t flags)
 	} else
 		index = fls(size - 1);
 
+// 如果我们配置了 DMA zone，且想要申请的内存块是 dma 内存，则从
+// 预定义的 dma caches 中返回与其对应的 kmem_cache 结构的地址
 #ifdef CONFIG_ZONE_DMA
 	if (unlikely((flags & GFP_DMA)))
 		return kmalloc_dma_caches[index];
 
 #endif
+
+	// 如果是普通的内存分配，则直接从 NORMAL zone 中申请
 	return kmalloc_caches[index];
 }
 

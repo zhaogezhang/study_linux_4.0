@@ -243,6 +243,8 @@ extern struct kmem_cache *kmalloc_dma_caches[KMALLOC_SHIFT_HIGH + 1];
  * 2 = 120 .. 192 bytes
  * n = 2^(n-1) .. 2^n -1
  */
+// 根据需要申请的内存块大小，计算我们从哪个 slab 中获取内存，并返回
+// 对应 slab 的索引值（计算公式：n = 2^(n-1) .. 2^n -1）
 static __always_inline int kmalloc_index(size_t size)
 {
 	if (!size)
@@ -418,9 +420,13 @@ static __always_inline void *kmalloc_large(size_t size, gfp_t flags)
 static __always_inline void *kmalloc(size_t size, gfp_t flags)
 {
 	if (__builtin_constant_p(size)) {
+		// 如果申请的内存块超过了 2 个内存页大（在 slub 中），则直接
+		// 通过也分配器从伙伴系统中申请
 		if (size > KMALLOC_MAX_CACHE_SIZE)
 			return kmalloc_large(size, flags);
+
 #ifndef CONFIG_SLOB
+		// 如果不是 SLOB 分配算法，并且不是分配 DMA 内存，则执行
 		if (!(flags & GFP_DMA)) {
 			int index = kmalloc_index(size);
 

@@ -242,16 +242,19 @@ static inline int check_valid_pointer(struct kmem_cache *s,
 	return 1;
 }
 
+// 从当前 object 中获取下一个 object 地址的指针
 static inline void *get_freepointer(struct kmem_cache *s, void *object)
 {
 	return *(void **)(object + s->offset);
 }
 
+// 预取当前 object 的下一个 object 地址的指针
 static void prefetch_freepointer(const struct kmem_cache *s, void *object)
 {
 	prefetch(object + s->offset);
 }
 
+// 获取 kmem cache 中指定对象的后一个对象地址的指针
 static inline void *get_freepointer_safe(struct kmem_cache *s, void *object)
 {
 	void *p;
@@ -1761,6 +1764,7 @@ static void *get_partial(struct kmem_cache *s, gfp_t flags, int node,
 #define TID_STEP 1
 #endif
 
+// 计算下一个 tid（tid = tid + NR_CPUS，init tid = CPU_NUM）
 static inline unsigned long next_tid(unsigned long tid)
 {
 	return tid + TID_STEP;
@@ -2446,6 +2450,9 @@ redo:
 	 * the same cpu. It could be different if CONFIG_PREEMPT so we need
 	 * to check if it is matched or not.
 	 */
+	// 如果当前 cpu 开启了抢占，表示当前线程可能在多个 cpu 之间调度
+	// 所以我们需要通过判断 tid 保证当前 cpu 没被切换（如果已经被切换
+	// 到了其他 cpu 上，则等待，直到切换到原来的 cpu 为止）
 	do {
 		tid = this_cpu_read(s->cpu_slab->tid);
 		c = raw_cpu_ptr(s->cpu_slab);
@@ -2475,6 +2482,10 @@ redo:
 		object = __slab_alloc(s, gfpflags, node, addr, c);
 		stat(s, ALLOC_SLOWPATH);
 	} else {
+		// 直接从当前 cpu cache 中获取内存，执行速度比较快，所以
+		// 称做 fast path
+	
+		// 获取 kmem cache 中指定对象的后一个对象地址的指针
 		void *next_object = get_freepointer_safe(s, object);
 
 		/*
@@ -2491,6 +2502,8 @@ redo:
 		 * against code executing on this cpu *not* from access by
 		 * other cpus.
 		 */
+		// 对 pcp 和 oval 两个值进行比较，如果相等，则设置 pcp 等于 nval 
+		// 并返回 1，如果不相等，则不修改 pcp 值并返回 0
 		if (unlikely(!this_cpu_cmpxchg_double(
 				s->cpu_slab->freelist, s->cpu_slab->tid,
 				object, tid,
@@ -2499,10 +2512,14 @@ redo:
 			note_cmpxchg_failure("slab_alloc", s, tid);
 			goto redo;
 		}
+
+		// 如果更新成功，则预取下一个对象的地址到 cache中，这样可以提高
+		// 下一次申请内存的效率
 		prefetch_freepointer(s, next_object);
 		stat(s, ALLOC_FASTPATH);
 	}
 
+	// 如果申请内存成功且 gfpflags 中设置了 __GFP_ZERO 标志，则清空内存对象
 	if (unlikely(gfpflags & __GFP_ZERO) && object)
 		memset(object, 0, s->object_size);
 
@@ -3309,11 +3326,16 @@ void *__kmalloc(size_t size, gfp_t flags)
 	struct kmem_cache *s;
 	void *ret;
 
+	// 如果申请的内存块大小超过 2 个标准内存页（4KB），则直接使用
+	// 伙伴系统的页分配器申请内存
 	if (unlikely(size > KMALLOC_MAX_CACHE_SIZE))
 		return kmalloc_large(size, flags);
 
+	// 根据我们想要申请的内存大小找到一个满足且最接近的 kmem_cache 结构
+	// 并返回这个 kmem_cache 结构的地址
 	s = kmalloc_slab(size, flags);
 
+	// 如果分配成功，则直接返回内存地址，如果失败则继续执行后边的操作
 	if (unlikely(ZERO_OR_NULL_PTR(s)))
 		return s;
 

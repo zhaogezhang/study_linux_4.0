@@ -39,7 +39,11 @@ enum stat_item {
 
 struct kmem_cache_cpu {
 	void **freelist;	/* Pointer to next available object */
+
+	// 为了保证申请的内存是从本地 cpu cache 上分配的，而不是从
+	// 其他 cpu cache中申请（通过判断 tid 保证从本地 cpu 申请内存）
 	unsigned long tid;	/* Globally unique transaction id */
+	
 	struct page *page;	/* The slab from which we are allocating */
 	struct page *partial;	/* Partially allocated frozen slabs */
 #ifdef CONFIG_SLUB_STATS
@@ -65,8 +69,17 @@ struct kmem_cache {
 	unsigned long flags;
 	unsigned long min_partial;
 	int size;		/* The size of an object including meta data */
+
+	// 实际的，申请者可以使用的内存块大小
 	int object_size;	/* The size of an object without meta data */
+
+	// slub 分配在管理 object 的时候采用的方法是：既然每个 object 在没有
+	// 分配之前不在乎每个 object 中存储的内容，那么完全可以在每个 object
+	// 中存储下一个 object 内存首地址，就形成了一个单链表。很巧妙的设计
+	// 那么这个地址数据存储在 object 什么位置呢？offset 就是存储下个 object
+	// 地址数据相对于这个 object 首地址的偏移。
 	int offset;		/* Free pointer offset. */
+	
 	int cpu_partial;	/* Number of per cpu partial objects to keep around */
 	struct kmem_cache_order_objects oo;
 
