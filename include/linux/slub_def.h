@@ -38,6 +38,7 @@ enum stat_item {
 	NR_SLUB_STAT_ITEMS };
 
 struct kmem_cache_cpu {
+	// 执行当前有效的、可以分配给用户的 object 对象指针的地址
 	void **freelist;	/* Pointer to next available object */
 
 	// 为了保证申请的内存是从本地 cpu cache 上分配的，而不是从

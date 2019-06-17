@@ -708,10 +708,12 @@ struct kmem_cache *__init create_kmalloc_cache(const char *name, size_t size,
 	return s;
 }
 
-// 每“阶”内存块占用一个 kmem_cache 指针结构
+// 每“阶”内存块占用一个 kmem_cache 指针结构，而每个 kmem_cache 结构
+// 又对应着多个 kmem_cache_cpu 结构
 struct kmem_cache *kmalloc_caches[KMALLOC_SHIFT_HIGH + 1];
 EXPORT_SYMBOL(kmalloc_caches);
 
+// 同上
 #ifdef CONFIG_ZONE_DMA
 struct kmem_cache *kmalloc_dma_caches[KMALLOC_SHIFT_HIGH + 1];
 EXPORT_SYMBOL(kmalloc_dma_caches);
@@ -902,10 +904,16 @@ void *kmalloc_order(size_t size, gfp_t flags, unsigned int order)
 	struct page *page;
 
 	flags |= __GFP_COMP;
+
+	// 从伙伴系统中申请指定大小的内存块
 	page = alloc_kmem_pages(flags, order);
+
+	// 获取内存块对应的虚拟地址
 	ret = page ? page_address(page) : NULL;
 	kmemleak_alloc(ret, size, 1, flags);
 	kasan_kmalloc_large(ret, size);
+
+	// 返回申请到的内存块的虚拟地址
 	return ret;
 }
 EXPORT_SYMBOL(kmalloc_order);

@@ -116,8 +116,10 @@
 }							\
 )
 
-
+// __builtin_return_address(0) 的含义是，得到当前函数返回地址，即此函数被别的函数调用
+// 然后此函数执行完毕后，返回，所谓返回地址就是那时候的地址
 #define _RET_IP_		(unsigned long)__builtin_return_address(0)
+
 #define _THIS_IP_  ({ __label__ __here; __here: (unsigned long)&&__here; })
 
 #ifdef CONFIG_LBDAF

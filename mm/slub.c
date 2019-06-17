@@ -1552,6 +1552,7 @@ static inline void add_partial(struct kmem_cache_node *n,
 	__add_partial(n, page, tail);
 }
 
+// 从指定的 kmem_cache_node 中移除一个内存页（一个内存页就是一个 slab partial 成员）
 static inline void
 __remove_partial(struct kmem_cache_node *n, struct page *page)
 {
@@ -1559,6 +1560,7 @@ __remove_partial(struct kmem_cache_node *n, struct page *page)
 	n->nr_partial--;
 }
 
+// 从指定的 kmem_cache_node 中，移除指定内存页所代表的 slab 对像
 static inline void remove_partial(struct kmem_cache_node *n,
 					struct page *page)
 {
@@ -1601,13 +1603,16 @@ static inline void *acquire_slab(struct kmem_cache *s,
 	VM_BUG_ON(new.frozen);
 	new.frozen = 1;
 
+	// 把新申请的 slab 对象（freelist）更新到指定变量中
 	if (!__cmpxchg_double_slab(s, page,
 			freelist, counters,
 			new.freelist, new.counters,
 			"acquire_slab"))
 		return NULL;
 
+	// 从指定的 kmem_cache_node 中，移除指定内存页所代表的 slab 对像
 	remove_partial(n, page);
+	
 	WARN_ON(!freelist);
 	return freelist;
 }
@@ -1618,6 +1623,8 @@ static inline bool pfmemalloc_match(struct page *page, gfp_t gfpflags);
 /*
  * Try to allocate a partial slab from a specific node.
  */
+// 从指定的 kmem_cache_node 中尝试申请一个 slab 内存对象，并返回这个 slab 对象的第一个
+// object 成员指针（freelist 链表指针）
 static void *get_partial_node(struct kmem_cache *s, struct kmem_cache_node *n,
 				struct kmem_cache_cpu *c, gfp_t flags)
 {
@@ -1636,12 +1643,17 @@ static void *get_partial_node(struct kmem_cache *s, struct kmem_cache_node *n,
 		return NULL;
 
 	spin_lock(&n->list_lock);
+
+	// 通过 page 变量遍历 n->partial 链表上的每一个成员
 	list_for_each_entry_safe(page, page2, &n->partial, lru) {
 		void *t;
 
+		// 判断指定的内存页 flags 是否满足分配要求，如果不满足则跳过
 		if (!pfmemalloc_match(page, flags))
 			continue;
 
+		// 从指定的 kmem_cache_node 中获取一个新的 slab 对象，并返回这个
+		// slab 对象的第一个       object 成员指针（freelist 链表指针）
 		t = acquire_slab(s, n, page, object == NULL, &objects);
 		if (!t)
 			break;
@@ -1742,6 +1754,8 @@ static void *get_partial(struct kmem_cache *s, gfp_t flags, int node,
 	else if (!node_present_pages(node))
 		searchnode = node_to_mem_node(node);
 
+	// 从指定的 kmem_cache_node 中尝试申请一个 slab 内存对象，并返回这个 slab 对象的第一个
+	// object 成员指针（freelist 链表指针）
 	object = get_partial_node(s, get_node(s, searchnode), c, flags);
 	if (object || node != NUMA_NO_NODE)
 		return object;
@@ -2142,6 +2156,8 @@ static void flush_all(struct kmem_cache *s)
  * Check if the objects in a per cpu structure fit numa
  * locality expectations.
  */
+// 判断指定的内存页和指定的 node id 是否匹配，即这个内存页是否是
+// 指定的这个 node id 上的内存
 static inline int node_match(struct page *page, int node)
 {
 #ifdef CONFIG_NUMA
@@ -2223,11 +2239,15 @@ static inline void *new_slab_objects(struct kmem_cache *s, gfp_t flags,
 	struct kmem_cache_cpu *c = *pc;
 	struct page *page;
 
+	// 从全局的 slab 内存区中申请一个 slab 对象（一个内存页）
+	// 并返回这个 slab 的第一个 object 对象指针（内存页中第一个 object 对象地址）
 	freelist = get_partial(s, flags, node, c);
 
 	if (freelist)
 		return freelist;
 
+	// 如果全局的 slab 内存区中也没有可用的内存了，那么我么需要从伙伴系统中申请
+	// 新的内存，用来给全局的 slab 内存区使用
 	page = new_slab(s, flags, node);
 	if (page) {
 		c = raw_cpu_ptr(s->cpu_slab);
@@ -2325,6 +2345,8 @@ static void *__slab_alloc(struct kmem_cache *s, gfp_t gfpflags, int node,
 	c = this_cpu_ptr(s->cpu_slab);
 #endif
 
+	// 如果当前 cpu 的 slab cache 中没有可用的内存页供我们申请内存块
+	// 表示当前 cpu 的 slab 已经空了，所以我们需要重新生成一个 slab
 	page = c->page;
 	if (!page)
 		goto new_slab;
@@ -2386,6 +2408,10 @@ load_freelist:
 
 new_slab:
 
+	// 如果当前 cpu slab 的 partial 链表中还有可用的内存页供我们申请内存
+	// 则从 partial 链表上拿出一个空闲页用来分配内存，并更新相关变量值
+	// 如果 partial 链表上也没有可用的内存页用来供我们分配内存，那么我们
+	// 只好从全局的 kmen_cache 中申请一个 slab 对象到当本地 cpu 上
 	if (c->partial) {
 		page = c->page = c->partial;
 		c->partial = page->next;
@@ -2478,8 +2504,15 @@ redo:
 
 	object = c->freelist;
 	page = c->page;
+
+	// 如果申请到的对象为空或者申请的内存和指定的 node id 不匹配，表示
+	// 申请失败，所以我们需要通过 slow path 重新申请，如果申请到了内存对象
+	// 并且申请的内存对象和我们指定的 node id 匹配，表示申请成功，则直接
+	// 更新相关变量并返回
 	if (unlikely(!object || !node_match(page, node))) {
 		object = __slab_alloc(s, gfpflags, node, addr, c);
+
+		// 统计我们在申请内存的时候，通过 slow path 申请到内存的次数
 		stat(s, ALLOC_SLOWPATH);
 	} else {
 		// 直接从当前 cpu cache 中获取内存，执行速度比较快，所以
@@ -2516,6 +2549,8 @@ redo:
 		// 如果更新成功，则预取下一个对象的地址到 cache中，这样可以提高
 		// 下一次申请内存的效率
 		prefetch_freepointer(s, next_object);
+
+		// 统计我们在申请内存的时候，通过 fast path 申请到内存的次数
 		stat(s, ALLOC_FASTPATH);
 	}
 
@@ -2528,12 +2563,15 @@ redo:
 	return object;
 }
 
+// 从指定的 kmem_cache 中根据 gfpflags 标志申请一个内存块，并把函数调用的
+// 地址当做参数传进来
 static __always_inline void *slab_alloc(struct kmem_cache *s,
 		gfp_t gfpflags, unsigned long addr)
 {
 	return slab_alloc_node(s, gfpflags, NUMA_NO_NODE, addr);
 }
 
+// 从指定的 kmem_cache 中根据 gfpflags 标志申请一个内存块
 void *kmem_cache_alloc(struct kmem_cache *s, gfp_t gfpflags)
 {
 	void *ret = slab_alloc(s, gfpflags, _RET_IP_);
@@ -2546,6 +2584,8 @@ void *kmem_cache_alloc(struct kmem_cache *s, gfp_t gfpflags)
 EXPORT_SYMBOL(kmem_cache_alloc);
 
 #ifdef CONFIG_TRACING
+// 从指定的 kmem_cache 中根据 gfpflags 标志申请一个内存块，其中参数 size 并不是在
+// 申请内存的时候使用，而是在 trace 逻辑中使用
 void *kmem_cache_alloc_trace(struct kmem_cache *s, gfp_t gfpflags, size_t size)
 {
 	void *ret = slab_alloc(s, gfpflags, _RET_IP_);

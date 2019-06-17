@@ -346,6 +346,10 @@ struct kmem_cache_node {
 #endif
 
 #ifdef CONFIG_SLUB
+	// 在 slub 内存分配算法中，每一个内存页都是一个 slab partial 成员
+	// 我们用 nr_partial 表示系统中一个 kmem_cache_node 中包含的所有的
+	// slab partial 成员个数，通过 partial 链表把这些 slab partial 成员
+	// 链接起来，统一管理
 	unsigned long nr_partial;
 	struct list_head partial;
 #ifdef CONFIG_SLUB_DEBUG
