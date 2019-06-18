@@ -228,6 +228,8 @@ static inline unsigned long __cmpxchg_mb(volatile void *ptr, unsigned long old,
 	__ret; \
 })
 
+// 如果 ptr 变量和 o 变量相等，则把 n 变量值赋给 ptr 并返回 1
+// 否则 ptr 的值不变并且返回 0
 #define cmpxchg_double(ptr1, ptr2, o1, o2, n1, n2) \
 ({\
 	int __ret;\

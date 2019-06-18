@@ -267,6 +267,7 @@ static inline void *get_freepointer_safe(struct kmem_cache *s, void *object)
 	return p;
 }
 
+// 设置指定 slab object（一个内存页中的某个 object）的下一个 object 对象的地址值
 static inline void set_freepointer(struct kmem_cache *s, void *object, void *fp)
 {
 	*(void **)(object + s->offset) = fp;
@@ -1648,7 +1649,7 @@ static void *get_partial_node(struct kmem_cache *s, struct kmem_cache_node *n,
 	list_for_each_entry_safe(page, page2, &n->partial, lru) {
 		void *t;
 
-		// 判断指定的内存页 flags 是否满足分配要求，如果不满足则跳过
+		// 判断指定的内存页 pfmemalloc 是否满足分配要求，如果不满足则跳过
 		if (!pfmemalloc_match(page, flags))
 			continue;
 
@@ -1834,6 +1835,8 @@ static void init_kmem_cache_cpus(struct kmem_cache *s)
 /*
  * Remove the cpu slab
  */
+// page     : kmem_cache_cpu->page
+// freelist : kmem_cache_cpu->freelist
 static void deactivate_slab(struct kmem_cache *s, struct page *page,
 				void *freelist)
 {
@@ -1846,6 +1849,9 @@ static void deactivate_slab(struct kmem_cache *s, struct page *page,
 	struct page new;
 	struct page old;
 
+	// 如果当前 kmem_cache_cpu 上有空闲的 object（对象），则把当前的 slab 对
+	// 象（一个内存页）添加到 kmem_cache_node 的 partial 链表的尾部，即把还有
+	// 空闲空间的 slab 对象放到 kmem_cache_node 的 partial 链表的尾部
 	if (page->freelist) {
 		stat(s, DEACTIVATE_REMOTE_FREES);
 		tail = DEACTIVATE_TO_TAIL;
@@ -1859,18 +1865,41 @@ static void deactivate_slab(struct kmem_cache *s, struct page *page,
 	 * There is no need to take the list->lock because the page
 	 * is still frozen.
 	 */
+
+	// 分别遍历 freelist 链表中的每一个 slab object 对象，并对每个对象执行
+	// 相应的操作
 	while (freelist && (nextfree = get_freepointer(s, freelist))) {
 		void *prior;
 		unsigned long counters;
 
+		// 把 page 中第一个对象（一个内存页中的某个 object）移动到 freelist 指向的位置
+		// 并更新 freelist、使其指向下一个对象的位置（通过判断前后上下文保证了所有操作
+		// 都在同一个 cpu 中执行）
 		do {
+			// 把 page 中第一个对象（一个内存页中的某个 object）放到临时变量 prior 中
 			prior = page->freelist;
 			counters = page->counters;
+
+			// 设置 freelist 的下一个对象（一个内存页中的某个 object）指针为 prior
+			// 也就是把 page->freelist 地址值赋给 freelist 的下一个对象
 			set_freepointer(s, freelist, prior);
+			
 			new.counters = counters;
 			new.inuse--;
 			VM_BUG_ON(!new.frozen);
 
+			// 如果 page->freelist,   page->counters 和 prior, counters 相等
+			// 则把 freelist, new.counters 的值赋给 page->freelist, page->counters
+			// 并返回 1，取反后为 0，否则 page->freelist, page->counters 值不变并返
+			// 回 0，取反后为 1
+
+			// 逻辑分析：
+			// 1. 当 page->freelist,   page->counters 和 prior, counters 相等时表示没有做过
+			//    进程切换，表示我们成功的把 page 中第一个对象放到了 kmem_cache_cpu->freelist
+			//    中，到这一步，表示执行成功
+			// 2. 因为 page->freelist,   page->counters 和 prior, counters 不相等，表示在执行过
+			//    程中可能执行了进程切换，到这一步，表示执行失败，所以我们需要在原来的上下文
+			//    环境中，重新执行一遍这个代码逻辑
 		} while (!__cmpxchg_double_slab(s, page,
 			prior, counters,
 			freelist, new.counters,
@@ -2232,6 +2261,8 @@ slab_out_of_memory(struct kmem_cache *s, gfp_t gfpflags, int nid)
 #endif
 }
 
+// 申请一个新的 slab 对象（一个内存页）并返回这个 slab 的第一个 object 
+// 对象指针（内存页中第一个 object 对象地址）
 static inline void *new_slab_objects(struct kmem_cache *s, gfp_t flags,
 			int node, struct kmem_cache_cpu **pc)
 {
@@ -2247,7 +2278,7 @@ static inline void *new_slab_objects(struct kmem_cache *s, gfp_t flags,
 		return freelist;
 
 	// 如果全局的 slab 内存区中也没有可用的内存了，那么我么需要从伙伴系统中申请
-	// 新的内存，用来给全局的 slab 内存区使用
+	// 新的内存，用来给全局的 slab（kmem_cache_node）内存区使用
 	page = new_slab(s, flags, node);
 	if (page) {
 		c = raw_cpu_ptr(s->cpu_slab);
@@ -2270,6 +2301,7 @@ static inline void *new_slab_objects(struct kmem_cache *s, gfp_t flags,
 	return freelist;
 }
 
+// 判断指定的内存页 pfmemalloc 是否满足分配要求，如果不满足则跳过
 static inline bool pfmemalloc_match(struct page *page, gfp_t gfpflags)
 {
 	if (unlikely(PageSlabPfmemalloc(page)))
@@ -2352,6 +2384,7 @@ static void *__slab_alloc(struct kmem_cache *s, gfp_t gfpflags, int node,
 		goto new_slab;
 redo:
 
+	// 如果指定的内存页不是指定的 node id 上的内存，则执行相应的逻辑
 	if (unlikely(!node_match(page, node))) {
 		int searchnode = node;
 
@@ -2394,6 +2427,7 @@ redo:
 
 	stat(s, ALLOC_REFILL);
 
+// 直接从 freelist 中取下一个 object（对象）并返回这个 object（对象）地址
 load_freelist:
 	/*
 	 * freelist is pointing to the list of objects to be used.
@@ -2420,8 +2454,12 @@ new_slab:
 		goto redo;
 	}
 
+	// 申请一个新的 slab 对象（一个内存页）并返回这个 slab 的第一个 object 
+	// 对象指针（内存页中第一个 object 对象地址）
 	freelist = new_slab_objects(s, gfpflags, node, &c);
 
+	// 如果在这个位置还没有申请到 slab 对象内存块，表示当前系统已经没有可用
+	// 的、空闲的内存了，所以直接生成一个 slab out of memory 并返回 NULL
 	if (unlikely(!freelist)) {
 		slab_out_of_memory(s, gfpflags, node);
 		local_irq_restore(flags);
@@ -2429,6 +2467,9 @@ new_slab:
 	}
 
 	page = c->page;
+
+	// 如果没有打开 slub debug 功能并且 pfmemalloc_match 返回 1
+	// 则直接从 freelist 中取下一个 object（对象）并返回这个 object（对象）地址
 	if (likely(!kmem_cache_debug(s) && pfmemalloc_match(page, gfpflags)))
 		goto load_freelist;
 

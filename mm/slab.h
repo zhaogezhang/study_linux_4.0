@@ -361,6 +361,7 @@ struct kmem_cache_node {
 
 };
 
+// 获取指定 kmem_cache 对应 node 的 kmem_cache_node 结构指针
 static inline struct kmem_cache_node *get_node(struct kmem_cache *s, int node)
 {
 	return s->node[node];
