@@ -243,6 +243,9 @@ static inline int check_valid_pointer(struct kmem_cache *s,
 }
 
 // 从当前 object 中获取下一个 object 地址的指针
+// 在 slub 内存分配器中，一个 slab 用一个内存页表示，一个内存页中包含多个 slab 对象
+// 前一个 slab 对象中、偏移量为 s->offset 的位置是一个指向下一个相邻 slab 对象的指针
+// 而这个函数是为了修改这个指针的值，所以需要转换成二级指针
 static inline void *get_freepointer(struct kmem_cache *s, void *object)
 {
 	return *(void **)(object + s->offset);
@@ -268,6 +271,9 @@ static inline void *get_freepointer_safe(struct kmem_cache *s, void *object)
 }
 
 // 设置指定 slab object（一个内存页中的某个 object）的下一个 object 对象的地址值
+// 在 slub 内存分配器中，一个 slab 用一个内存页表示，一个内存页中包含多个 slab 对象
+// 前一个 slab 对象中、偏移量为 s->offset 的位置是一个指向下一个相邻 slab 对象的指针
+// 而这个函数是为了修改这个指针的值，所以需要转换成二级指针
 static inline void set_freepointer(struct kmem_cache *s, void *object, void *fp)
 {
 	*(void **)(object + s->offset) = fp;
@@ -1866,8 +1872,21 @@ static void deactivate_slab(struct kmem_cache *s, struct page *page,
 	 * is still frozen.
 	 */
 
-	// 分别遍历 freelist 链表中的每一个 slab object 对象，并对每个对象执行
-	// 相应的操作
+	// 分别遍历 freelist 链表中的每一个 slab object 对象，除了最后一个 slab
+	// 对象之外，释放所有的 slab 对象，执行完这个函数之后 page->freelist 和 
+	// freelist 执行的位置如下图：
+	//           _________________________________________
+	//           |                                        |
+	//           |                                        V
+	//       freelist :   0     0     0     0  ...  0     0
+	//                                              ^     |
+	//            __________________________________|     |
+	//           |________________________________________|
+	//           ||
+	//           |V
+	// pgae->freelist
+	// 
+	// *** freelist = freelist first object ***
 	while (freelist && (nextfree = get_freepointer(s, freelist))) {
 		void *prior;
 		unsigned long counters;
@@ -1877,23 +1896,27 @@ static void deactivate_slab(struct kmem_cache *s, struct page *page,
 		// 都在同一个 cpu 中执行）
 		do {
 			// 把 page 中第一个对象（一个内存页中的某个 object）放到临时变量 prior 中
+			// 也就是 slab 对象链表的链表头
+			// *** prior = page->freelist ***
 			prior = page->freelist;
 			counters = page->counters;
 
 			// 设置 freelist 的下一个对象（一个内存页中的某个 object）指针为 prior
 			// 也就是把 page->freelist 地址值赋给 freelist 的下一个对象
+			// *** (*(freelist + s->offset)) = prior = page->freelist ***
 			set_freepointer(s, freelist, prior);
 			
 			new.counters = counters;
 			new.inuse--;
 			VM_BUG_ON(!new.frozen);
 
+			// 设置 page->freelist = freelist
+
+			// 逻辑分析：
 			// 如果 page->freelist,   page->counters 和 prior, counters 相等
 			// 则把 freelist, new.counters 的值赋给 page->freelist, page->counters
 			// 并返回 1，取反后为 0，否则 page->freelist, page->counters 值不变并返
-			// 回 0，取反后为 1
-
-			// 逻辑分析：
+			// 回 0，取反后为 1，所以：
 			// 1. 当 page->freelist,   page->counters 和 prior, counters 相等时表示没有做过
 			//    进程切换，表示我们成功的把 page 中第一个对象放到了 kmem_cache_cpu->freelist
 			//    中，到这一步，表示执行成功
@@ -1905,6 +1928,7 @@ static void deactivate_slab(struct kmem_cache *s, struct page *page,
 			freelist, new.counters,
 			"drain percpu freelist"));
 
+		// freelist = nextfree
 		freelist = nextfree;
 	}
 

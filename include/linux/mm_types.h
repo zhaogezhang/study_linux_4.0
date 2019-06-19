@@ -78,7 +78,8 @@ struct page {
 			pgoff_t index;		/* Our offset within mapping. */
 
 			// 在 sl[aou]b 内存分配算法中，一个内存页就是一个 slab，其中包含很对个 object 
-			// 我们用 freelist 表示在这个内存页中第一个 object 成员的地址
+			// 我们用 freelist 表示在这个内存页中第一个 object 成员的地址，而在 slub 中
+			// 所有的 slab 对象中都有一个指向下一个 slab 对象的指针，形成了一个单向链表
 			void *freelist;		/* sl[aou]b first free object */
 			
 			bool pfmemalloc;	/* If set by the page allocator,
