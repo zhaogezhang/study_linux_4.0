@@ -274,6 +274,7 @@ static inline void *get_freepointer_safe(struct kmem_cache *s, void *object)
 // 在 slub 内存分配器中，一个 slab 用一个内存页表示，一个内存页中包含多个 slab 对象
 // 前一个 slab 对象中、偏移量为 s->offset 的位置是一个指向下一个相邻 slab 对象的指针
 // 而这个函数是为了修改这个指针的值，所以需要转换成二级指针
+// object->next = fp
 static inline void set_freepointer(struct kmem_cache *s, void *object, void *fp)
 {
 	*(void **)(object + s->offset) = fp;
@@ -971,6 +972,7 @@ static void trace(struct kmem_cache *s, struct page *page, void *object,
 /*
  * Tracking of fully allocated slabs for debugging purposes.
  */
+// 把指定内存页所代表的 slab 对像添加到 kmem_cache_node 的 full 链表上
 static void add_full(struct kmem_cache *s,
 	struct kmem_cache_node *n, struct page *page)
 {
@@ -981,6 +983,7 @@ static void add_full(struct kmem_cache *s,
 	list_add(&page->lru, &n->full);
 }
 
+// 把指定内存页所代表的 slab 对像从 kmem_cache_node 的 full 链表上移除
 static void remove_full(struct kmem_cache *s, struct kmem_cache_node *n, struct page *page)
 {
 	if (!(s->flags & SLAB_STORE_USER))
@@ -1018,6 +1021,9 @@ static inline void inc_slabs_node(struct kmem_cache *s, int node, int objects)
 		atomic_long_add(objects, &n->total_objects);
 	}
 }
+
+// 从一个指定的 kmem_cache_node 中移除一个 slab 对象时，更新对应 kmem_cache_node
+// 的相关记录变量的值
 static inline void dec_slabs_node(struct kmem_cache *s, int node, int objects)
 {
 	struct kmem_cache_node *n = get_node(s, node);
@@ -1464,6 +1470,7 @@ out:
 	return page;
 }
 
+// 释放一个 slab 的内存空间到伙伴系统中，并跟新相关的标志变量值
 static void __free_slab(struct kmem_cache *s, struct page *page)
 {
 	int order = compound_order(page);
@@ -1510,6 +1517,7 @@ static void rcu_free_slab(struct rcu_head *h)
 	__free_slab(page->slab_cache, page);
 }
 
+// 释放一个 slab 的内存空间到伙伴系统中，并跟新相关的标志变量值
 static void free_slab(struct kmem_cache *s, struct page *page)
 {
 	if (unlikely(s->flags & SLAB_DESTROY_BY_RCU)) {
@@ -1533,6 +1541,7 @@ static void free_slab(struct kmem_cache *s, struct page *page)
 		__free_slab(s, page);
 }
 
+// 
 static void discard_slab(struct kmem_cache *s, struct page *page)
 {
 	dec_slabs_node(s, page_to_nid(page), page->objects);
@@ -1542,6 +1551,8 @@ static void discard_slab(struct kmem_cache *s, struct page *page)
 /*
  * Management of partially allocated slabs.
  */
+// 把指定内存页所代表的 slab 对像添加到 kmem_cache_node 的 partial 链表
+// 的头部或者是尾部，并更新相关变量
 static inline void
 __add_partial(struct kmem_cache_node *n, struct page *page, int tail)
 {
@@ -1552,6 +1563,8 @@ __add_partial(struct kmem_cache_node *n, struct page *page, int tail)
 		list_add(&page->lru, &n->partial);
 }
 
+// 把指定内存页所代表的 slab 对像添加到 kmem_cache_node 的 partial 链表上
+// 并更新相关变量
 static inline void add_partial(struct kmem_cache_node *n,
 				struct page *page, int tail)
 {
@@ -1559,7 +1572,8 @@ static inline void add_partial(struct kmem_cache_node *n,
 	__add_partial(n, page, tail);
 }
 
-// 从指定的 kmem_cache_node 中移除一个内存页（一个内存页就是一个 slab partial 成员）
+// 把指定内存页所代表的 slab 对像从 kmem_cache_node 的 partial 链表上移除
+// 并更新相关变量
 static inline void
 __remove_partial(struct kmem_cache_node *n, struct page *page)
 {
@@ -1567,7 +1581,8 @@ __remove_partial(struct kmem_cache_node *n, struct page *page)
 	n->nr_partial--;
 }
 
-// 从指定的 kmem_cache_node 中，移除指定内存页所代表的 slab 对像
+// 把指定内存页所代表的 slab 对像从 kmem_cache_node 的 partial 链表上移除
+// 并更新相关变量
 static inline void remove_partial(struct kmem_cache_node *n,
 					struct page *page)
 {
@@ -1843,6 +1858,13 @@ static void init_kmem_cache_cpus(struct kmem_cache *s)
  */
 // page     : kmem_cache_cpu->page
 // freelist : kmem_cache_cpu->freelist
+// --------------------------------------------------------------------------
+// deactivate_slab 主要进行两步工作：
+// 第一步，将 cpu_slab 的 freelist 全部释放回 page->freelist；
+// 第二部，根据 page(slab) 的状态进行不同操作，如果该 slab 有部分空闲对象
+// 则将 page 移到 kmem_cache_node 的 partial 队列；如果该 slab 全部空闲，则直
+// 接释放该 slab；如果该 slab 全部占用，而且开启了 CONFIG_SLUB_DEBUG 编译选
+// 项，则将 page 移到 full 队列
 static void deactivate_slab(struct kmem_cache *s, struct page *page,
 				void *freelist)
 {
@@ -1855,7 +1877,7 @@ static void deactivate_slab(struct kmem_cache *s, struct page *page,
 	struct page new;
 	struct page old;
 
-	// 如果当前 kmem_cache_cpu 上有空闲的 object（对象），则把当前的 slab 对
+	// 如果当前内存页上有空闲的 object（对象），则把当前的 slab 对
 	// 象（一个内存页）添加到 kmem_cache_node 的 partial 链表的尾部，即把还有
 	// 空闲空间的 slab 对象放到 kmem_cache_node 的 partial 链表的尾部
 	if (page->freelist) {
@@ -1873,39 +1895,34 @@ static void deactivate_slab(struct kmem_cache *s, struct page *page,
 	 */
 
 	// 分别遍历 freelist 链表中的每一个 slab object 对象，除了最后一个 slab
-	// 对象之外，释放所有的 slab 对象，执行完这个函数之后 page->freelist 和 
-	// freelist 执行的位置如下图：
-	//           _________________________________________
-	//           |                                        |
-	//           |                                        V
-	//       freelist :   0     0     0     0  ...  0     0
-	//                                              ^     |
-	//            __________________________________|     |
-	//           |________________________________________|
-	//           ||
-	//           |V
-	// pgae->freelist
+	// 对象之外，把所有的 slab 对象移动到 page->freelist 链表上 
+	// 执行这个操作之前的布局图如下：
+	//       freelist :   0 --> 1 --> 2 --> 3 -->... n-1 --> n
+	// pgae->freelist :   a --> b --> c
+	//
+	// 执行这个操作之前的布局图如下：
+	//       freelist :   n（还剩最后一个 object 在 kmem_cache_cpu->freelist 上）
+	// pgae->freelist :   a --> b --> c --> 0 --> 1 --> 2 --> 3 -->... n-1
 	// 
 	// *** freelist = freelist first object ***
+	// *** nextfree = *(void **)(freelist + s->offset) ***
 	while (freelist && (nextfree = get_freepointer(s, freelist))) {
 		void *prior;
 		unsigned long counters;
 
-		// 把 page 中第一个对象（一个内存页中的某个 object）移动到 freelist 指向的位置
-		// 并更新 freelist、使其指向下一个对象的位置（通过判断前后上下文保证了所有操作
-		// 都在同一个 cpu 中执行）
+		// 把 freelist 指向的 object 对象插入到 page->freelist 指向的链表的头部
 		do {
 			// 把 page 中第一个对象（一个内存页中的某个 object）放到临时变量 prior 中
-			// 也就是 slab 对象链表的链表头
 			// *** prior = page->freelist ***
 			prior = page->freelist;
 			counters = page->counters;
 
 			// 设置 freelist 的下一个对象（一个内存页中的某个 object）指针为 prior
-			// 也就是把 page->freelist 地址值赋给 freelist 的下一个对象
-			// *** (*(freelist + s->offset)) = prior = page->freelist ***
+			// 也就是把 page->freelist 地址值赋给 freelist 单链表指针
+			// *** freelist->next = page->freelist ***
 			set_freepointer(s, freelist, prior);
-			
+
+			// 需要注意的是下面两个变量类型是 union
 			new.counters = counters;
 			new.inuse--;
 			VM_BUG_ON(!new.frozen);
@@ -1918,8 +1935,8 @@ static void deactivate_slab(struct kmem_cache *s, struct page *page,
 			// 并返回 1，取反后为 0，否则 page->freelist, page->counters 值不变并返
 			// 回 0，取反后为 1，所以：
 			// 1. 当 page->freelist,   page->counters 和 prior, counters 相等时表示没有做过
-			//    进程切换，表示我们成功的把 page 中第一个对象放到了 kmem_cache_cpu->freelist
-			//    中，到这一步，表示执行成功
+			//    进程切换，表示我们成功的把 kmem_cache_cpu->freelist 中第一个对象放到了
+			//    page->freelist 中，到这一步，表示执行成功
 			// 2. 因为 page->freelist,   page->counters 和 prior, counters 不相等，表示在执行过
 			//    程中可能执行了进程切换，到这一步，表示执行失败，所以我们需要在原来的上下文
 			//    环境中，重新执行一遍这个代码逻辑
@@ -1928,7 +1945,7 @@ static void deactivate_slab(struct kmem_cache *s, struct page *page,
 			freelist, new.counters,
 			"drain percpu freelist"));
 
-		// freelist = nextfree
+		// freelist = nextfree = *(void **)(object + s->offset)
 		freelist = nextfree;
 	}
 
@@ -1954,6 +1971,10 @@ redo:
 
 	/* Determine target state of the slab */
 	new.counters = old.counters;
+
+	// 如果调用函数的时候通过参数传进来的参数不为 NULL，即 kmem_cache_cpu->freelist
+	// 不为空，则把 freelist 上剩余的最后一个 object 的 next 指针指向 page->freelist
+	// 执行完这个函数，new.freelist 指向了一个链表，这个链表包含了 paga 所有的 object
 	if (freelist) {
 		new.inuse--;
 		set_freepointer(s, freelist, old.freelist);
@@ -1961,10 +1982,17 @@ redo:
 	} else
 		new.freelist = old.freelist;
 
+	// 因为 slab 要从 kmem_cache_cpu->freelist 上移出，所以设置 new.frozen = 0
+	// 表示这个 slab 不在 kmem_cache_cpu 上
 	new.frozen = 0;
 
+	// 如果指定的 slab 中所有的对象都是空闲的，并且在 kmem_cache_node
+	// 中的 slab 个数已经超出的系统 kmem_cache 的限制，则释放这个 slab
 	if (!new.inuse && n->nr_partial >= s->min_partial)
 		m = M_FREE;
+
+	// 如果指定的 slab 有部分 object 在使用中，并且 freelist 上有空闲 object
+	// 则把这个 slab 添加到 kmem_cache_node partial 链表上
 	else if (new.freelist) {
 		m = M_PARTIAL;
 		if (!lock) {
@@ -1976,6 +2004,8 @@ redo:
 			 */
 			spin_lock(&n->list_lock);
 		}
+
+	// 表示指定的 slab 所有的 object 都在使用状态，则添加到 kmem_cache_node full 链表上
 	} else {
 		m = M_FULL;
 		if (kmem_cache_debug(s) && !lock) {
@@ -2022,6 +2052,7 @@ redo:
 	if (lock)
 		spin_unlock(&n->list_lock);
 
+	// 释放指定的 slab 对象占用空间到伙伴系统中，并记录相关统计变量值
 	if (m == M_FREE) {
 		stat(s, DEACTIVATE_EMPTY);
 		discard_slab(s, page);
@@ -2344,6 +2375,7 @@ static inline bool pfmemalloc_match(struct page *page, gfp_t gfpflags)
  *
  * This function must be called with interrupt disabled.
  */
+// 获取指定内存页的 freelist 链表指针
 static inline void *get_freelist(struct kmem_cache *s, struct page *page)
 {
 	struct page new;
@@ -2415,6 +2447,8 @@ redo:
 		if (node != NUMA_NO_NODE && !node_present_pages(node))
 			searchnode = node_to_mem_node(node);
 
+		// 如果指定的内存页和指定的内存节点不匹配，则把 kmem_cache_cpu 
+		// 中对应的 object 释放到这个内存页中，然后重新生成一个新的 slab
 		if (unlikely(!node_match(page, searchnode))) {
 			stat(s, ALLOC_NODE_MISMATCH);
 			deactivate_slab(s, page, c->freelist);
@@ -2441,6 +2475,7 @@ redo:
 	if (freelist)
 		goto load_freelist;
 
+	// 获取指定内存页的 freelist 链表指针
 	freelist = get_freelist(s, page);
 
 	if (!freelist) {
@@ -2469,7 +2504,7 @@ new_slab:
 	// 如果当前 cpu slab 的 partial 链表中还有可用的内存页供我们申请内存
 	// 则从 partial 链表上拿出一个空闲页用来分配内存，并更新相关变量值
 	// 如果 partial 链表上也没有可用的内存页用来供我们分配内存，那么我们
-	// 只好从全局的 kmen_cache 中申请一个 slab 对象到当本地 cpu 上
+	// 只好从全局的 kmen_cache_node 中申请一个 slab 对象到当本地 cpu 上
 	if (c->partial) {
 		page = c->page = c->partial;
 		c->partial = page->next;

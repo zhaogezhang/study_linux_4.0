@@ -69,7 +69,13 @@ struct kmem_cache {
 	struct kmem_cache_cpu __percpu *cpu_slab;
 	/* Used for retriving partial slabs etc */
 	unsigned long flags;
+
+	// 限制 struct kmem_cache_node 中的 partial 链表 slab 的数量
+	// 虽说是 mini_partial，但是代码的本意告诉我这个变量是 kmem_cache_node
+	// 中 partial 链表最大 slab 数量，如果大于这个 mini_partial 的值，那么
+	// 多余的 slab 就会被释放	
 	unsigned long min_partial;
+	
 	int size;		/* The size of an object including meta data */
 
 	// 实际的，申请者可以使用的内存块大小

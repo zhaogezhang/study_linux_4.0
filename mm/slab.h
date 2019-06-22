@@ -351,10 +351,17 @@ struct kmem_cache_node {
 	// slab partial 成员个数，通过 partial 链表把这些 slab partial 成员
 	// 链接起来，统一管理
 	unsigned long nr_partial;
+
+	// 表示指定的 slab 中有部分 object 在使用中，剩余的 object 是空闲的
 	struct list_head partial;
 #ifdef CONFIG_SLUB_DEBUG
+	// 记录当前 kmem_cache_node 中一个包含的 slab 个数
 	atomic_long_t nr_slabs;
+
+	// 记录当前 kmem_cache_node 中一个包含的 slab object 对象个数
 	atomic_long_t total_objects;
+
+	// 表示指定的 slab 中所有的 object 都是使用状态
 	struct list_head full;
 #endif
 #endif

@@ -78,8 +78,13 @@ struct page {
 			pgoff_t index;		/* Our offset within mapping. */
 
 			// 在 sl[aou]b 内存分配算法中，一个内存页就是一个 slab，其中包含很对个 object 
-			// 我们用 freelist 表示在这个内存页中第一个 object 成员的地址，而在 slub 中
+			// 我们用 freelist 表示在这个内存页中第一个 free object 成员的地址，而在 slub 中
 			// 所有的 slab 对象中都有一个指向下一个 slab 对象的指针，形成了一个单向链表
+			// 当我们从一个 slab 中申请一个新的 object 的时候，freelist 会相应的向后移动
+			// 这个值是和 kmem_cache_cpu->freelist 区别是：
+			// 他们都指向了 slab 的第一个 free object，但是使用时机不一样，如果这个 slab 是
+			// per cpu slab，则通过 kmem_cache_cpu->freelist 追踪记录 slab 的第一个 free object
+			// 如果这个 slab 不在 per cpu 上，则通过 page->freelist 追踪记录 slab 的第一个 free object
 			void *freelist;		/* sl[aou]b first free object */
 			
 			bool pfmemalloc;	/* If set by the page allocator,
@@ -129,8 +134,14 @@ struct page {
 					atomic_t _mapcount;
 
 					struct { /* SLUB */
+						// 表示当前 slab 中已经被使用（分配）的 object 个数
 						unsigned inuse:16;
+
+						// 表示当前 slab 中一共有的 object 个数（分配的和空闲的）
 						unsigned objects:15;
+
+						// frozen 代表 slab 在 per_cpu_slub
+						// unfroze 代表在 partial 队列或者 full 队列
 						unsigned frozen:1;
 					};
 					int units;	/* SLOB */
