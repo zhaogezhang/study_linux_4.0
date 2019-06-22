@@ -3013,7 +3013,7 @@ unsigned long get_zeroed_page(gfp_t gfp_mask)
 }
 EXPORT_SYMBOL(get_zeroed_page);
 
-// 如果指定的内存页引用计数为零，则对其进行回收操作
+// 回收指定物理内存块到伙伴系统中，这个内存块可以是任意阶数
 void __free_pages(struct page *page, unsigned int order)
 {
 	if (put_page_testzero(page)) {

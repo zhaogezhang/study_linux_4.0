@@ -467,6 +467,8 @@ static inline struct page *compound_head(struct page *page)
  * allocated page, there is no need to handle tail flag race, so we can
  * check tail flag directly without any synchronization primitive.
  */
+// 获取指定内存块的起始地址，如果是复合页，则返回复合页首页的页地址
+// 如果不是复合页，则直接返回这个内存页的地址
 static inline struct page *compound_head_fast(struct page *page)
 {
 	if (unlikely(PageTail(page)))
@@ -550,6 +552,7 @@ static inline void get_page(struct page *page)
 	atomic_inc(&page->_count);
 }
 
+// 获取指定虚拟地址对应的物理内存块的首地址
 static inline struct page *virt_to_head_page(const void *x)
 {
 	struct page *page = virt_to_page(x);

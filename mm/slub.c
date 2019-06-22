@@ -1541,7 +1541,7 @@ static void free_slab(struct kmem_cache *s, struct page *page)
 		__free_slab(s, page);
 }
 
-// 
+// 释放指定内存页代表的 slab 到伙伴系统中并更新相关的统计变量信息
 static void discard_slab(struct kmem_cache *s, struct page *page)
 {
 	dec_slabs_node(s, page_to_nid(page), page->objects);
@@ -2067,6 +2067,8 @@ redo:
  * for the cpu using c (or some other guarantee must be there
  * to guarantee no concurrent accesses).
  */
+// 遍历指定的 kmem_cache_cpu->partial 链表，把这个链表上的所有可以回收的
+// slab 内存页都回收到系统内存伙伴系统中
 static void unfreeze_partials(struct kmem_cache *s,
 		struct kmem_cache_cpu *c)
 {
@@ -2074,12 +2076,15 @@ static void unfreeze_partials(struct kmem_cache *s,
 	struct kmem_cache_node *n = NULL, *n2 = NULL;
 	struct page *page, *discard_page = NULL;
 
+	// 分别遍历 kmem_cache_cpu->partial 链表上的内一个 slab 内存页
 	while ((page = c->partial)) {
 		struct page new;
 		struct page old;
 
+		// 执向下一个需要遍历的链表成员
 		c->partial = page->next;
 
+		// 获取指定 slab 内存页所在的 kmem_cache_node 指针
 		n2 = get_node(s, page_to_nid(page));
 		if (n != n2) {
 			if (n)
@@ -2089,6 +2094,7 @@ static void unfreeze_partials(struct kmem_cache *s,
 			spin_lock(&n->list_lock);
 		}
 
+		// 为了保证整个操作的原子上下文环境
 		do {
 
 			old.freelist = page->freelist;
@@ -2105,7 +2111,12 @@ static void unfreeze_partials(struct kmem_cache *s,
 				new.freelist, new.counters,
 				"unfreezing slab"));
 
+		// 如果指定的内存页满足释放要求并且当前 kmem_cache_node 中的 slab
+		// 对象个数已经超出系统设置的阈值，则把这些可回收的内存页添加到
+		// discard_page 链表中，等后边一起进行回收，否则把这些内存页添加
+		// 到 kmem_cache_node 的 partial 链表中
 		if (unlikely(!new.inuse && n->nr_partial >= s->min_partial)) {
+			// 统计所有需要释放的 slab 内存页到 discard_page 链表中
 			page->next = discard_page;
 			discard_page = page;
 		} else {
@@ -2117,6 +2128,7 @@ static void unfreeze_partials(struct kmem_cache *s,
 	if (n)
 		spin_unlock(&n->list_lock);
 
+	// 释放 discard_page 链表中的所有内存页到伙伴系统中并更新相关的统计变量信息
 	while (discard_page) {
 		page = discard_page;
 		discard_page = discard_page->next;
@@ -2137,6 +2149,8 @@ static void unfreeze_partials(struct kmem_cache *s,
  * If we did not find a slot then simply move all the partials to the
  * per node partial list.
  */
+// 把指定的内存页插入到 cpu_slab->partial 链表的头部，遍历指定的 kmem_cache_cpu->partial 
+// 链表，把这个链表上的所有可以回收的 slab 内存页都回收到系统内存伙伴系统中
 static void put_cpu_partial(struct kmem_cache *s, struct page *page, int drain)
 {
 #ifdef CONFIG_SLUB_CPU_PARTIAL
@@ -2145,6 +2159,8 @@ static void put_cpu_partial(struct kmem_cache *s, struct page *page, int drain)
 	int pobjects;
 
 	preempt_disable();
+
+	// 把指定的内存页插入到 cpu_slab->partial 链表的头部
 	do {
 		pages = 0;
 		pobjects = 0;
@@ -2174,15 +2190,23 @@ static void put_cpu_partial(struct kmem_cache *s, struct page *page, int drain)
 
 		page->pages = pages;
 		page->pobjects = pobjects;
+
+		// page->next = oldpage
 		page->next = oldpage;
 
+	// s->cpu_slab->partial = page
 	} while (this_cpu_cmpxchg(s->cpu_slab->partial, oldpage, page)
 								!= oldpage);
+	
 	if (unlikely(!s->cpu_partial)) {
 		unsigned long flags;
 
 		local_irq_save(flags);
+	
+		// 遍历指定的 kmem_cache_cpu->partial 链表，把这个链表上的所有可以回收的
+		// slab 内存页都回收到系统内存伙伴系统中
 		unfreeze_partials(s, this_cpu_ptr(s->cpu_slab));
+		
 		local_irq_restore(flags);
 	}
 	preempt_enable();
@@ -2618,7 +2642,7 @@ redo:
 		// 直接从当前 cpu cache 中获取内存，执行速度比较快，所以
 		// 称做 fast path
 	
-		// 获取 kmem cache 中指定对象的后一个对象地址的指针
+		// 获取当前 slab 对象的后一个对象地址的指针
 		void *next_object = get_freepointer_safe(s, object);
 
 		/*
@@ -2733,6 +2757,11 @@ EXPORT_SYMBOL(kmem_cache_alloc_node_trace);
  * lock and free the item. If there is no additional partial page
  * handling required then we can return immediately.
  */
+// 1. 如果指定的 slab 内存页可以放到 kmem_cache_cpu->partial 链表上，则把这个
+//    slab 内存页添加到 kmem_cache_cpu->partial 链表上
+// 2. 如果指定的 slab 内存页所有 object 都处于空闲状态并且系统当前 slab 个数
+//    超过了系统设置阈值，则直接回收这个内存页到伙伴系统中
+// 3. 把指定的 slab 内存页添加到 kmem_cache_node->partial 链表上
 static void __slab_free(struct kmem_cache *s, struct page *page,
 			void *x, unsigned long addr)
 {
@@ -2750,19 +2779,32 @@ static void __slab_free(struct kmem_cache *s, struct page *page,
 		!(n = free_debug_processing(s, page, x, addr, &flags)))
 		return;
 
+	// 把指定的、需要释放的 object 插入到 page->freelist 链表头位置
 	do {
 		if (unlikely(n)) {
 			spin_unlock_irqrestore(&n->list_lock, flags);
 			n = NULL;
 		}
+
+		// object->next = page->freelist
 		prior = page->freelist;
 		counters = page->counters;
 		set_freepointer(s, object, prior);
+		
 		new.counters = counters;
 		was_frozen = new.frozen;
 		new.inuse--;
+
+		// 1. 如果内存页不是 kmem_cache_cpu 并且内存页中所有的 object 都处于空闲状态
+		// 或者
+		// 2. 如果内存页不是 kmem_cache_cpu 并且内存页中所有的 object 都处于使用状态
 		if ((!new.inuse || !prior) && !was_frozen) {
 
+			// 如果指定的内存页满足下面两个条件，表示我们可以把它插入到
+			// kmem_cache_cpu 的 partial 链表上：
+			// 1. 如果指定的内存页所有的 object 都被分配出去了，表示当前正在
+			//    回收的 object 是这个内存页中第一个被回收的 object
+			// 2. 当前系统的 kmem_cache 有 cpu partial 链表
 			if (kmem_cache_has_cpu_partial(s) && !prior) {
 
 				/*
@@ -2789,21 +2831,29 @@ static void __slab_free(struct kmem_cache *s, struct page *page,
 			}
 		}
 
+	// page->freelist = object
 	} while (!cmpxchg_double_slab(s, page,
 		prior, counters,
 		object, new.counters,
 		"__slab_free"));
 
+	// 如果指定的 slab 内存页 freelist 为空，表示这个 slab 内存页
+	// 当前正处于 kmem_cache_cpu 中，则把它添加到 kmem_cache_cpu->partial 链表
 	if (likely(!n)) {
 
 		/*
 		 * If we just froze the page then put it onto the
 		 * per cpu partial list.
 		 */
+		// 如果我们在上面的逻辑中执行了 new.frozen = 1; 这个操作，则
+		// 把这个 slab 内存页插入到 cpu_slab->partial 链表的头部并遍
+		// 历指定的 kmem_cache_cpu->partial 链表，把这个链表上的所有
+		// 可以回收的 slab 内存页都回收到系统内存伙伴系统中
 		if (new.frozen && !was_frozen) {
 			put_cpu_partial(s, page, 1);
 			stat(s, CPU_PARTIAL_FREE);
 		}
+		
 		/*
 		 * The list lock was not taken therefore no list
 		 * activity can be necessary.
@@ -2813,6 +2863,8 @@ static void __slab_free(struct kmem_cache *s, struct page *page,
 		return;
 	}
 
+	// 如果指定的 slab 内存页满足释放要求并且当前系统 slab 个数超出预先设置的阈值
+	// 则直接释放这个 slab 内存页到伙伴系统中
 	if (unlikely(!new.inuse && n->nr_partial >= s->min_partial))
 		goto slab_empty;
 
@@ -2829,6 +2881,7 @@ static void __slab_free(struct kmem_cache *s, struct page *page,
 	spin_unlock_irqrestore(&n->list_lock, flags);
 	return;
 
+// 如果指定的 slab 内存页处于空闲状态，则可以把它回收到伙伴系统中
 slab_empty:
 	if (prior) {
 		/*
@@ -2873,6 +2926,7 @@ redo:
 	 * data is retrieved via this pointer. If we are on the same cpu
 	 * during the cmpxchg then the free will succedd.
 	 */
+	// 保证我们是在同一个 cpu 上下文执行内存回收操作
 	do {
 		tid = this_cpu_read(s->cpu_slab->tid);
 		c = raw_cpu_ptr(s->cpu_slab);
@@ -2882,9 +2936,15 @@ redo:
 	/* Same with comment on barrier() in slab_alloc_node() */
 	barrier();
 
+	// 如果需要回收的 slab object 是当前 kmem_cache_cpu 中的对象
+	// 则直接回收到 当前 kmem_cache_cpu 中（fast path）
+	// 如果需要回收的 slab object 不是当前 kmem_cache_cpu 中的对象
+	// 则通过执行 __slab_free 回收（slow path）
 	if (likely(page == c->page)) {
+		// object-next = c->freelist
 		set_freepointer(s, object, c->freelist);
 
+		// c->freelist = object
 		if (unlikely(!this_cpu_cmpxchg_double(
 				s->cpu_slab->freelist, s->cpu_slab->tid,
 				c->freelist, tid,
@@ -3569,16 +3629,23 @@ void kfree(const void *x)
 
 	trace_kfree(_RET_IP_, x);
 
+	// 参数合法性检查
 	if (unlikely(ZERO_OR_NULL_PTR(x)))
 		return;
 
+	// 获取指定虚拟地址对应的物理内存块的首地址
 	page = virt_to_head_page(x);
+
+	// 如果指定的内存块不是从 slab 中分配出来的，则直接执行伙伴系统
+	// 内存回收操作
 	if (unlikely(!PageSlab(page))) {
 		BUG_ON(!PageCompound(page));
 		kfree_hook(x);
 		__free_kmem_pages(page, compound_order(page));
 		return;
 	}
+
+	// 回收指定的 slab object 占用的内存空间
 	slab_free(page->slab_cache, page, object, _RET_IP_);
 }
 EXPORT_SYMBOL(kfree);
