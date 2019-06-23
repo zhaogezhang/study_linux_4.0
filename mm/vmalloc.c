@@ -196,13 +196,18 @@ static int vmap_page_range_noflush(unsigned long start, unsigned long end,
 	return nr;
 }
 
+// 创建指定的虚拟地址块（start - end）到指定物理地址内存页（pages）之间的映射关系
 static int vmap_page_range(unsigned long start, unsigned long end,
 			   pgprot_t prot, struct page **pages)
 {
 	int ret;
-
+	
+	// 创建虚拟地址块到物理地址内存页之间的映射关系
 	ret = vmap_page_range_noflush(start, end, prot, pages);
+
+	// 刷新页表数据，保证映射关系立即生效
 	flush_cache_vmap(start, end);
+	
 	return ret;
 }
 
@@ -273,13 +278,25 @@ EXPORT_SYMBOL(vmalloc_to_pfn);
 
 static DEFINE_SPINLOCK(vmap_area_lock);
 /* Export for kexec only */
+
+// 将已经分配的 vmap_area 表示的地址从小到大排序
 LIST_HEAD(vmap_area_list);
 static struct rb_root vmap_area_root = RB_ROOT;
 
 /* The vmap cache globals are protected by vmap_area_lock */
+// 在分配 vm 的时候，为了提高系统效率，所以缓存了几个关键数据，分别如下：
+
+// 记录上次成功分配的虚拟地址（vmap_area）在红黑树上的节点
 static struct rb_node *free_vmap_cache;
+
+// 记录了是 free_vmap_cache 之前的地址空间中，最大的地址空洞
+// note：在 free_vmap_cache 之前的地址空间中会存在多个地址空洞
 static unsigned long cached_hole_size;
+
+// 记录上一次分配 vm 时的 vstart 地址
 static unsigned long cached_vstart;
+
+// 记录上一次分配 vm 时的 vm align 参数
 static unsigned long cached_align;
 
 static unsigned long vmap_area_pcpu_hole;
@@ -303,12 +320,15 @@ static struct vmap_area *__find_vmap_area(unsigned long addr)
 	return NULL;
 }
 
+// 按照地址大小顺序把指定的 vmap_area 成员插入到系统全局红黑树（vmap_area_root）
+// 和系统全局链表（vmap_area_list）上
 static void __insert_vmap_area(struct vmap_area *va)
 {
 	struct rb_node **p = &vmap_area_root.rb_node;
 	struct rb_node *parent = NULL;
 	struct rb_node *tmp;
 
+	// 在指定的红黑树（*p）中为 va 找到一个合适的位置
 	while (*p) {
 		struct vmap_area *tmp_va;
 
@@ -322,11 +342,19 @@ static void __insert_vmap_area(struct vmap_area *va)
 			BUG();
 	}
 
+	// 把指定的树节点成员插到指定的红黑树上
 	rb_link_node(&va->rb_node, parent, p);
+
+	// 调整红黑树节点的颜色
 	rb_insert_color(&va->rb_node, &vmap_area_root);
 
 	/* address-sort this list */
+	// 在红黑树上查找指定节点的前一个树节点地址，主要是为了下列链表的排序
 	tmp = rb_prev(&va->rb_node);
+
+	// 如果红黑树上有比当前节点地址小的树节点，我们需要把新的树节点插入到
+	// 找到的这个 prev node 之后即可。如果红黑树上没有比当前节点小的树节点
+	// 那么我们直接把新的树节点插入到 vmap_area_list 链表头位置即可
 	if (tmp) {
 		struct vmap_area *prev;
 		prev = rb_entry(tmp, struct vmap_area, rb_node);
@@ -341,6 +369,7 @@ static void purge_vmap_area_lazy(void);
  * Allocate a region of KVA of the specified size and alignment, within the
  * vstart and vend.
  */
+// 在指定的地址范围内（vstart - vend）申请一个指定大小的 vmap_area 数据结构
 static struct vmap_area *alloc_vmap_area(unsigned long size,
 				unsigned long align,
 				unsigned long vstart, unsigned long vend,
@@ -356,6 +385,7 @@ static struct vmap_area *alloc_vmap_area(unsigned long size,
 	BUG_ON(size & ~PAGE_MASK);
 	BUG_ON(!is_power_of_2(align));
 
+	// 申请一个 vmap_area 数据结构所需要的内存空间
 	va = kmalloc_node(sizeof(struct vmap_area),
 			gfp_mask & GFP_RECLAIM_MASK, node);
 	if (unlikely(!va))
@@ -386,32 +416,59 @@ nocache:
 		cached_hole_size = 0;
 		free_vmap_cache = NULL;
 	}
+			
 	/* record if we encounter less permissive parameters */
 	cached_vstart = vstart;
 	cached_align = align;
 
 	/* find starting point for our search */
+
+	// free_vmap_cache 表示的是上一次分配的虚拟地址，所以为了提高系统效率
+	// 这一次我们直接以上一次的地址开始查找并分配即可
 	if (free_vmap_cache) {
 		first = rb_entry(free_vmap_cache, struct vmap_area, rb_node);
+
+		// 虚拟地址对齐，表示从上次成功分配的虚拟地址开始继续分配可用的
+		// 虚拟地址空间
 		addr = ALIGN(first->va_end, align);
+
+		// 表示缓存的 free_vmap_cache 数据不正常，清空缓存了的相关数据
+		// 重新执行分配虚拟地址的代码逻辑
 		if (addr < vstart)
 			goto nocache;
+
+		// 表示我们分配的虚拟地址空间出现了翻转溢出，我们需要先把在 lazy 
+		// 模式下没有及时释放的 KVA 空间回收，然后重新执行分配虚拟地址的
+		// 代码逻辑
 		if (addr + size < addr)
 			goto overflow;
 
 	} else {
+		// 如果这是第一次申请虚拟地址空间，或者上一次申请的虚拟地址信息
+		// 缓存被清理掉了，则需要重新遍历全局红黑树，找到合适的树节点并
+		// 以此节点为基础开始分配合适的虚拟地址空间块
+
+		// 虚拟地址对齐操作并检查对其后虚拟地址是否出现溢出翻转，如果出现
+		// 溢出翻转，则跳转到 overflow 处执行相应处理
 		addr = ALIGN(vstart, align);
 		if (addr + size < addr)
 			goto overflow;
 
+		// 从全局红黑树的“根”节点处开始查找可用于此次分配的虚拟地址空间块
 		n = vmap_area_root.rb_node;
 		first = NULL;
 
+		// 遍历整个红黑树，找到包含指定地址（addr）的树节点并记录
 		while (n) {
 			struct vmap_area *tmp;
 			tmp = rb_entry(n, struct vmap_area, rb_node);
 			if (tmp->va_end >= addr) {
 				first = tmp;
+
+				// 如果 addr >= tmp->va_start 并且 addr <= tmp->va_end
+				// 表示我们要申请的虚拟地址在这个 vmap_area 区间内，则
+				// 记录这个 vmap_area 并退出当前循环，然后从这个区域开始
+				// 向后查找并分配虚拟地址空间块
 				if (tmp->va_start <= addr)
 					break;
 				n = n->rb_left;
@@ -419,21 +476,35 @@ nocache:
 				n = n->rb_right;
 		}
 
+		// 系统中还没分配过虚拟地址空间，表示所有虚拟地址都是空闲的，我们
+		// 可以直接从起始地址处分配
 		if (!first)
 			goto found;
 	}
 
 	/* from the starting point, walk areas until a suitable hole is found */
+	// 到这个位置表示我们在红黑树中已经找到了合适的虚拟地址起始点，所以从
+	// 这个起始点开始一直到 vend 结束位置，查找并分配虚拟地址空间块
 	while (addr + size > first->va_start && addr + size <= vend) {
+		
+		// 如果我们在遍历地址空间的时候发现了更大的地址空间空洞，则同步更新
+		// 到全局变量 cached_hole_size 中，这样下次分配的时候就可以直接使用了
 		if (addr + cached_hole_size < first->va_start)
 			cached_hole_size = first->va_start - addr;
+
+		// 设置 addr 从 first->va_end 开始按照 align 向上对齐，并判断对齐后的
+		// 地址是否满足此次虚拟地址空间块申请条件，如果不满足直接跳转到 overflow 处
 		addr = ALIGN(first->va_end, align);
 		if (addr + size < addr)
 			goto overflow;
 
+		// 如果遍历到了全局链表 vmap_area_list 的最后一个成员处，表示我们已经
+		// 找到了一个合适的虚拟地址空间块，则直接跳转到 found 处
 		if (list_is_last(&first->list, &vmap_area_list))
 			goto found;
 
+		// 从这个位置可以看出，我们是从我们找到的起始地址处（first 树节点）
+		// 开始向后查找并分配虚拟地址空间块
 		first = list_entry(first->list.next,
 				struct vmap_area, list);
 	}
@@ -442,13 +513,23 @@ found:
 	if (addr + size > vend)
 		goto overflow;
 
+	// 设置 vmap_area 地址信息为我们成功申请到的地址空间
 	va->va_start = addr;
 	va->va_end = addr + size;
 	va->flags = 0;
+
+	// 按照地址大小顺序把指定的 vmap_area（va） 成员插入到系统全局红黑树（vmap_area_root）
+	// 和系统全局链表（vmap_area_list）上
 	__insert_vmap_area(va);
+
+	// 用 free_vmap_cache 变量追踪记录最近一次成功分配虚拟地址（vmap_area）
+	// 的红黑树节点，这样在下一次申请虚拟地址（vmap_area）的时候可以从这个
+	// 位置继续查找，提高系统效率
 	free_vmap_cache = &va->rb_node;
+	
 	spin_unlock(&vmap_area_lock);
 
+	// 检查我们分配到的虚拟地址空间块参数是否合法
 	BUG_ON(va->va_start & (align-1));
 	BUG_ON(va->va_start < vstart);
 	BUG_ON(va->va_end > vend);
@@ -457,11 +538,18 @@ found:
 
 overflow:
 	spin_unlock(&vmap_area_lock);
+
+	// purged 变量保证了在一次 vmalloc 中，最多只会执行一次 purge_vmap_area_lazy 函数
 	if (!purged) {
+		// 清理 lazy 模式下没有及时释放的 KVA 空间，尝试回收这些虚拟地址（vmap_area）
+		// 空间，然后重新尝试申请虚拟地址（vmap_area）
 		purge_vmap_area_lazy();
 		purged = 1;
 		goto retry;
 	}
+
+	// 申请虚拟地址（vmap_area）失败，释放在这个函数开始时申请的管理数据内存空间
+	// 并返回申请虚拟地址（vmap_area）失败（-EBUSY），表示没有空闲的虚拟地址空间
 	if (printk_ratelimit())
 		pr_warn("vmap allocation for size %lu failed: "
 			"use vmalloc=<size> to increase size.\n", size);
@@ -1281,12 +1369,14 @@ int map_vm_area(struct vm_struct *area, pgprot_t prot, struct page **pages)
 	unsigned long end = addr + get_vm_area_size(area);
 	int err;
 
+	// 创建指定的虚拟地址块（addr - end）到指定物理地址内存页（pages）之间的映射关系
 	err = vmap_page_range(addr, end, prot, pages);
 
 	return err > 0 ? 0 : err;
 }
 EXPORT_SYMBOL_GPL(map_vm_area);
 
+// 根据函数参数指定的数据来初始化 vm_struct 和 vmap_area 数据结构的成员值
 static void setup_vmalloc_vm(struct vm_struct *vm, struct vmap_area *va,
 			      unsigned long flags, const void *caller)
 {
@@ -1311,6 +1401,7 @@ static void clear_vm_uninitialized_flag(struct vm_struct *vm)
 	vm->flags &= ~VM_UNINITIALIZED;
 }
 
+// 在指定的地址范围内（start - end）申请并初始化一个 vm_struct 数据结构
 static struct vm_struct *__get_vm_area_node(unsigned long size,
 		unsigned long align, unsigned long flags, unsigned long start,
 		unsigned long end, int node, gfp_t gfp_mask, const void *caller)
@@ -1318,27 +1409,34 @@ static struct vm_struct *__get_vm_area_node(unsigned long size,
 	struct vmap_area *va;
 	struct vm_struct *area;
 
+	// 我们不可以在中断上下文中分配 vm_struct 结构
 	BUG_ON(in_interrupt());
 	if (flags & VM_IOREMAP)
 		align = 1ul << clamp(fls(size), PAGE_SHIFT, IOREMAP_MAX_ORDER);
 
+	// 地址对齐操作和对齐后的合法性检查
 	size = PAGE_ALIGN(size);
 	if (unlikely(!size))
 		return NULL;
 
+	// 从指定的内存节点上申请一个 vm_struct 数据结构需要的内存空间，并把数据清零
 	area = kzalloc_node(sizeof(*area), gfp_mask & GFP_RECLAIM_MASK, node);
 	if (unlikely(!area))
 		return NULL;
 
+	// 正常情况下，不同的 vm area 之间有一个内存页大小的 hole，这个内存页主要是做
+	// 安全隔离区的，防止非法内存访问
 	if (!(flags & VM_NO_GUARD))
 		size += PAGE_SIZE;
 
+	// 在指定的地址范围内（vstart - vend）申请一个指定大小的 vmap_area 数据结构
 	va = alloc_vmap_area(size, align, start, end, node, gfp_mask);
 	if (IS_ERR(va)) {
 		kfree(area);
 		return NULL;
 	}
 
+	// 根据函数参数指定的数据来初始化 vm_struct 和 vmap_area 数据结构的成员值
 	setup_vmalloc_vm(area, va, flags, caller);
 
 	return area;
@@ -1560,6 +1658,9 @@ EXPORT_SYMBOL(vmap);
 static void *__vmalloc_node(unsigned long size, unsigned long align,
 			    gfp_t gfp_mask, pgprot_t prot,
 			    int node, const void *caller);
+
+// 为指定的虚拟地址空间块申请对应的物理地址内存页并创建虚拟地址到物理地址
+// 的映射关系，然后返回虚拟地址空间块的起始地址
 static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 				 pgprot_t prot, int node)
 {
@@ -1569,11 +1670,17 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 	const gfp_t nested_gfp = (gfp_mask & GFP_RECLAIM_MASK) | __GFP_ZERO;
 	const gfp_t alloc_mask = gfp_mask | __GFP_NOWARN;
 
+	// 因为每一个物理内存页都用一个 struct page 表示，所以我们需要计算
+	// 此次分配的地址空间块需要多少个物理页
 	nr_pages = get_vm_area_size(area) >> PAGE_SHIFT;
+
+	// 计算此次需要申请的 struct page 一共占用多少个字节空间
 	array_size = (nr_pages * sizeof(struct page *));
 
 	area->nr_pages = nr_pages;
 	/* Please note that the recursion is strictly bounded. */
+
+	// 申请 struct page 管理数据结构的内存空间
 	if (array_size > PAGE_SIZE) {
 		pages = __vmalloc_node(array_size, 1, nested_gfp|__GFP_HIGHMEM,
 				PAGE_KERNEL, node, area->caller);
@@ -1581,6 +1688,7 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 	} else {
 		pages = kmalloc_node(array_size, nested_gfp, node);
 	}
+	
 	area->pages = pages;
 	if (!area->pages) {
 		remove_vm_area(area->addr);
@@ -1588,9 +1696,11 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 		return NULL;
 	}
 
+	// 开始申请虚拟地址空间块所需要的物理地址空间页
 	for (i = 0; i < area->nr_pages; i++) {
 		struct page *page;
 
+		// 申请一个物理内存页
 		if (node == NUMA_NO_NODE)
 			page = alloc_page(alloc_mask);
 		else
@@ -1601,11 +1711,14 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 			area->nr_pages = i;
 			goto fail;
 		}
+
+		// 分别记录每一个物理内存页的管理数据结构（struct page）地址
 		area->pages[i] = page;
 		if (gfp_mask & __GFP_WAIT)
 			cond_resched();
 	}
 
+	// 创建虚拟地址到物理之间的映射关系
 	if (map_vm_area(area, prot, pages))
 		goto fail;
 	return area->addr;
@@ -1634,6 +1747,9 @@ fail:
  *	allocator with @gfp_mask flags.  Map them into contiguous
  *	kernel virtual space, using a pagetable protection of @prot.
  */
+// 从指定的虚拟地址范围内（start - end）分配指定大小的虚拟地址空间块
+// 同时从伙伴系统中分配对应大小的物理内存页（物理内存可以不连续）并创建
+// 虚拟地址到物理地址的映射关系
 void *__vmalloc_node_range(unsigned long size, unsigned long align,
 			unsigned long start, unsigned long end, gfp_t gfp_mask,
 			pgprot_t prot, unsigned long vm_flags, int node,
@@ -1643,15 +1759,20 @@ void *__vmalloc_node_range(unsigned long size, unsigned long align,
 	void *addr;
 	unsigned long real_size = size;
 
+	// 地址对齐操作和对齐后的合法性检查（大于 0 小于总 page 数）
+	// 哪怕分配 10B 大小也分配一页的空间，所以适合大内存分配
 	size = PAGE_ALIGN(size);
 	if (!size || (size >> PAGE_SHIFT) > totalram_pages)
 		goto fail;
 
+	// 在指定的地址范围内（start - end）申请并初始化一个 vm_struct 数据结构
 	area = __get_vm_area_node(size, align, VM_ALLOC | VM_UNINITIALIZED |
 				vm_flags, start, end, node, gfp_mask, caller);
 	if (!area)
 		goto fail;
 
+	// 为指定的虚拟地址空间块申请对应的物理地址内存页并创建虚拟地址到物理地址
+	// 的映射关系，然后返回虚拟地址空间块的起始地址
 	addr = __vmalloc_area_node(area, gfp_mask, prot, node);
 	if (!addr)
 		return NULL;
@@ -1696,6 +1817,9 @@ static void *__vmalloc_node(unsigned long size, unsigned long align,
 			    gfp_t gfp_mask, pgprot_t prot,
 			    int node, const void *caller)
 {
+	// 从指定的虚拟地址范围内（VMALLOC_START - VMALLOC_END）分配指定大小的
+	// 虚拟地址空间块同时从伙伴系统中分配对应大小的物理内存页（物理内存可
+	// 以不连续）并创建虚拟地址到物理地址的映射关系
 	return __vmalloc_node_range(size, align, VMALLOC_START, VMALLOC_END,
 				gfp_mask, prot, 0, node, caller);
 }

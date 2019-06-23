@@ -7,6 +7,8 @@
  * 'kernel.h' contains some often-used function prototypes etc
  */
 #define __ALIGN_KERNEL(x, a)		__ALIGN_KERNEL_MASK(x, (typeof(x))(a) - 1)
+
+// 向上对齐
 #define __ALIGN_KERNEL_MASK(x, mask)	(((x) + (mask)) & ~(mask))
 
 

@@ -37,10 +37,12 @@ struct vm_area_struct;		/* vma defining user mapping in mm_types.h */
 // 2. 3G + 896M ~ 3G + 896M + 8M 为安全保护区，对这个地址空间的所有访问被视为非法访问
 // 3. 3G + 896M + 8M ~ 4G 为高端内存区，这是一个动态映射的区域，此区域的虚拟内存空间
 //    使用情况是通过 struct vm_struct 数据结构来维护的
+
+// 描述了一个 vm 地址空间以及和其对应的物理页相关信息
 struct vm_struct {
 	struct vm_struct	*next;    // 指向下一个 vm 结构体
 	void			*addr;        // 虚拟地址起始地址
-	unsigned long		size;     // 虚拟地址结束地址 ？
+	unsigned long		size;     // 从 addr 开始，有效的虚拟地址空间大小
 	unsigned long		flags;    // 内存属性标记
 	struct page		**pages;      // 物理页描述符数组指针
 	unsigned int		nr_pages; // 包含的物理页个数
@@ -48,12 +50,25 @@ struct vm_struct {
 	const void		*caller;      // 创建映射关系的函数（模块）
 };
 
+// 描述一个纯粹的 vm 地址空间
 struct vmap_area {
+	// 当前 vmap_area 所代表的虚拟地址空间的起始地址
 	unsigned long va_start;
+
+	// 当前 vmap_area 所代表的虚拟地址空间的结束地址
 	unsigned long va_end;
+	
 	unsigned long flags;
+
+	// 系统会把所有已经分配的 vmap_area 按照地址大小插入到 vmap_area_root 全局红黑树中
+	// 这个红黑树主要是为了快速查找指定虚拟地址所对应的 vmap_area 结构，参考 alloc_vmap_area 函数
 	struct rb_node rb_node;         /* address sorted rbtree */
+
+	// 系统会把所有已经分配的 vmap_area 按照地址大小插入到 vmap_area_list 全局链表中
+	// 这个链表主要是在以指定的虚拟地址开始，向后依次查找并分配我们需要的虚拟地址空间
+	// 块的时候使用，参考 alloc_vmap_area 函数
 	struct list_head list;          /* address sorted list */
+	
 	struct list_head purge_list;    /* "lazy purge" list */
 	struct vm_struct *vm;
 	struct rcu_head rcu_head;
@@ -107,6 +122,7 @@ void vmalloc_sync_all(void);
  *	Lowlevel-APIs (not for driver use!)
  */
 
+// 获取指定的 vm_struct 所表示的虚拟地址空间块大小
 static inline size_t get_vm_area_size(const struct vm_struct *area)
 {
 	if (!(area->flags & VM_NO_GUARD))
@@ -164,7 +180,9 @@ extern long vwrite(char *buf, char *addr, unsigned long count);
 /*
  *	Internals.  Dont't use..
  */
+// 将 vmap_area 表示的地址从小到大排序
 extern struct list_head vmap_area_list;
+
 extern __init void vm_area_add_early(struct vm_struct *vm);
 extern __init void vm_area_register_early(struct vm_struct *vm, size_t align);
 
