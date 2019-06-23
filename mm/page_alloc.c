@@ -2206,6 +2206,10 @@ zonelist_scan:
 
 			/* Checked here to keep the fast path fast */
 			BUILD_BUG_ON(ALLOC_NO_WATERMARKS < NR_WMARK);
+
+			// 如果我们设置了 ALLOC_NO_WATERMARKS 表示，表示当前比较着急使用
+			// 内存，所以即使系统内存比较低（低于设定的 WATERMARK），也要从
+			// 伙伴系统中申请内存给调用者使用
 			if (alloc_flags & ALLOC_NO_WATERMARKS)
 				goto try_this_zone;
 
@@ -2380,6 +2384,7 @@ void warn_alloc_failed(gfp_t gfp_mask, int order, const char *fmt, ...)
 		show_mem(filter);
 }
 
+// 在内存分配失败的时候，判断我们是否需要重新循环尝试内存分配操作
 static inline int
 should_alloc_retry(gfp_t gfp_mask, unsigned int order,
 				unsigned long did_some_progress,
@@ -2491,6 +2496,8 @@ out:
 
 #ifdef CONFIG_COMPACTION
 /* Try memory compaction for high-order allocations before reclaim */
+// 这个函数实现了把不连续的空闲内存页面搬移到一起，组合出连续的内存页面
+// 这样可以减少系统内存碎片，提供高阶内存块给申请者使用
 static struct page *
 __alloc_pages_direct_compact(gfp_t gfp_mask, unsigned int order,
 		int alloc_flags, const struct alloc_context *ac,
@@ -2624,6 +2631,8 @@ retry:
  * This is called in the allocator slow-path if the allocation request is of
  * sufficient urgency to ignore watermarks and take other desperate measures
  */
+// 如果我们在申请内存使比较着急使用，设置了 ALLOC_NO_WATERMARKS 标志，表示即使
+// 系统当前内存已经低于 WATERMARK 阈值，仍然从伙伴系统中分配内存
 static inline struct page *
 __alloc_pages_high_priority(gfp_t gfp_mask, unsigned int order,
 				const struct alloc_context *ac)
@@ -2706,6 +2715,29 @@ bool gfp_pfmemalloc_allowed(gfp_t gfp_mask)
 	return !!(gfp_to_alloc_flags(gfp_mask) & ALLOC_NO_WATERMARKS);
 }
 
+// 慢速路径回收内存操作，在这个函数中会涉及到物理 IO 操作，耗时时间比较
+// 长，所以称为慢速回收路径，执行了操作基本如下：
+// 1. 如果在 gfp_mask 中没设置 __GFP_NO_KSWAPD 标志，则唤醒相关 kswapd 进程
+// 2. 按照正常约束条件从 preferred_zone 中尝试申请内存，如果申请成功，直接返回内存
+//    返回申请到的内存，如果申请失败，继续执行下面的逻辑
+// 3. 如果设置了 ALLOC_NO_WATERMARKS 标志，则跳过系统剩余内存 WATERMARK 检查
+//    直接从伙伴系统中申请内存，如果申请成功，直接返回内存
+//    返回申请到的内存，如果申请失败，继续执行下面的逻辑
+// 4. 通过 memory compaction 操作把不连续的空闲内存页面搬移到一起，组合出
+//    连续的内存页面，然后在执行内存申请操作，尝试申请内存。这样做可以解决
+//    因为内存碎片造成的申请高阶内存块失败的问题，如果申请成功，直接返回内存
+//    返回申请到的内存，如果申请失败，继续执行下面的逻辑
+// 5. 调用同步内存回收操作来回收满足回收添加到内存页，在回收操作执行完成之后
+//    在调用内存申请函数，尝试申请我们需要的内存块，如果申请成功，直接返回内存
+//    返回申请到的内存，如果申请失败，继续执行下面的逻辑
+// 6. 判断我们是否需要重新循环尝试分配内存：
+//    a. 如果需要循环尝试分配内存，则判断在前面的回收逻辑中，是否回收到部分内存页：
+//       @1. 如果一个内存页都没回收到，则启动 oom killer 内存申请函数
+//       @2. 如果回收到了部分内存页，则直接等待系统物理 IO 回写操作，在部分回写完
+//           成后，在重新尝试申请内存
+//    b. 如果不需要循环尝试分配内存，则最后一次尝试通过 memory compaction 函数整
+//       理出高阶内存块，然后申请内存，如果申请内存成功，则直接返回申请到的内存块
+//       如果申请内存失败，则直接返回申请失败
 static inline struct page *
 __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 						struct alloc_context *ac)
@@ -2743,6 +2775,7 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 		goto nopage;
 
 retry:
+	// 如果在 gfp_mask 中没设置 __GFP_NO_KSWAPD 标志，则唤醒相关 kswapd 进程
 	if (!(gfp_mask & __GFP_NO_KSWAPD))
 		wake_all_kswapds(order, ac);
 
@@ -2757,6 +2790,8 @@ retry:
 	 * Find the true preferred zone if the allocation is unconstrained by
 	 * cpusets.
 	 */
+	// 按照正常约束条件从 preferred_zone 中尝试申请内存，如果申请成功，直接返回内存
+	// 返回申请到的内存，如果申请失败，继续执行下面的逻辑	
 	if (!(alloc_flags & ALLOC_CPUSET) && !ac->nodemask) {
 		struct zoneref *preferred_zoneref;
 		preferred_zoneref = first_zones_zonelist(ac->zonelist,
@@ -2771,6 +2806,8 @@ retry:
 		goto got_pg;
 
 	/* Allocate without watermarks if the context allows */
+	// 如果设置了 ALLOC_NO_WATERMARKS 标志，则跳过系统剩余内存 WATERMARK 检查
+	// 直接从伙伴系统中申请内存
 	if (alloc_flags & ALLOC_NO_WATERMARKS) {
 		/*
 		 * Ignore mempolicies if ALLOC_NO_WATERMARKS on the grounds
@@ -2779,6 +2816,8 @@ retry:
 		 */
 		ac->zonelist = node_zonelist(numa_node_id(), gfp_mask);
 
+		// 如果我们在申请内存使比较着急使用，设置了 ALLOC_NO_WATERMARKS 标志，表示即使
+		// 系统当前内存已经低于 WATERMARK 阈值，仍然从伙伴系统中分配内存
 		page = __alloc_pages_high_priority(gfp_mask, order, ac);
 
 		if (page) {
@@ -2787,6 +2826,7 @@ retry:
 	}
 
 	/* Atomic allocations - we can't balance anything */
+	// 如果 gfp_mask   中没设置 __GFP_WAIT 标志，则直接返回申请内存失败
 	if (!wait) {
 		/*
 		 * All existing users of the deprecated __GFP_NOFAIL are
@@ -2809,6 +2849,9 @@ retry:
 	 * Try direct compaction. The first pass is asynchronous. Subsequent
 	 * attempts after direct reclaim are synchronous
 	 */
+	// 通过 memory compaction 操作把不连续的空闲内存页面搬移到一起，组合出
+	// 连续的内存页面，然后在执行内存申请操作，尝试申请内存。这样做可以解决
+	// 因为内存碎片造成的申请高阶内存块失败的问题
 	page = __alloc_pages_direct_compact(gfp_mask, order, alloc_flags, ac,
 					migration_mode,
 					&contended_compaction,
@@ -2846,7 +2889,7 @@ retry:
 			&& !(current->flags & PF_KTHREAD))
 			goto nopage;
 	}
-
+	
 	/*
 	 * It can become very expensive to allocate transparent hugepages at
 	 * fault, so use asynchronous memory compaction for THP unless it is
@@ -2857,6 +2900,8 @@ retry:
 		migration_mode = MIGRATE_SYNC_LIGHT;
 
 	/* Try direct reclaim and then allocating */
+	// 调用同步内存回收操作来回收满足回收添加到内存页，在回收操作执行完成之后
+	// 在调用内存申请函数，尝试申请我们需要的内存块
 	page = __alloc_pages_direct_reclaim(gfp_mask, order, alloc_flags, ac,
 							&did_some_progress);
 	if (page)
@@ -2864,6 +2909,15 @@ retry:
 
 	/* Check if we should retry the allocation */
 	pages_reclaimed += did_some_progress;
+
+	// 判断我们是否需要重新循环尝试分配内存：
+	// 1. 如果需要循环尝试分配内存，则判断在前面的回收逻辑中，是否回收到部分内存页：
+	//    a. 如果一个内存页都没回收到，则启动 oom killer 内存申请函数
+	//    b. 如果回收到了部分内存页，则直接等待系统物理 IO 回写操作，在部分回写完
+	//       成后，在重新尝试申请内存
+	// 2. 如果不需要循环尝试分配内存，则最后一次尝试通过 memory compaction 函数整
+	//    理出高阶内存块，然后申请内存，如果申请内存成功，则直接返回申请到的内存块
+	//    如果申请内存失败，则直接返回申请失败
 	if (should_alloc_retry(gfp_mask, order, did_some_progress,
 						pages_reclaimed)) {
 		/*
@@ -2874,8 +2928,13 @@ retry:
 		if (!did_some_progress) {
 			page = __alloc_pages_may_oom(gfp_mask, order, ac,
 							&did_some_progress);
+			// 如果申请到了我们需要的完整内存块，则直接返回
 			if (page)
 				goto got_pg;
+
+			// 如果仍然一个内存页都没申请到，则返回申请内存失败，如果申请到了部
+			// 分内存页，则等待系统物理 IO 回写操作，在部分回写完成后，在重新尝
+			// 试申请内存
 			if (!did_some_progress)
 				goto nopage;
 		}
@@ -2914,6 +2973,8 @@ __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order,
 	unsigned int cpuset_mems_cookie;
 	int alloc_flags = ALLOC_WMARK_LOW|ALLOC_CPUSET|ALLOC_FAIR;
 	gfp_t alloc_mask; /* The gfp_t that was actually used for allocation */
+
+	// 初始化申请内存的上下文信息
 	struct alloc_context ac = {
 		.high_zoneidx = gfp_zone(gfp_mask),  // 设置申请内存的 zone 空间
 		.nodemask = nodemask,
@@ -2924,6 +2985,7 @@ __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order,
 
 	lockdep_trace_alloc(gfp_mask);
 
+	// 如果设置了 __GFP_WAIT 标志，则在这个位置添加一个调度点
 	might_sleep_if(gfp_mask & __GFP_WAIT);
 
 	if (should_fail_alloc_page(gfp_mask, order))
@@ -2937,6 +2999,9 @@ __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order,
 	if (unlikely(!zonelist->_zonerefs->zone))
 		return NULL;
 
+	// 因为 CMA 区域在不使用的时候，伙伴系统可以分配给用户进程用作匿名内存
+	// 或者页缓存。而当驱动需要使用时，就将进程占用的内存通过回收或者迁移的
+	// 方式将之前占用的预留内存腾出来，供驱动使用
 	if (IS_ENABLED(CONFIG_CMA) && ac.migratetype == MIGRATE_MOVABLE)
 		alloc_flags |= ALLOC_CMA;
 
@@ -2945,7 +3010,9 @@ retry_cpuset:
 
 	/* We set it here, as __alloc_pages_slowpath might have changed it */
 	ac.zonelist = zonelist;
+	
 	/* The preferred zone is used for statistics later */
+	// 通过 highest_zoneidx 和 nodemask 两个条件来选择合适的内存节点分配内存
 	preferred_zoneref = first_zones_zonelist(ac.zonelist, ac.high_zoneidx,
 				ac.nodemask ? : &cpuset_current_mems_allowed,
 				&ac.preferred_zone);
@@ -2965,6 +3032,10 @@ retry_cpuset:
 		 */
 		alloc_mask = memalloc_noio_flags(gfp_mask);
 
+		// 因为我们无法通过 fast path 的内存申请策略获得我们需要的内存块，所以
+		// 需要通过 slow path 内存回收函数来准备出我们需要的内存块，然后再申请
+		// 内存，在 slow path 中，可能会涉及到物理 IO 操作、memory campaction
+		// oom killer...
 		page = __alloc_pages_slowpath(alloc_mask, order, &ac);
 	}
 

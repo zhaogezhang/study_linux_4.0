@@ -742,6 +742,8 @@ EXPORT_SYMBOL_GPL(add_page_wait_queue);
  * The mb is necessary to enforce ordering between the clear_bit and the read
  * of the waitqueue (to avoid SMP races with a parallel wait_on_page_locked()).
  */
+// 清除指定内存页的 PG_locked 标志并唤醒调用了 ___wait_on_page_locked
+// 接口而进入睡眠等待的进程
 void unlock_page(struct page *page)
 {
 	VM_BUG_ON_PAGE(!PageLocked(page), page);

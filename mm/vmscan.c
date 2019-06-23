@@ -954,6 +954,18 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		/*
 		 * If a page at the tail of the LRU is under writeback, there
 		 * are three cases to consider.
+		 * 
+		 * 在阅读下面内容之前，先做以下几点说明：
+		 * 1. 内存回收一共分两类，分别是 Global reclaim 和 memcg，他们之间
+		 *    的区别分别如下：
+		 *    a. Global VM's memory reclaim logic is triggered at
+         *       memory shortage in a zone.
+         *    b. Memcg's memory reclaim is triggered at memory
+         *       usage hits its limit.
+		 * 2. 处于 writeback 状态下的内存页表示这个内存页目前正在通过 IO 
+		 *    操作往磁盘中回写，因为涉及 IO 操作，所以消耗的时间比较长
+		 * 3. 处于 PageReclaim 状态下的内存页表示这个内存页正在执行内存
+		 *    回收操作
 		 *
 		 * 1) If reclaim is encountering an excessive number of pages
 		 *    under writeback and this page is both under writeback and
@@ -1221,6 +1233,8 @@ activate_locked:
 		SetPageActive(page);
 		pgactivate++;
 keep_locked:
+		// 清除指定内存页的 PG_locked 标志并唤醒调用了 ___wait_on_page_locked
+		// 接口而进入睡眠等待的进程
 		unlock_page(page);
 keep:
 		list_add(&page->lru, &ret_pages);
@@ -3853,6 +3867,7 @@ static int __zone_reclaim(struct zone *zone, gfp_t gfp_mask, unsigned int order)
 	const unsigned long nr_pages = 1 << order;
 	struct task_struct *p = current;
 	struct reclaim_state reclaim_state;
+	
 	struct scan_control sc = {
 		.nr_to_reclaim = max(nr_pages, SWAP_CLUSTER_MAX),        // 本次想要回收的内存页数
 		.gfp_mask = (gfp_mask = memalloc_noio_flags(gfp_mask)),  // 

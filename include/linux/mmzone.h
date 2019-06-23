@@ -1088,6 +1088,10 @@ struct zoneref *next_zones_zonelist(struct zoneref *z,
  * used to iterate the zonelist with next_zones_zonelist by advancing it by
  * one before calling.
  */
+// 通过 highest_zoneidx 和 nodemask 两个条件来选择合适的内存节点分配内存
+// 基本的条件如下：
+// 1. zone index 要小于我们指定的 highest_zoneidx
+// 2. zone 对应的 node bit 在 nodemask 中要置位
 static inline struct zoneref *first_zones_zonelist(struct zonelist *zonelist,
 					enum zone_type highest_zoneidx,
 					nodemask_t *nodes,

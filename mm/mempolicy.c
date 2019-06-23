@@ -1653,6 +1653,7 @@ static nodemask_t *policy_nodemask(gfp_t gfp, struct mempolicy *policy)
 static struct zonelist *policy_zonelist(gfp_t gfp, struct mempolicy *policy,
 	int nd)
 {
+	// 根据内存分配策略获取对应的 nodemask 信息，进而获取一个合理的 node id
 	switch (policy->mode) {
 	case MPOL_PREFERRED:
 		if (!(policy->flags & MPOL_F_LOCAL))
@@ -1672,6 +1673,7 @@ static struct zonelist *policy_zonelist(gfp_t gfp, struct mempolicy *policy,
 	default:
 		BUG();
 	}
+	
 	return node_zonelist(nd, gfp);
 }
 

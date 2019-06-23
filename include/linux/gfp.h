@@ -91,7 +91,7 @@ struct vm_area_struct;
 							 * set
 							 */
 
-// 表示可以在进程能够运行的CPU节点上分配内存
+// 表示可以在进程能够运行的 CPU 节点上分配内存
 #define __GFP_HARDWALL   ((__force gfp_t)___GFP_HARDWALL) /* Enforce hardwall cpuset memory allocs */
 
 // 表示直接从当前的 node 中申请内存，不需要执行“最优”选择代码逻辑
@@ -100,7 +100,9 @@ struct vm_area_struct;
 #define __GFP_RECLAIMABLE ((__force gfp_t)___GFP_RECLAIMABLE) /* Page is reclaimable */
 #define __GFP_NOTRACK	((__force gfp_t)___GFP_NOTRACK)  /* Don't track with kmemcheck */
 
+// 表示在分配内存过程中如果内存不足，不允许通过唤醒 kswapd 来回收内存
 #define __GFP_NO_KSWAPD	((__force gfp_t)___GFP_NO_KSWAPD)
+
 #define __GFP_OTHER_NODE ((__force gfp_t)___GFP_OTHER_NODE) /* On behalf of other node */
 #define __GFP_WRITE	((__force gfp_t)___GFP_WRITE)	/* Allocator intends to dirty page */
 
@@ -311,7 +313,7 @@ static inline enum zone_type gfp_zone(gfp_t flags)
  */
 
 // 现在的 linux 系统中一个 node 一共包含两个 zonelist，第一个 zonelist
-// 包含了系统中所有内存的 zone，第二个 zonelist 包含了当前节点的 zone
+// 包含了系统中所有内存的 zone，第二个 zonelist 包含了当前节点所在的 zone
 static inline int gfp_zonelist(gfp_t flags)
 {
 	if (IS_ENABLED(CONFIG_NUMA) && unlikely(flags & __GFP_THISNODE))
@@ -329,6 +331,7 @@ static inline int gfp_zonelist(gfp_t flags)
  * For the normal case of non-DISCONTIGMEM systems the NODE_DATA() gets
  * optimized to &contig_page_data at compile-time.
  */
+// 在指定的内存节点中，根据 gfp_flags 获取指定的 zonelist 数据结构指针
 static inline struct zonelist *node_zonelist(int nid, gfp_t flags)
 {
 	return NODE_DATA(nid)->node_zonelists + gfp_zonelist(flags);

@@ -42,6 +42,9 @@ struct zone *next_zone(struct zone *zone)
 	return zone;
 }
 
+// 判断指定的 zone（zref）所在的 node 在指定的 nodemask（nodes）中的标志位是否被设置
+// 在分配内存时，通过 nodemask 来过滤 zone 时调用，这样我们就可以在我们指定的 node
+// 上分配内存了
 static inline int zref_in_nodemask(struct zoneref *zref, nodemask_t *nodes)
 {
 #ifdef CONFIG_NUMA
@@ -60,6 +63,11 @@ struct zoneref *next_zones_zonelist(struct zoneref *z,
 	 * Find the next suitable zone to use for the allocation.
 	 * Only filter based on nodemask if it's set
 	 */
+	// 如果没设置 nodemask，我们只通过 zone index 条件来选择合适的内存节点
+	// 如果设置了 nodemask，那么我们通过 zone index 和 nodemask 两个条件
+	// 来选择合适的内存节点分配内存，基本的条件如下：
+	// 1. zone index 要小于我们指定的 highest_zoneidx
+	// 2. zone 对应的 node bit 在 nodemask 中要置位
 	if (likely(nodes == NULL))
 		while (zonelist_zone_idx(z) > highest_zoneidx)
 			z++;
