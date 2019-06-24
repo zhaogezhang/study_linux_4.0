@@ -26,6 +26,9 @@ extern struct vm_area_struct *vmacache_find_exact(struct mm_struct *mm,
 						  unsigned long end);
 #endif
 
+// 使指定的进程地址空间缓存的 vma 数据无效，这个函数会在进程地址空间减少
+// 的时候调用，因为进程地址空间在减少的时候，可能把我们缓存的 vma 地址回收
+// 这样我们缓存的 vma 信息就是无效的数据了，所以需要无效 vma cache
 static inline void vmacache_invalidate(struct mm_struct *mm)
 {
 	mm->vmacache_seqnum++;

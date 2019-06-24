@@ -1345,9 +1345,15 @@ struct task_struct {
 #ifdef CONFIG_COMPAT_BRK
 	unsigned brk_randomized:1;
 #endif
+
 	/* per-thread vma caching */
+	// 表示每一个进程当前有效的 vma cache 序号，这个值和 struct mm_struct
+	// 结构中的 vmacache_seqnum 相对应，只有当这两个值相等的时候，才表示
+	// vmacache 有效，所以我们如果想要 invalid 当前 vmacache，只需要把 
+	// mm_struct 结构中的 vmacache_seqnum 加一即可
 	u32 vmacache_seqnum;
 	struct vm_area_struct *vmacache[VMACACHE_SIZE];
+
 #if defined(SPLIT_RSS_COUNTING)
 	struct task_rss_stat	rss_stat;
 #endif

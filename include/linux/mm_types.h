@@ -290,12 +290,14 @@ struct vm_region {
  * space that has a special rule for the page-fault handlers (ie a shared
  * library, the executable area etc).
  */
+// 表示进程地址空间内的一个虚拟地址块，内核地址空间的虚拟地址块是通过
+// vm_struct 结构表示的
 struct vm_area_struct {
 	/* The first cache line has the info for VMA tree walking. */
 
 	unsigned long vm_start;		/* Our start address within vm_mm. */
 	unsigned long vm_end;		/* The first byte after our end address
-					   within vm_mm. */
+					               within vm_mm. */
 
 	/* linked list of VM areas per task, sorted by address */
 	struct vm_area_struct *vm_next, *vm_prev;
@@ -331,8 +333,9 @@ struct vm_area_struct {
 	 * can only be in the i_mmap tree.  An anonymous MAP_PRIVATE, stack
 	 * or brk vma (with NULL file) can only be in an anon_vma list.
 	 */
+	// 这两个成员主要是在反向映射中使用
 	struct list_head anon_vma_chain; /* Serialized by mmap_sem &
-					  * page_table_lock */
+					                  * page_table_lock */
 	struct anon_vma *anon_vma;	/* Serialized by page_table_lock */
 
 	/* Function pointers to deal with this struct. */
@@ -387,7 +390,12 @@ struct kioctx_table;
 struct mm_struct {
 	struct vm_area_struct *mmap;		/* list of VMAs */
 	struct rb_root mm_rb;
+
+	// 这个值和 struct task_struct 结构中的 vmacache_seqnum 相对应
+	// 只有当这两个值相等的时候，才表示 vmacache 有效，所以我们如果
+	// 想要 invalid 当前 vmacache，只需要把这个值加一即可
 	u32 vmacache_seqnum;                   /* per-thread vmacache */
+	
 #ifdef CONFIG_MMU
 	unsigned long (*get_unmapped_area) (struct file *filp,
 				unsigned long addr, unsigned long len,

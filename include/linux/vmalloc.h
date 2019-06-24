@@ -38,7 +38,8 @@ struct vm_area_struct;		/* vma defining user mapping in mm_types.h */
 // 3. 3G + 896M + 8M ~ 4G 为高端内存区，这是一个动态映射的区域，此区域的虚拟内存空间
 //    使用情况是通过 struct vm_struct 数据结构来维护的
 
-// 描述了一个 vm 地址空间以及和其对应的物理页相关信息
+// 描述了一个内核虚拟地址空间块以及和其对应的物理页相关信息，进程虚拟地址空间块
+// 通过 vm_area_struct 结构表示
 struct vm_struct {
 	struct vm_struct	*next;    // 指向下一个 vm 结构体
 	void			*addr;        // 虚拟地址起始地址

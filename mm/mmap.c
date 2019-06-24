@@ -2030,13 +2030,17 @@ struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 	struct vm_area_struct *vma;
 
 	/* Check the cache first. */
+	// 分别遍历当前进程的 vma cache 成员，查找包含我们指定的地址的
+	// vma，如果找到这样的 vma，则直接返回 vma 结构的地址
 	vma = vmacache_find(mm, addr);
 	if (likely(vma))
 		return vma;
 
+	// 通过红黑树从指定的进程地址空间中查找包含我们指定的地址的 vma 结构
 	rb_node = mm->mm_rb.rb_node;
 	vma = NULL;
 
+	// 分别遍历红黑树每一个节点并判断这个节点是否是我们想要查找的 vma
 	while (rb_node) {
 		struct vm_area_struct *tmp;
 
@@ -2044,6 +2048,8 @@ struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 
 		if (tmp->vm_end > addr) {
 			vma = tmp;
+
+			// 我们指定的虚拟地址在当前遍历的 vma 所表示的地址范围内
 			if (tmp->vm_start <= addr)
 				break;
 			rb_node = rb_node->rb_left;
@@ -2051,8 +2057,13 @@ struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 			rb_node = rb_node->rb_right;
 	}
 
+	// 把指定的 vma 数据结构缓存到当前进程的 vma cache 数组中
+	// 因为大部分程序在执行时都具有局部性特性，所以下一次想要查找地址很大概率在
+	// 这次查找的地址附近，所以我们把这次找到的 vma 数据结构缓存下来，这样会提高
+	// 整个系统的地址查找效率 
 	if (vma)
 		vmacache_update(addr, vma);
+	
 	return vma;
 }
 
