@@ -176,11 +176,18 @@ char *strndup_user(const char __user *s, long n)
 }
 EXPORT_SYMBOL(strndup_user);
 
+// 把指定的 vma 结构插入到指定进程地址空间的 vma 链表上，这个链表是根据
+// vma 所表示的地址大小来排序的（升序）
 void __vma_link_list(struct mm_struct *mm, struct vm_area_struct *vma,
 		struct vm_area_struct *prev, struct rb_node *rb_parent)
 {
 	struct vm_area_struct *next;
 
+	// 如果已经知道了我们指定的 vma 在进程地址空间的 vma 链表上的前一个
+	// 成员地址，则直接把需要插入链表的 vma 成员插入到这个 vma 之后即可
+	// 如果我们不知道我们指定的 vma 在进程地址空间的 vma 链表上的前一个
+	// 成员地址，我们想要插入的 vma 所代表的地址在当前进程地址空间中最小
+	// 所以我们需要把这个 vma 插入到链表的头部
 	vma->vm_prev = prev;
 	if (prev) {
 		next = prev->vm_next;
@@ -188,12 +195,18 @@ void __vma_link_list(struct mm_struct *mm, struct vm_area_struct *vma,
 	} else {
 		mm->mmap = vma;
 		if (rb_parent)
+			// 如果我们要插入的 vma 结构不是系统中的第一个 vma 结构
+			// 表示vma 链表不为空，所以要把原来的 vma 链表链接到新插入
+			// 的 vma 的后面
 			next = rb_entry(rb_parent,
 					struct vm_area_struct, vm_rb);
 		else
 			next = NULL;
 	}
+
 	vma->vm_next = next;
+
+	// 设置双向链表的前向指针
 	if (next)
 		next->vm_prev = vma;
 }

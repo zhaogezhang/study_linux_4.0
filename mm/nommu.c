@@ -867,6 +867,8 @@ static void delete_vma(struct mm_struct *mm, struct vm_area_struct *vma)
  * look up the first VMA in which addr resides, NULL if none
  * - should be called with mm->mmap_sem at least held readlocked
  */
+// 在指定的进程地址空间内，查找包含 addr 虚拟地址的 vma 结构，并返回找到
+// 的 vma 结构地址
 struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 {
 	struct vm_area_struct *vma;

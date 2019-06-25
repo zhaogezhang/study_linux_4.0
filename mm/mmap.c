@@ -331,6 +331,8 @@ SYSCALL_DEFINE1(brk, unsigned long, brk)
 	}
 
 	/* Check against existing mmap mappings. */
+	// 在指定的进程地址空间内查找和指定的（start_addr - end_addr）地址范围有相交的 vma 数据结构
+	// 并返回这个数据结构的地址
 	if (find_vma_intersection(mm, oldbrk, newbrk+PAGE_SIZE))
 		goto out;
 
@@ -432,6 +434,7 @@ static void validate_mm_rb(struct rb_root *root, struct vm_area_struct *ignore)
 	}
 }
 
+// 校验指定的进程地址空间中相关参数是否有效
 static void validate_mm(struct mm_struct *mm)
 {
 	int bug = 0;
@@ -439,32 +442,45 @@ static void validate_mm(struct mm_struct *mm)
 	unsigned long highest_address = 0;
 	struct vm_area_struct *vma = mm->mmap;
 
+	// 分别遍历指定进程地址空间中的每一个有效 vma 结构，并校验
+	// 每一个 vma 结构中有关反向映射的信息是否有效，并更新相关
+	// 统计变量
 	while (vma) {
 		struct anon_vma_chain *avc;
 
 		vma_lock_anon_vma(vma);
+
+		// 校验每一个 vma 结构中有关反向映射的信息是否有效
 		list_for_each_entry(avc, &vma->anon_vma_chain, same_vma)
 			anon_vma_interval_tree_verify(avc);
+		
 		vma_unlock_anon_vma(vma);
 		highest_address = vma->vm_end;
 		vma = vma->vm_next;
 		i++;
 	}
+
+	// 校验 mm->map_count 值是否有效
 	if (i != mm->map_count) {
 		pr_emerg("map_count %d vm_next %d\n", mm->map_count, i);
 		bug = 1;
 	}
+
+	// 校验 mm->highest_vm_end 值是否有效
 	if (highest_address != mm->highest_vm_end) {
 		pr_emerg("mm->highest_vm_end %lx, found %lx\n",
 			  mm->highest_vm_end, highest_address);
 		bug = 1;
 	}
+
+	// 校验 mm->mm_rb （红黑树）是否有效
 	i = browse_rb(&mm->mm_rb);
 	if (i != mm->map_count) {
 		if (i != -1)
 			pr_emerg("map_count %d rb %d\n", mm->map_count, i);
 		bug = 1;
 	}
+	
 	VM_BUG_ON_MM(bug, mm);
 }
 #else
@@ -546,6 +562,12 @@ anon_vma_interval_tree_post_update_vma(struct vm_area_struct *vma)
 		anon_vma_interval_tree_insert(avc, &avc->anon_vma->rb_root);
 }
 
+// 从指定的进程地址空间红黑树根节点开始遍历，判断当前树中的每一个 vma
+// 和我们指定的地址范围（addr - end）是否存在重叠部分，如果没有任何重叠
+// 地址，则在红黑树上找到合适的树节点位置
+// __rb_link 记录了我们指定的虚拟地址块（addr - end）所对应的 vma 结构应该链接在树中节点位置的地址
+// rb_prev 记录我们指定的地址范围（addr - end）所代表的 vma 的前一个 vma 的地址
+// __rb_parent 记录我们指定的地址范围（addr - end）所代表的 vma 在红黑树中，其父节点的地址
 static int find_vma_links(struct mm_struct *mm, unsigned long addr,
 		unsigned long end, struct vm_area_struct **pprev,
 		struct rb_node ***rb_link, struct rb_node **rb_parent)
@@ -555,18 +577,29 @@ static int find_vma_links(struct mm_struct *mm, unsigned long addr,
 	__rb_link = &mm->mm_rb.rb_node;
 	rb_prev = __rb_parent = NULL;
 
+	// 从指定的进程地址空间红黑树根节点开始遍历，判断当前树中的每一个 vma
+	// 和我们指定的地址范围（addr - end）是否存在重叠部分，如果没有任何重叠
+	// 地址，则在红黑树上找到合适的树节点位置，__rb_link 记录了我们指定的虚拟
+	// 地址块（addr - end）所对应的 vma 结构应该链接在树中节点位置的地址
 	while (*__rb_link) {
 		struct vm_area_struct *vma_tmp;
 
+		// __rb_parent 记录我们指定的地址范围（addr - end）所代表的 vma 在
+		// 红黑树中，其父节点的地址
 		__rb_parent = *__rb_link;
+	
 		vma_tmp = rb_entry(__rb_parent, struct vm_area_struct, vm_rb);
 
 		if (vma_tmp->vm_end > addr) {
 			/* Fail if an existing vma overlaps the area */
+			// 如果数上已经存在的 vma 和我们指定的地址范围（addr - end）
+			// 有重叠的部分，则直接返回失败（-ENOMEM）
 			if (vma_tmp->vm_start < end)
 				return -ENOMEM;
 			__rb_link = &__rb_parent->rb_left;
 		} else {
+			// rb_prev 记录我们指定的地址范围（addr - end）所代表的 vma
+			// 的前一个 vma 的地址，因为在红黑树中是以地址为键值进行排列的
 			rb_prev = __rb_parent;
 			__rb_link = &__rb_parent->rb_right;
 		}
@@ -575,6 +608,7 @@ static int find_vma_links(struct mm_struct *mm, unsigned long addr,
 	*pprev = NULL;
 	if (rb_prev)
 		*pprev = rb_entry(rb_prev, struct vm_area_struct, vm_rb);
+	
 	*rb_link = __rb_link;
 	*rb_parent = __rb_parent;
 	return 0;
@@ -608,6 +642,7 @@ static unsigned long count_vma_pages_range(struct mm_struct *mm,
 	return nr_pages;
 }
 
+// 把指定的 vma 结构插入到指定的进程地址空间的红黑树上，并更新相关的统计变量值
 void __vma_link_rb(struct mm_struct *mm, struct vm_area_struct *vma,
 		struct rb_node **rb_link, struct rb_node *rb_parent)
 {
@@ -626,16 +661,23 @@ void __vma_link_rb(struct mm_struct *mm, struct vm_area_struct *vma,
 	 * immediately update the gap to the correct value. Finally we
 	 * rebalance the rbtree after all augmented values have been set.
 	 */
+	// 把指定的 vma 结构插入到红黑树中
 	rb_link_node(&vma->vm_rb, rb_parent, rb_link);
 	vma->rb_subtree_gap = 0;
 	vma_gap_update(vma);
 	vma_rb_insert(vma, &mm->mm_rb);
 }
 
+// 判断指定的 vma 是否是文件映射，如果是文件映射，则把
+// 这个 vma 插入到指定文件所对应的 vma 树结构中，并根据
+// vma->vm_flags 更新相关统计变量值 
 static void __vma_link_file(struct vm_area_struct *vma)
 {
 	struct file *file;
 
+	// 判断指定的 vma 是否是文件映射，如果是文件映射，则把
+	// 这个 vma 插入到指定文件所对应的 vma 树结构中，并根据
+	// vma->vm_flags 更新相关统计变量值 
 	file = vma->vm_file;
 	if (file) {
 		struct address_space *mapping = file->f_mapping;
@@ -651,33 +693,51 @@ static void __vma_link_file(struct vm_area_struct *vma)
 	}
 }
 
+// 把指定的 vma 结构分别插入到指定进程地址空间的 vma 链表以及
+// 红黑树上，，并更新相关的统计变量值
 static void
 __vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 	struct vm_area_struct *prev, struct rb_node **rb_link,
 	struct rb_node *rb_parent)
 {
+	// 把指定的 vma 结构插入到指定进程地址空间的 vma 链表上，这个链表是根据
+	// vma 所表示的地址大小来排序的（升序）
 	__vma_link_list(mm, vma, prev, rb_parent);
+
+	// 把指定的 vma 结构插入到指定的进程地址空间的红黑树上，并更新相关的统计变量值
 	__vma_link_rb(mm, vma, rb_link, rb_parent);
 }
 
+// 根据指定的 vma 属相将其插入到指定的进程地址空间中对应的位置（匿名映射或者文件映射）
+// 并校验插入后的进程地址空间是否有效
 static void vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 			struct vm_area_struct *prev, struct rb_node **rb_link,
 			struct rb_node *rb_parent)
 {
 	struct address_space *mapping = NULL;
 
+	// 判断指定的 vma 是否是文件映射，如果是文件映射，则需要获取文件锁
 	if (vma->vm_file) {
 		mapping = vma->vm_file->f_mapping;
 		i_mmap_lock_write(mapping);
 	}
 
+	// 把指定的 vma 结构分别插入到指定进程地址空间的 vma 链表以及
+	// 红黑树上，并更新相关的统计变量值
 	__vma_link(mm, vma, prev, rb_link, rb_parent);
+
+	// 判断指定的 vma 是否是文件映射，如果是文件映射，则把
+	// 这个 vma 插入到指定文件所对应的 vma 树结构中，并根据
+	// vma->vm_flags 更新相关统计变量值 
 	__vma_link_file(vma);
 
+	// 如果是文件映射则释放文件锁
 	if (mapping)
 		i_mmap_unlock_write(mapping);
 
 	mm->map_count++;
+
+	// 校验指定的进程地址空间中相关参数是否有效
 	validate_mm(mm);
 }
 
@@ -2072,12 +2132,20 @@ EXPORT_SYMBOL(find_vma);
 /*
  * Same as find_vma, but also return a pointer to the previous VMA in *pprev.
  */
+// 在指定的地址空间内，查找包含指定 addr 虚拟地址的 vma，然后返回这个 vma 的
+// 前一个 vma 数据结构的地址（按地址排序的前一个 vma）
 struct vm_area_struct *
 find_vma_prev(struct mm_struct *mm, unsigned long addr,
 			struct vm_area_struct **pprev)
 {
 	struct vm_area_struct *vma;
 
+	// 查找是否存在 vm_emd > addr 的 vma，如果有就直接返回这个 vma
+	// 的前一个 vma 即可（以为在进程地址空间内，所有的 vma 都是按照
+	// 地址大小顺序放在 vm_area_struct 双链表上），如果没有找到满足
+	// vm_emd > addr 的 vma，表示当前进程地址空间内所有有效地址都比
+	// 指定的虚拟地址小，所以我们直接返回这个进程地址空间内、地址最
+	// 大的 vma 即可
 	vma = find_vma(mm, addr);
 	if (vma) {
 		*pprev = vma->vm_prev;
@@ -2866,6 +2934,7 @@ void exit_mmap(struct mm_struct *mm)
  * and into the inode's i_mmap tree.  If vm_file is non-NULL
  * then i_mmap_rwsem is taken here.
  */
+// 根据指定的 vma 属相将其插入到指定的进程地址空间中对应的位置（匿名映射或者文件映射）
 int insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 {
 	struct vm_area_struct *prev;
@@ -2883,17 +2952,30 @@ int insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 	 * using the existing file pgoff checks and manipulations.
 	 * Similarly in do_mmap_pgoff and in do_brk.
 	 */
+	// 通过 vma->vm_file 判断当前的 vma 是文件映射还是匿名映射
+	// 如果是匿名映射，则设置 vma->vm_pgoff 为 vma->vm_start 按照
+	// 物理内存页为单位的偏移量
 	if (!vma->vm_file) {
 		BUG_ON(vma->anon_vma);
 		vma->vm_pgoff = vma->vm_start >> PAGE_SHIFT;
 	}
+
+	// 从指定的进程地址空间红黑树根节点开始遍历，判断当前树中的每一个 vma
+	// 和我们指定的地址范围（addr - end）是否存在重叠部分，如果没有任何重叠
+	// 地址，则在红黑树上找到合适的树节点位置
+	// __rb_link 记录了我们指定的虚拟地址块（addr - end）所对应的 vma 结构应该链接在树中节点位置的地址
+	// rb_prev 记录我们指定的地址范围（addr - end）所代表的 vma 的前一个 vma 的地址
+	// __rb_parent 记录我们指定的地址范围（addr - end）所代表的 vma 在红黑树中，其父节点的地址
 	if (find_vma_links(mm, vma->vm_start, vma->vm_end,
 			   &prev, &rb_link, &rb_parent))
 		return -ENOMEM;
+	
 	if ((vma->vm_flags & VM_ACCOUNT) &&
 	     security_vm_enough_memory_mm(mm, vma_pages(vma)))
 		return -ENOMEM;
 
+	// 根据指定的 vma 属相将其插入到指定的进程地址空间中对应的位置（匿名映射或者文件映射）
+	// 并校验插入后的进程地址空间是否有效
 	vma_link(mm, vma, prev, rb_link, rb_parent);
 	return 0;
 }

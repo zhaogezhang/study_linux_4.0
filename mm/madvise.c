@@ -499,6 +499,8 @@ SYSCALL_DEFINE3(madvise, unsigned long, start, size_t, len_in, int, behavior)
 	 * ranges, just ignore them, but return -ENOMEM at the end.
 	 * - different from the way of handling in mlock etc.
 	 */
+	// 在指定的地址空间内，查找包含指定 addr 虚拟地址的 vma，然后返回这个 vma 的
+	// 前一个 vma 数据结构的地址（按地址排序的前一个 vma）
 	vma = find_vma_prev(current->mm, start, &prev);
 	if (vma && start > vma->vm_start)
 		prev = vma;
