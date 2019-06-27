@@ -421,6 +421,7 @@ static int browse_rb(struct rb_root *root)
 	return bug ? -1 : i;
 }
 
+// 校验指定的进程地址空间的红黑树是否有效
 static void validate_mm_rb(struct rb_root *root, struct vm_area_struct *ignore)
 {
 	struct rb_node *nd;
@@ -514,6 +515,7 @@ static inline void vma_rb_insert(struct vm_area_struct *vma,
 	rb_insert_augmented(&vma->vm_rb, root, &vma_gap_callbacks);
 }
 
+// 把指定的 vma 节点从指定的红黑树上（root）移除
 static void vma_rb_erase(struct vm_area_struct *vma, struct rb_root *root)
 {
 	/*
@@ -694,7 +696,7 @@ static void __vma_link_file(struct vm_area_struct *vma)
 }
 
 // 把指定的 vma 结构分别插入到指定进程地址空间的 vma 链表以及
-// 红黑树上，，并更新相关的统计变量值
+// 红黑树上，并更新相关的统计变量值
 static void
 __vma_link(struct mm_struct *mm, struct vm_area_struct *vma,
 	struct vm_area_struct *prev, struct rb_node **rb_link,
@@ -757,18 +759,23 @@ static void __insert_vm_struct(struct mm_struct *mm, struct vm_area_struct *vma)
 	mm->map_count++;
 }
 
+// 把指定的 vma 节点从指定的进程地址空间中移除并刷新所有相关 vmacache
 static inline void
 __vma_unlink(struct mm_struct *mm, struct vm_area_struct *vma,
 		struct vm_area_struct *prev)
 {
 	struct vm_area_struct *next;
 
+	// 把指定的 vma 节点从指定的进程地址空间的红黑树上（mm->mm_rb）移除
 	vma_rb_erase(vma, &mm->mm_rb);
+
+	// 把指定的 vma 节点从指定的进程地址空间的双向 vma 链表上移除
 	prev->vm_next = next = vma->vm_next;
 	if (next)
 		next->vm_prev = prev;
 
 	/* Kill the cache */
+	// 因为进程地址空间发生了变化，所以需要清空这个进程地址空间缓存数据
 	vmacache_invalidate(mm);
 }
 
@@ -779,40 +786,80 @@ __vma_unlink(struct mm_struct *mm, struct vm_area_struct *vma,
  * are necessary.  The "insert" vma (if any) is to be inserted
  * before we drop the necessary locks.
  */
+// 功能描述：
+// 把指定的 vma 结构参数调整成我们想要的目标值
+// 
+// 参数描述： 
+// vma 表示需要调整的 vma 结构
+// start 表示调整后 vma 的起始地址
+// end 表示调整后 vma 的结束地址
+// 如果是文件映射，pgoff 表示调整后 vma 在文件中的页偏移量
+// insert 表示当前是否在执行 vma 插入操作，如果不为 NULL，insert 
+//        表示我门想要插入的 vma 结果，如果为 NULL，表示当前执行的不是插入操作
 int vma_adjust(struct vm_area_struct *vma, unsigned long start,
 	unsigned long end, pgoff_t pgoff, struct vm_area_struct *insert)
 {
 	struct mm_struct *mm = vma->vm_mm;
 	struct vm_area_struct *next = vma->vm_next;
+
+	// 在我们执行了 vma 合并操作，除了地址空间的合并之外，还需要
+	// 对 vma 中的 anon_vma 进行合并，importer 表示 anon_vma 增加
+	// 的 vma 地址，exporter 表示 anon_vma 减少的 vma 地址
 	struct vm_area_struct *importer = NULL;
+	
 	struct address_space *mapping = NULL;
 	struct rb_root *root = NULL;
 	struct anon_vma *anon_vma = NULL;
 	struct file *file = vma->vm_file;
 	bool start_changed = false, end_changed = false;
+
+	// 表示新的地址范围（start - end）和后驱 vma->vm_start 之间
+	// 在地址上重叠部分按照物理页大小（向下取整）统计的页数，整
+	// 数表示重叠地址空间打小，负数表示空洞地址空间大小
 	long adjust_next = 0;
+
+	// 表示新的地址范围（start - end）空间是否完全覆盖后驱 vma 所
+	// 表示的地址空间，为 1 表示新的地址块正好覆盖后驱，为 2 表示
+	// 新的地址块地址范围已经超过了后驱所表示的范围
 	int remove_next = 0;
 
+	// 如果新的地址范围（start - end）的前驱有后驱，且当前不是 vma 
+	// 插入操作，则执行相关逻辑
 	if (next && !insert) {
 		struct vm_area_struct *exporter = NULL;
 
+		// 如果新的地址范围（start - end）已经完全覆盖后驱 vma 的地址空间
+		// 范围，则执行相关逻辑
 		if (end >= next->vm_end) {
 			/*
 			 * vma expands, overlapping all the next, and
 			 * perhaps the one after too (mprotect case 6).
 			 */
-again:			remove_next = 1 + (end > next->vm_end);
+again:
+			remove_next = 1 + (end > next->vm_end);
 			end = next->vm_end;
+
+			// 表示把新的地址范围（start - end）后驱的 anon_vma 数据
+			// 合并到新的地址范围（start - end）前驱中
 			exporter = next;
 			importer = vma;
+
+		// 如果新的地址范围（start - end）和后驱 vma 的地址空间有部分相交
+		// 表示可以和后驱 vma 合并一起、组成一个连续的 vma，则执行相关逻辑
 		} else if (end > next->vm_start) {
 			/*
 			 * vma expands, overlapping part of the next:
 			 * mprotect case 5 shifting the boundary up.
 			 */
 			adjust_next = (end - next->vm_start) >> PAGE_SHIFT;
+
+			// 表示把新的地址范围（start - end）后驱的 anon_vma 数据
+			// 合并到新的地址范围（start - end）前驱中
 			exporter = next;
 			importer = vma;
+
+		// 如果新的地址范围（start - end）和后驱 vma 的地址空间没有相交部分
+		// 则执行相关逻辑
 		} else if (end < vma->vm_end) {
 			/*
 			 * vma shrinks, and !insert tells it's not
@@ -820,6 +867,9 @@ again:			remove_next = 1 + (end > next->vm_end);
 			 * mprotect case 4 shifting the boundary down.
 			 */
 			adjust_next = -((vma->vm_end - end) >> PAGE_SHIFT);
+
+			// 表示把新的地址范围（start - end）前驱的 anon_vma 数据
+			// 合并到新的地址范围（start - end）后驱中
 			exporter = vma;
 			importer = next;
 		}
@@ -833,12 +883,15 @@ again:			remove_next = 1 + (end > next->vm_end);
 			int error;
 
 			importer->anon_vma = exporter->anon_vma;
+
+			// 把指定的 exporter vma 中的 anon_vma 结构克隆并复制到 importer vma 中
 			error = anon_vma_clone(importer, exporter);
 			if (error)
 				return error;
 		}
 	}
 
+	// 如果指定的 vma 是文件映射地址，则进行相应的处理
 	if (file) {
 		mapping = file->f_mapping;
 		root = &mapping->i_mmap;
@@ -905,7 +958,8 @@ again:			remove_next = 1 + (end > next->vm_end);
 		/*
 		 * vma_merge has merged next into vma, and needs
 		 * us to remove next before dropping the locks.
-		 */
+		 */		
+		// 把指定的 vma 节点从指定的进程地址空间中移除并刷新所有相关 vmacache
 		__vma_unlink(mm, next, vma);
 		if (file)
 			__remove_shared_vm_struct(next, file, mapping);
@@ -933,6 +987,7 @@ again:			remove_next = 1 + (end > next->vm_end);
 			anon_vma_interval_tree_post_update_vma(next);
 		anon_vma_unlock_write(anon_vma);
 	}
+	
 	if (mapping)
 		i_mmap_unlock_write(mapping);
 
@@ -943,6 +998,8 @@ again:			remove_next = 1 + (end > next->vm_end);
 			uprobe_mmap(next);
 	}
 
+	// 如果需要把新的地址范围（start - end）后驱移除（后驱地址被完全覆盖）
+	// 则需要把对应的 vma 所占用的资源释放
 	if (remove_next) {
 		if (file) {
 			uprobe_munmap(next, next->vm_start, next->vm_end);
@@ -951,7 +1008,10 @@ again:			remove_next = 1 + (end > next->vm_end);
 		if (next->anon_vma)
 			anon_vma_merge(vma, next);
 		mm->map_count--;
+
+		// 对指定的内存分配策略引用计数减一，如果引用计数减小到 0，则释放对应内存
 		mpol_put(vma_policy(next));
+		
 		kmem_cache_free(vm_area_cachep, next);
 		/*
 		 * In mprotect's case 6 (see comments on vma_merge),
@@ -966,6 +1026,7 @@ again:			remove_next = 1 + (end > next->vm_end);
 		else
 			mm->highest_vm_end = end;
 	}
+	
 	if (insert && file)
 		uprobe_mmap(insert);
 
@@ -978,6 +1039,7 @@ again:			remove_next = 1 + (end > next->vm_end);
  * If the vma has a ->close operation then the driver probably needs to release
  * per-vma resources, so we don't attempt to merge those.
  */
+// 判断指定的 vma 是否指定合并操作
 static inline int is_mergeable_vma(struct vm_area_struct *vma,
 			struct file *file, unsigned long vm_flags)
 {
@@ -1085,6 +1147,19 @@ can_vma_merge_after(struct vm_area_struct *vma, unsigned long vm_flags,
  * Odd one out? Case 8, because it extends NNNN but needs flags of XXXX:
  * mprotect_fixup updates vm_flags & vm_page_prot on successful return.
  */
+// 参数描述：
+// mm 描述要添加新区域进程的内存空间
+// prev 指向当前区域之前的一个内存区域
+// addr 表示新区域的起始地址
+// end 为新区域的结束地址
+// vm_flags 表示该区域的标志
+// anon_vma 表示该区域的 anon_vma 信息
+// 如果该新区域映射了一个磁盘文件，则file结构表示该文件，pgoff表示该文件映射的偏移量
+// policy 表示该区域的内存分配策略，只在NUMA系统上需要
+// 
+// 返回值描述：
+// 如果合并成功：返回合并后虚拟地址块的 vma 结构地址
+// 如果合并失败：返回 NULL
 struct vm_area_struct *vma_merge(struct mm_struct *mm,
 			struct vm_area_struct *prev, unsigned long addr,
 			unsigned long end, unsigned long vm_flags,
@@ -1099,13 +1174,25 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 	 * We later require that vma->vm_flags == vm_flags,
 	 * so this tests vma->vm_flags & VM_SPECIAL, too.
 	 */
+	// 判断新区域是否设置了 VM_SPECIAL，这个标志指定了该区域不能和其他区域
+	// 合并，因此立即返回 NULL
 	if (vm_flags & VM_SPECIAL)
 		return NULL;
 
+	// 获取当前需要合并的 vma 的后驱成员
+	// 如果指定的 vma 在指定的进程地址空间（mm）中存在前驱 vma，表示
+	// 当前需要合并的 vma 需要插入到这个前驱的后边（可能会有地址重叠部分）
+	// 所以当前需要合并的 vma 的后驱就是 prev->vm_next（可能会有地址重叠
+	// 部分），如果没有前驱，表示当前需要合并的 vma 地址最小，所以他的后驱
+	// 是 mm->mmap（在 mm 进程地址空间中，按地址顺序排序后的链表的第一个成员）
 	if (prev)
 		next = prev->vm_next;
 	else
 		next = mm->mmap;
+
+	// 如果当前需要合并的 vma 结束地址等于前面找到的后驱地址，表示当前需要合并
+	// 的 vma 已经已经包含了后驱所表示的地址范围，所以直接把后驱在“向后”移动
+	// 一个位置
 	area = next;
 	if (next && next->vm_end == end)		/* cases 6, 7, 8 */
 		next = next->vm_next;
@@ -1113,6 +1200,8 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 	/*
 	 * Can it merge with the predecessor?
 	 */
+	// 判断新的虚拟内存地址块（addr - end）是否可以和前驱 vma 合并
+	// 如果可以和前驱合并（地址相接且属相相同），则执行相关合并操作
 	if (prev && prev->vm_end == addr &&
 			mpol_equal(vma_policy(prev), policy) &&
 			can_vma_merge_after(prev, vm_flags,
@@ -1120,6 +1209,8 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 		/*
 		 * OK, it can.  Can we now merge in the successor as well?
 		 */
+		// 判断新的虚拟内存地址块（addr - end）是否可以和后驱 vma 合并
+		// （地址相接且属相相同），如果可以，则执行相关合并操作
 		if (next && end == next->vm_start &&
 				mpol_equal(policy, vma_policy(next)) &&
 				can_vma_merge_before(next, vm_flags,
@@ -1141,10 +1232,17 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 	/*
 	 * Can this new request be merged in front of next?
 	 */
+	// 判断新的虚拟内存地址块（addr - end）是否可以和后驱 vma 合并
+	// （地址相接且属相相同），如果可以和后驱合并，则执行相关合并操作
 	if (next && end == next->vm_start &&
 			mpol_equal(policy, vma_policy(next)) &&
 			can_vma_merge_before(next, vm_flags,
 					anon_vma, file, pgoff+pglen)) {
+
+		// 判断新的虚拟内存地址块（addr - end）和前驱是否有地址重叠部分
+		// 因为新的地址块可以和后驱合并（属性相同）、又会覆盖部分前驱地址块
+		// 所以，我们会把前驱中被新地址块覆盖的这部分地址区间划分到后驱中
+		// 合并和一个新的、更大的虚拟内存块
 		if (prev && addr < prev->vm_end)	/* case 4 */
 			err = vma_adjust(prev, prev->vm_start,
 				addr, prev->vm_pgoff, NULL);

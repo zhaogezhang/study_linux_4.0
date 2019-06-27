@@ -41,7 +41,9 @@ struct mm_struct;
  * to 1, representing the caller of mpol_dup().
  */
 struct mempolicy {
+	// 当前内存分配策略的引用计数，如果为 0 则释放这个结构体占用的内存
 	atomic_t refcnt;
+	
 	unsigned short mode; 	/* See MPOL_* above */
 	unsigned short flags;	/* See set_mempolicy() MPOL_F_* above */
 	union {
@@ -60,6 +62,7 @@ struct mempolicy {
  * The default fast path of a NULL MPOL_DEFAULT policy is always inlined.
  */
 
+// 对指定的内存分配策略引用计数减一，如果引用计数减小到 0，则释放对应内存
 extern void __mpol_put(struct mempolicy *pol);
 static inline void mpol_put(struct mempolicy *pol)
 {
@@ -98,6 +101,7 @@ static inline void mpol_get(struct mempolicy *pol)
 		atomic_inc(&pol->refcnt);
 }
 
+// 判断指定的两个内存分配策略是否相等，如果相等返回 true，否则返回 false
 extern bool __mpol_equal(struct mempolicy *a, struct mempolicy *b);
 static inline bool mpol_equal(struct mempolicy *a, struct mempolicy *b)
 {

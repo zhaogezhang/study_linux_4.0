@@ -124,6 +124,8 @@ static void anon_vma_chain_free(struct anon_vma_chain *anon_vma_chain)
 	kmem_cache_free(anon_vma_chain_cachep, anon_vma_chain);
 }
 
+// 把指定的 anon_vma 信息复制到新申请的 avc 中，然后再把 avc 添加
+// 到指定 vma 的 anon_vma 链表以及 anon_vma 红黑树中
 static void anon_vma_chain_link(struct vm_area_struct *vma,
 				struct anon_vma_chain *avc,
 				struct anon_vma *anon_vma)
@@ -249,14 +251,19 @@ static inline void unlock_anon_vma_root(struct anon_vma *root)
  * good chance of avoiding scanning the whole hierarchy when it searches where
  * page is mapped.
  */
+// 把指定的 src vma 中的 anon_vma 结构克隆并复制到 dst vma 中
 int anon_vma_clone(struct vm_area_struct *dst, struct vm_area_struct *src)
 {
 	struct anon_vma_chain *avc, *pavc;
 	struct anon_vma *root = NULL;
 
+	// 遍历 src->anon_vma_chain 链表上的每一个 anon_vma_chain 成员，把对应的
+	// anon_vma 信息克隆复制到 dst vma 的 anon_vma 链表以及 anon_vma 红黑树中
+	// 实现 anon_vma 克隆
 	list_for_each_entry_reverse(pavc, &src->anon_vma_chain, same_vma) {
 		struct anon_vma *anon_vma;
 
+		// 申请一个 anon_vma_chain 成员地址空间
 		avc = anon_vma_chain_alloc(GFP_NOWAIT | __GFP_NOWARN);
 		if (unlikely(!avc)) {
 			unlock_anon_vma_root(root);
@@ -267,6 +274,9 @@ int anon_vma_clone(struct vm_area_struct *dst, struct vm_area_struct *src)
 		}
 		anon_vma = pavc->anon_vma;
 		root = lock_anon_vma_root(root, anon_vma);
+
+		// 把指定的 anon_vma 信息复制到新申请的 avc 中，然后再把 avc 添加
+		// 到 dst 的 anon_vma 链表以及 anon_vma 红黑树中，实现 anon_vma 克隆
 		anon_vma_chain_link(dst, avc, anon_vma);
 
 		/*
@@ -364,6 +374,7 @@ int anon_vma_fork(struct vm_area_struct *vma, struct vm_area_struct *pvma)
 	return -ENOMEM;
 }
 
+// 从指定 vma 中移除在 vma->anon_vma_chain 链表上的所有 anon_vma 成员
 void unlink_anon_vmas(struct vm_area_struct *vma)
 {
 	struct anon_vma_chain *avc, *next;
@@ -377,6 +388,8 @@ void unlink_anon_vmas(struct vm_area_struct *vma)
 		struct anon_vma *anon_vma = avc->anon_vma;
 
 		root = lock_anon_vma_root(root, anon_vma);
+
+		// 把 anon_vma 成员从其所在的红黑树上移除
 		anon_vma_interval_tree_remove(avc, &anon_vma->rb_root);
 
 		/*
@@ -388,7 +401,10 @@ void unlink_anon_vmas(struct vm_area_struct *vma)
 			continue;
 		}
 
+		// 把 anon_vma 成员从其所在的红链表上移除
 		list_del(&avc->same_vma);
+
+		// 释放 anon_vma 成员占用的内存空间
 		anon_vma_chain_free(avc);
 	}
 	if (vma->anon_vma)

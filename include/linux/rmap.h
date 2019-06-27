@@ -157,10 +157,13 @@ void unlink_anon_vmas(struct vm_area_struct *);
 int anon_vma_clone(struct vm_area_struct *, struct vm_area_struct *);
 int anon_vma_fork(struct vm_area_struct *, struct vm_area_struct *);
 
+// 从指定 vma 中移除在 vma->anon_vma_chain 链表上的所有 anon_vma 成员
 static inline void anon_vma_merge(struct vm_area_struct *vma,
 				  struct vm_area_struct *next)
 {
 	VM_BUG_ON_VMA(vma->anon_vma != next->anon_vma, vma);
+
+	// 从指定 vma 中移除在 vma->anon_vma_chain 链表上的所有 anon_vma 成员
 	unlink_anon_vmas(next);
 }
 

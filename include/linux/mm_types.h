@@ -295,6 +295,7 @@ struct vm_region {
 struct vm_area_struct {
 	/* The first cache line has the info for VMA tree walking. */
 
+	// 当亲 vma 表示的地址块的起始地址和结束地址值，即当前 vma 表示的地址范围
 	unsigned long vm_start;		/* Our start address within vm_mm. */
 	unsigned long vm_end;		/* The first byte after our end address
 					               within vm_mm. */
@@ -333,18 +334,26 @@ struct vm_area_struct {
 	 * can only be in the i_mmap tree.  An anonymous MAP_PRIVATE, stack
 	 * or brk vma (with NULL file) can only be in an anon_vma list.
 	 */
-	// 这两个成员主要是在反向映射中使用
+	// 这两个成员主要是在反向映射中使用，anon_vma_chain 表示当前
+	// vma 中所有 anon_vma 成员的链表头，anon_vma 表示
 	struct list_head anon_vma_chain; /* Serialized by mmap_sem &
 					                  * page_table_lock */
-	struct anon_vma *anon_vma;	/* Serialized by page_table_lock */
+	struct anon_vma *anon_vma;	     /* Serialized by page_table_lock */
 
 	/* Function pointers to deal with this struct. */
 	const struct vm_operations_struct *vm_ops;
 
 	/* Information about our backing store: */
+	// 如果当前 vma 是文件映射，用这个字段表示当前 vma->vm_start 在所映射
+	// 的文件内的偏移量，这个偏移量是以物理内存页大小为单位的。如果当前 vma 
+	// 是匿名映射，则用这个字段表示当前 vmavma->vm_start 按照物理内存页为单位
+	// 所对应的偏移量
 	unsigned long vm_pgoff;		/* Offset (within vm_file) in PAGE_SIZE
-					   units, *not* PAGE_CACHE_SIZE */
+					               units, *not* PAGE_CACHE_SIZE */
+
+	// 如果当前 vma 是文件映射中的一部分，这个成员存储映射的文件结构的地址
 	struct file * vm_file;		/* File we map to (can be NULL). */
+					  
 	void * vm_private_data;		/* was vm_pte (shared mem) */
 
 #ifndef CONFIG_MMU
@@ -388,7 +397,10 @@ struct mm_rss_stat {
 
 struct kioctx_table;
 struct mm_struct {
+	// 当前进程地址空间中，按地址大小顺序排序的链表头
 	struct vm_area_struct *mmap;		/* list of VMAs */
+
+	// 当前进程地址空间中，以地址为键值进行排列的红黑树根节点
 	struct rb_root mm_rb;
 
 	// 这个值和 struct task_struct 结构中的 vmacache_seqnum 相对应
@@ -404,12 +416,17 @@ struct mm_struct {
 	unsigned long mmap_base;		/* base of mmap area */
 	unsigned long mmap_legacy_base;         /* base of mmap area in bottom-up allocations */
 	unsigned long task_size;		/* size of task vm space */
+
+	// 记录当前进程地址空间中，最大的有效虚拟地址值
 	unsigned long highest_vm_end;		/* highest vma end address */
+	
 	pgd_t * pgd;
 	atomic_t mm_users;			/* How many users with user space? */
 	atomic_t mm_count;			/* How many references to "struct mm_struct" (users count as 1) */
 	atomic_long_t nr_ptes;			/* PTE page table pages */
 	atomic_long_t nr_pmds;			/* PMD page table pages */
+
+	// 在当前进程地址空间中包含的 vma 个数，在每次插入 vma 的时候都加一
 	int map_count;				/* number of VMAs */
 
 	spinlock_t page_table_lock;		/* Protects page tables and some counters */
