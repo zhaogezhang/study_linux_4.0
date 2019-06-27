@@ -282,11 +282,23 @@ static struct vm_area_struct *remove_vma(struct vm_area_struct *vma)
 
 static unsigned long do_brk(unsigned long addr, unsigned long len);
 
+// 功能描述：
+// 从当前正在运行进程的地址空间中申请或者释放指定大小的虚拟内存块，如果是申请
+// 操作，则参数 brk > mm->brk，如果是释放操作，则参数 brk < mm->brk
+//
+// 参数描述：
+// 参数 brk 表示的是当前动态分配区的底部 mm->brk 和我们想要分配内存空间大小之和
+//
+// 返回值描述：
+// 申请内存或者释放内存后，当前系统的 mm->brk
 SYSCALL_DEFINE1(brk, unsigned long, brk)
 {
 	unsigned long retval;
 	unsigned long newbrk, oldbrk;
+
+	// 执行 brk 系统调用的进程的地址空间
 	struct mm_struct *mm = current->mm;
+	
 	unsigned long min_brk;
 	bool populate;
 
@@ -305,6 +317,8 @@ SYSCALL_DEFINE1(brk, unsigned long, brk)
 #else
 	min_brk = mm->start_brk;
 #endif
+	// 检查 brk 系统调用参数是否合法（防止非法分配，造成数据访问冲突）
+	// 以为 min_brk 之下的空间属于进程代码段和数据段
 	if (brk < min_brk)
 		goto out;
 
@@ -318,25 +332,34 @@ SYSCALL_DEFINE1(brk, unsigned long, brk)
 			      mm->end_data, mm->start_data))
 		goto out;
 
+	// brk 系统调用在分配虚拟地址空间的时候是以页为单位的
 	newbrk = PAGE_ALIGN(brk);
 	oldbrk = PAGE_ALIGN(mm->brk);
 	if (oldbrk == newbrk)
 		goto set_brk;
 
 	/* Always allow shrinking brk. */
+	// 因为 brk 表示的是当前动态分配区的底部 mm->brk 和我们想要分配内存空间大小之和
+	// 所以如果 brk 小于 mm->brk，表示当前执行的是释放内存
 	if (brk <= mm->brk) {
+		
+		// 解除指定进程地址空间中的一段虚拟内存块到物理内存块的映射关系，并释放相关
+		// 数据结构占用的内存空间
 		if (!do_munmap(mm, newbrk, oldbrk-newbrk))
 			goto set_brk;
 		goto out;
 	}
 
 	/* Check against existing mmap mappings. */
-	// 在指定的进程地址空间内查找和指定的（start_addr - end_addr）地址范围有相交的 vma 数据结构
-	// 并返回这个数据结构的地址
+	// 通过老边界在指定的进程地址空间内查找并判断是否存在一个 vma 和这个地址有重叠部分
+	// 如果有地址重叠部分，表示老边界为起始的空间已经使用了，所以就无需在申请了
 	if (find_vma_intersection(mm, oldbrk, newbrk+PAGE_SIZE))
 		goto out;
 
 	/* Ok, looks good - let it rip. */
+	// 从当前进程的地址空间中申请指定地址段（addr - len）的虚拟内存块
+	// 如果申请成功，把申请的虚拟地址块添加到当前进程的地址空间中并
+	// 返回我们申请到的虚拟内存块的起始地址
 	if (do_brk(oldbrk, newbrk-oldbrk) != oldbrk)
 		goto out;
 
@@ -564,9 +587,12 @@ anon_vma_interval_tree_post_update_vma(struct vm_area_struct *vma)
 		anon_vma_interval_tree_insert(avc, &avc->anon_vma->rb_root);
 }
 
+// 功能描述：
 // 从指定的进程地址空间红黑树根节点开始遍历，判断当前树中的每一个 vma
 // 和我们指定的地址范围（addr - end）是否存在重叠部分，如果没有任何重叠
 // 地址，则在红黑树上找到合适的树节点位置
+//
+// 返回值描述：
 // __rb_link 记录了我们指定的虚拟地址块（addr - end）所对应的 vma 结构应该链接在树中节点位置的地址
 // rb_prev 记录我们指定的地址范围（addr - end）所代表的 vma 的前一个 vma 的地址
 // __rb_parent 记录我们指定的地址范围（addr - end）所代表的 vma 在红黑树中，其父节点的地址
@@ -787,7 +813,8 @@ __vma_unlink(struct mm_struct *mm, struct vm_area_struct *vma,
  * before we drop the necessary locks.
  */
 // 功能描述：
-// 把指定的 vma 结构参数调整成我们想要的目标值
+// 把指定的 vma 结构参数调整成我们想要的目标值，如果是进程地址空间收缩操作
+// 则会释放我们回收的那部分虚拟地址块所占用的内存资源
 // 
 // 参数描述： 
 // vma 表示需要调整的 vma 结构
@@ -1147,6 +1174,9 @@ can_vma_merge_after(struct vm_area_struct *vma, unsigned long vm_flags,
  * Odd one out? Case 8, because it extends NNNN but needs flags of XXXX:
  * mprotect_fixup updates vm_flags & vm_page_prot on successful return.
  */
+// 功能描述：
+// 把指定的虚拟地址块合并到指定的进程地址空间中
+//
 // 参数描述：
 // mm 描述要添加新区域进程的内存空间
 // prev 指向当前区域之前的一个内存区域
@@ -2147,6 +2177,10 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 }
 #endif
 
+// 先判断当前正在运行的进程地址空间中的指定地址块（addr - len）是否处于
+// 非映射状态，如果处于映射状态则返回错误，如果处于非映射状态并且申请成功
+// 则返回我们申请到的地址块的起始地址（这个函数可以保证申请到的虚拟地址块
+// 不会和当前的进程地址空间有任何重叠部分）
 unsigned long
 get_unmapped_area(struct file *file, unsigned long addr, unsigned long len,
 		unsigned long pgoff, unsigned long flags)
@@ -2564,6 +2598,7 @@ static void remove_vma_list(struct mm_struct *mm, struct vm_area_struct *vma)
  *
  * Called with the mm semaphore held.
  */
+// 删除指定虚拟内存区域的页表信息，解除映射关系并释放相关的物理内存
 static void unmap_region(struct mm_struct *mm,
 		struct vm_area_struct *vma, struct vm_area_struct *prev,
 		unsigned long start, unsigned long end)
@@ -2615,6 +2650,14 @@ detach_vmas_to_be_unmapped(struct mm_struct *mm, struct vm_area_struct *vma,
  * __split_vma() bypasses sysctl_max_map_count checking.  We use this on the
  * munmap path where it doesn't make sense to fail.
  */
+// 把指定进程地址空间中的某个 vma 做分割处理，只留其中的一部分地址块
+//
+// 参数描述：
+// mm 表示 vma 所属的进程地址空间
+// vma 表示被分割的地址块
+// addr 表示在 vma 地址块中进行分割的位置
+// new_below 表示留下的地址块是前面一部分还是后面一部分，为 1 表示保留前部分
+// 为 0 表示保留后部分
 static int __split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 	      unsigned long addr, int new_below)
 {
@@ -2625,6 +2668,7 @@ static int __split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 					~(huge_page_mask(hstate_vma(vma)))))
 		return -EINVAL;
 
+	// 
 	new = kmem_cache_alloc(vm_area_cachep, GFP_KERNEL);
 	if (!new)
 		goto out_err;
@@ -2634,6 +2678,7 @@ static int __split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 
 	INIT_LIST_HEAD(&new->anon_vma_chain);
 
+	// 计算分割后，保留下来的 vma 地址块边界地址
 	if (new_below)
 		new->vm_end = addr;
 	else {
@@ -2641,10 +2686,12 @@ static int __split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 		new->vm_pgoff += ((addr - vma->vm_start) >> PAGE_SHIFT);
 	}
 
+	// 复制内存分配策略相关信息
 	err = vma_dup_policy(vma, new);
 	if (err)
 		goto out_free_vma;
 
+	// 复制 anon_vma 相关信息
 	err = anon_vma_clone(new, vma);
 	if (err)
 		goto out_free_mpol;
@@ -2655,6 +2702,7 @@ static int __split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
 	if (new->vm_ops && new->vm_ops->open)
 		new->vm_ops->open(new);
 
+	// 开始分割指定的 vma 地址块，只留下我们想要的那部分虚拟地址块（new）
 	if (new_below)
 		err = vma_adjust(vma, addr, vma->vm_end, vma->vm_pgoff +
 			((addr - new->vm_start) >> PAGE_SHIFT), new);
@@ -2697,6 +2745,8 @@ int split_vma(struct mm_struct *mm, struct vm_area_struct *vma,
  * work.  This now handles partial unmappings.
  * Jeremy Fitzhardinge <jeremy@goop.org>
  */
+// 解除指定进程地址空间中的一段虚拟内存块到物理内存块的映射关系，并释放相关
+// 数据结构占用的物理内存空间
 int do_munmap(struct mm_struct *mm, unsigned long start, size_t len)
 {
 	unsigned long end;
@@ -2739,6 +2789,7 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len)
 		if (end < vma->vm_end && mm->map_count >= sysctl_max_map_count)
 			return -ENOMEM;
 
+		// 以解除映射的虚拟地址块起始地址为边界，开始执行 vma 分割操作
 		error = __split_vma(mm, vma, start, 0);
 		if (error)
 			return error;
@@ -2748,6 +2799,7 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len)
 	/* Does it split the last one? */
 	last = find_vma(mm, end);
 	if (last && end > last->vm_start) {
+		// 以解除映射的虚拟地址块结束地址为边界，开始执行 vma 分割操作
 		int error = __split_vma(mm, last, end, 1);
 		if (error)
 			return error;
@@ -2772,6 +2824,8 @@ int do_munmap(struct mm_struct *mm, unsigned long start, size_t len)
 	 * Remove the vma's, and unmap the actual pages
 	 */
 	detach_vmas_to_be_unmapped(mm, vma, prev, end);
+
+	// 删除指定虚拟内存区域的页表信息，解除映射关系并释放相关的物理内存
 	unmap_region(mm, vma, prev, start, end);
 
 	arch_unmap(mm, vma, start, end);
@@ -2884,6 +2938,9 @@ static inline void verify_mm_writelocked(struct mm_struct *mm)
  *  anonymous maps.  eventually we may be able to do some
  *  brk-specific accounting here.
  */
+// 从当前进程的地址空间中申请指定地址段（addr - len）的虚拟内存块
+// 如果申请成功，把申请的虚拟地址块添加到当前进程的地址空间中并
+// 返回我们申请到的虚拟内存块的起始地址
 static unsigned long do_brk(unsigned long addr, unsigned long len)
 {
 	struct mm_struct *mm = current->mm;
@@ -2893,12 +2950,17 @@ static unsigned long do_brk(unsigned long addr, unsigned long len)
 	pgoff_t pgoff = addr >> PAGE_SHIFT;
 	int error;
 
+	// 计算需要申请的内存地址块按照页向上对齐的页数
 	len = PAGE_ALIGN(len);
 	if (!len)
 		return addr;
 
 	flags = VM_DATA_DEFAULT_FLAGS | VM_ACCOUNT | mm->def_flags;
 
+	// 先判断当前正在运行的进程地址空间中的指定地址块（addr - len）是否处于
+	// 非映射状态，如果处于映射状态则返回错误，如果处于非映射状态并且申请成功
+	// 则返回我们申请到的地址块的起始地址（这个函数可以保证申请到的虚拟地址块
+	// 不会和当前的进程地址空间有任何重叠部分）
 	error = get_unmapped_area(NULL, addr, len, 0, MAP_FIXED);
 	if (error & ~PAGE_MASK)
 		return error;
@@ -2917,6 +2979,9 @@ static unsigned long do_brk(unsigned long addr, unsigned long len)
 	 * Clear old maps.  this also does some error checking for us
 	 */
  munmap_back:
+ 	// 从指定的进程地址空间红黑树根节点开始遍历，判断当前树中的每一个 vma
+	// 和我们指定的地址范围（addr - end）是否存在重叠部分，如果没有任何重叠
+	// 地址，则在红黑树上找到合适的树节点位置
 	if (find_vma_links(mm, addr, addr + len, &prev, &rb_link, &rb_parent)) {
 		if (do_munmap(mm, addr, len))
 			return -ENOMEM;
@@ -2934,14 +2999,20 @@ static unsigned long do_brk(unsigned long addr, unsigned long len)
 		return -ENOMEM;
 
 	/* Can we just expand an old private anonymous mapping? */
+	// 如果我们可以把新的虚拟内存地址块合并到已经存在的 vma 中，这样我们
+	// 把新的虚拟内存块直接合并到进程地址空间中，然后直接返回，不需要申请
+	// 新的 vma 数据结构空间
 	vma = vma_merge(mm, prev, addr, addr + len, flags,
 					NULL, NULL, pgoff, NULL);
+	// 返回值 vma 为非 NULL 表示合并成功，否则合并失败
 	if (vma)
 		goto out;
 
 	/*
 	 * create a vma struct for an anonymous mapping
 	 */
+	// 如果我们无法把新的虚拟地址块合并到已经存在的 vma 中，则重新申请并
+	// 初始化一个新的 vma，然后把这个 vma 添加到当前指定的进程地址空间中
 	vma = kmem_cache_zalloc(vm_area_cachep, GFP_KERNEL);
 	if (!vma) {
 		vm_unacct_memory(len >> PAGE_SHIFT);

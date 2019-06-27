@@ -423,8 +423,8 @@ struct mm_struct {
 	pgd_t * pgd;
 	atomic_t mm_users;			/* How many users with user space? */
 	atomic_t mm_count;			/* How many references to "struct mm_struct" (users count as 1) */
-	atomic_long_t nr_ptes;			/* PTE page table pages */
-	atomic_long_t nr_pmds;			/* PMD page table pages */
+	atomic_long_t nr_ptes;		/* PTE page table pages */
+	atomic_long_t nr_pmds;		/* PMD page table pages */
 
 	// 在当前进程地址空间中包含的 vma 个数，在每次插入 vma 的时候都加一
 	int map_count;				/* number of VMAs */
@@ -433,10 +433,9 @@ struct mm_struct {
 	struct rw_semaphore mmap_sem;
 
 	struct list_head mmlist;		/* List of maybe swapped mm's.	These are globally strung
-						 * together off init_mm.mmlist, and are protected
-						 * by mmlist_lock
-						 */
-
+						             * together off init_mm.mmlist, and are protected
+						             * by mmlist_lock
+						             */
 
 	unsigned long hiwater_rss;	/* High-watermark of RSS usage */
 	unsigned long hiwater_vm;	/* High-water virtual memory usage */
@@ -448,8 +447,37 @@ struct mm_struct {
 	unsigned long exec_vm;		/* VM_EXEC & ~VM_WRITE */
 	unsigned long stack_vm;		/* VM_GROWSUP/DOWN */
 	unsigned long def_flags;
+
+	// 一个进程的地址空间分配结构如下：
+	//    4G   	 -------------------
+	//
+	//               内核地址空间
+	//
+	//    3G   	 ------------------- start_stack
+	//               满递减用户栈
+	//      	 -------------------    
+	//      
+	//         	     mmap分配空间
+	//
+	//    1G   	 -------------------
+	//
+	//                  堆空间
+	//
+	// start brk ------------------- end_data/start_brk
+	//                  数据段
+	//           ------------------- end_code/start_data
+	//                  代码段
+	//      	 ------------------- start_code
+	//                  保留区
+	//     0   	 -------------------
+	//
+	// 分别记录当前用户进程代码段起始地址、代码段结束地址、数据段起始地址和数据段结束地址
 	unsigned long start_code, end_code, start_data, end_data;
+
+	// 分别记录当前用户进程 brk 分区的起始地址、动态分配区的当前底部和用户进程栈起始地址
 	unsigned long start_brk, brk, start_stack;
+
+	// 分别记录当前用户进程启动参数起始地址，启动参数结束地址、环境变量起始地址和环境变量结束地址
 	unsigned long arg_start, arg_end, env_start, env_end;
 
 	unsigned long saved_auxv[AT_VECTOR_SIZE]; /* for /proc/PID/auxv */

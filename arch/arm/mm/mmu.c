@@ -1353,6 +1353,7 @@ static void __init kmap_init(void)
 			_PAGE_KERNEL_TABLE);
 }
 
+// 遍历系统内核空间所有内存 bank 并创建一一映射
 static void __init map_lowmem(void)
 {
 	struct memblock_region *reg;
