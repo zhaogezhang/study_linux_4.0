@@ -667,35 +667,59 @@ static int do_mlock(unsigned long start, size_t len, int on)
  * flags. VMAs must be already marked with the desired vm_flags, and
  * mmap_sem must not be held.
  */
+// 功能描述：
+// 这个函数的主要逻辑，就是找到指定的虚拟地址范围内的所有 vma，并把它们分配页面了
+// 另外，这里需要注意一点，在执行这段函数的过程中，是需要使用信号量 mm->mmap_sem 的
+// 如果这里需要处理的地址空间比较大，那么就意味着 mm->mmap_sem 被占用的时间会比较长
+//
+// 参数描述：
+// start 表示虚拟地址范围的起始地址
+// len 表示虚拟地址范围的长度
+// ignore_errors 表示是否忽略 mlock 操作错误
 int __mm_populate(unsigned long start, unsigned long len, int ignore_errors)
 {
 	struct mm_struct *mm = current->mm;
 	unsigned long end, nstart, nend;
 	struct vm_area_struct *vma = NULL;
+
+	// 在我们遍历整个虚拟地址范围内的 vma 时，查找并操作第一个 vma 的时候需要持有
+	// mm->mmap_sem 锁，而后续所有操作无需再次获取锁、只需移动到下一个 vma 即可
+	// 这个变量用来表示我们是否是持锁状态、即
 	int locked = 0;
+
 	long ret = 0;
 
 	VM_BUG_ON(start & ~PAGE_MASK);
 	VM_BUG_ON(len != PAGE_ALIGN(len));
+
+	// 计算指定虚拟地址空间的结束地址
 	end = start + len;
 
+	// 分别遍历指定虚拟地址空间内对应的每一个 vma 结构
 	for (nstart = start; nstart < end; nstart = nend) {
 		/*
 		 * We want to fault in pages for [nstart; end) address range.
 		 * Find first corresponding VMA.
 		 */
 		if (!locked) {
+			// for 循环第一次执行，上锁并查找指定虚拟地址空间内的第一个 vma
 			locked = 1;
 			down_read(&mm->mmap_sem);
 			vma = find_vma(mm, nstart);
 		} else if (nstart >= vma->vm_end)
+			// for 循环从第二次开始，直接移动到下一个 vma 即可（因为在第一次
+			// 的时候已经获取了操作锁            mm->mmap_sem）
 			vma = vma->vm_next;
+
+		// 如果当前 vma 代表的地址空间已经不在我们指定的范围内，表示遍历结束
+		// 我们直接退出即可
 		if (!vma || vma->vm_start >= end)
 			break;
 		/*
 		 * Set [nstart; nend) to intersection of desired address
 		 * range with the first VMA. Also, skip undesirable VMA types.
 		 */
+		// 设置遍历当前 vma 的虚拟地址块的 nstart 和 nend 信息
 		nend = min(end, vma->vm_end);
 		if (vma->vm_flags & (VM_IO | VM_PFNMAP))
 			continue;
@@ -718,8 +742,11 @@ int __mm_populate(unsigned long start, unsigned long len, int ignore_errors)
 		nend = nstart + ret * PAGE_SIZE;
 		ret = 0;
 	}
+
+	// 如果已经持有 mm->mmap_sem 锁，则释放
 	if (locked)
 		up_read(&mm->mmap_sem);
+	
 	return ret;	/* 0 or negative error code */
 }
 
