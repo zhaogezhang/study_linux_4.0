@@ -368,6 +368,7 @@ set_brk:
 	populate = newbrk > oldbrk && (mm->def_flags & VM_LOCKED) != 0;
 	up_write(&mm->mmap_sem);
 	if (populate)
+		// 为指定的 vma 分配物理内存并添加映射关系
 		mm_populate(oldbrk, newbrk - oldbrk);
 	return brk;
 
@@ -2216,6 +2217,8 @@ get_unmapped_area(struct file *file, unsigned long addr, unsigned long len,
 EXPORT_SYMBOL(get_unmapped_area);
 
 /* Look up the first VMA which satisfies  addr < vm_end,  NULL if none. */
+// 在指定的进程地址空间内，查找满足 addr < vma->vm_end 的 vma 结构，并返回找到
+// 的 vma 结构地址（需要注意的是找到的 vma->start 也可能大于 addr）
 struct vm_area_struct *find_vma(struct mm_struct *mm, unsigned long addr)
 {
 	struct rb_node *rb_node;
@@ -2297,6 +2300,12 @@ find_vma_prev(struct mm_struct *mm, unsigned long addr,
  * update accounting. This is shared with both the
  * grow-up and grow-down cases.
  */
+// 判断指定的栈地址空间（vma）是否可以执行空间扩展操作
+//
+// 参数描述：
+// vma 代表着栈空间描述的数据结构
+// size 表示扩展后的栈空间大小
+// grow 表示此次需要扩展的地址内存页数
 static int acct_stack_growth(struct vm_area_struct *vma, unsigned long size, unsigned long grow)
 {
 	struct mm_struct *mm = vma->vm_mm;
@@ -2311,6 +2320,9 @@ static int acct_stack_growth(struct vm_area_struct *vma, unsigned long size, uns
 	actual_size = size;
 	if (size && (vma->vm_flags & (VM_GROWSUP | VM_GROWSDOWN)))
 		actual_size -= PAGE_SIZE;
+
+	// 判断当前已经使用的栈空间是否超出了系统限定大小，如果超出了
+	// 则返回 -NOMEM
 	if (actual_size > ACCESS_ONCE(rlim[RLIMIT_STACK].rlim_cur))
 		return -ENOMEM;
 
@@ -2350,6 +2362,9 @@ static int acct_stack_growth(struct vm_area_struct *vma, unsigned long size, uns
  * PA-RISC uses this for its stack; IA64 for its Register Backing Store.
  * vma is the last one with address > vma->vm_end.  Have to extend vma.
  */
+// 向上扩展指定的 vma 虚拟地址空间范围的结束地址（vma->end）到我们指定的
+// 位置（address）处（address > vma->start），并更新扩展后的 vma 在红黑树
+// 上的位置
 int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 {
 	int error;
@@ -2383,11 +2398,16 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 	if (address > vma->vm_end) {
 		unsigned long size, grow;
 
+		// 计算扩展后的 vma 所表示的地址空间大小
 		size = address - vma->vm_start;
+
+		// 计算我们需要扩展的地址空间的虚拟内存页数
 		grow = (address - vma->vm_end) >> PAGE_SHIFT;
 
 		error = -ENOMEM;
 		if (vma->vm_pgoff + (size >> PAGE_SHIFT) >= vma->vm_pgoff) {
+
+			// 判断指定的栈地址空间（vma）是否可以执行空间扩展操作
 			error = acct_stack_growth(vma, size, grow);
 			if (!error) {
 				/*
@@ -2401,6 +2421,8 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 				 * So, we reuse mm->page_table_lock to guard
 				 * against concurrent vma expansions.
 				 */
+				// 把指定的 vma 从红黑树上移除，然后修改相关参数数据
+				// 修改之后再把新的 vma 结构重新插入到红黑树上
 				spin_lock(&vma->vm_mm->page_table_lock);
 				anon_vma_interval_tree_pre_update_vma(vma);
 				vma->vm_end = address;
@@ -2417,6 +2439,8 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 	}
 	vma_unlock_anon_vma(vma);
 	khugepaged_enter_vma_merge(vma, vma->vm_flags);
+
+	// 校验指定的进程地址空间中相关参数是否有效
 	validate_mm(vma->vm_mm);
 	return error;
 }
@@ -2425,6 +2449,9 @@ int expand_upwards(struct vm_area_struct *vma, unsigned long address)
 /*
  * vma is the first one with address < vma->vm_start.  Have to extend vma.
  */
+// 向下扩展指定的 vma 虚拟地址空间范围的起始地址（vma->start）到我们指定的
+// 位置（address）处（address < vma->start），并更新扩展后的 vma 在红黑树
+// 上的位置
 int expand_downwards(struct vm_area_struct *vma,
 				   unsigned long address)
 {
@@ -2454,11 +2481,16 @@ int expand_downwards(struct vm_area_struct *vma,
 	if (address < vma->vm_start) {
 		unsigned long size, grow;
 
+		// 计算扩展后，vma 表示的地址空间大小
 		size = vma->vm_end - address;
+
+		// 计算我们需要扩展的虚拟地址内存页数
 		grow = (vma->vm_start - address) >> PAGE_SHIFT;
 
 		error = -ENOMEM;
 		if (grow <= vma->vm_pgoff) {
+			
+			// 判断指定的栈地址空间（vma）是否可以执行空间扩展操作
 			error = acct_stack_growth(vma, size, grow);
 			if (!error) {
 				/*
@@ -2472,6 +2504,8 @@ int expand_downwards(struct vm_area_struct *vma,
 				 * So, we reuse mm->page_table_lock to guard
 				 * against concurrent vma expansions.
 				 */
+				// 把指定的 vma 从红黑树上移除，然后修改相关参数数据
+				// 修改之后再把新的 vma 结构重新插入到红黑树上
 				spin_lock(&vma->vm_mm->page_table_lock);
 				anon_vma_interval_tree_pre_update_vma(vma);
 				vma->vm_start = address;
@@ -2486,6 +2520,8 @@ int expand_downwards(struct vm_area_struct *vma,
 	}
 	vma_unlock_anon_vma(vma);
 	khugepaged_enter_vma_merge(vma, vma->vm_flags);
+
+	// 扩展完 vma 结构后，检查指定的进程地址空间参数是否有效
 	validate_mm(vma->vm_mm);
 	return error;
 }
@@ -2501,7 +2537,22 @@ int expand_downwards(struct vm_area_struct *vma,
  * check_stack_guard_page()), which only allows the guard page to be
  * removed under these circumstances.
  */
+// 进程在运行的过程中，通过不断向栈区压入数据，当超出栈区容量时，就会耗尽
+// 栈所对应的内存区域，这将触发一个缺页异常 (page fault)。通过异常陷入内核
+// 态后，异常会被内核的 expand_stack() 函数处理，进而调用 acct_stack_growth() 
+// 来检查是否还有合适的地方用于栈的增长。
+// 如果栈的大小低于 RLIMIT_STACK（通常为8MB），那么一般情况下栈会被加长，程序
+// 继续执行，感觉不到发生了什么事情，这是一种将栈扩展到所需大小的常规机制。然而
+// 如果达到了最大栈空间的大小，就会发生栈溢出（stack overflow），进程将会收到内
+// 核发出的段错误（segmentation fault）信号。
+// 动态栈增长是唯一一种访问未映射内存区域而被允许的情形，其他任何对未映射内存
+// 区域的访问都会触发页错误，从而导致段错误。一些被映射的区域是只读的，因此企图
+// 写这些区域也会导致段错误。
+
 #ifdef CONFIG_STACK_GROWSUP
+// 向上扩展指定的栈空间（vma）虚拟地址空间范围的结束地址（vma->end）到我们
+// 指定的位置（address）处（address > vma->start），并更新扩展后的 vma 在
+// 红黑树上的位置
 int expand_stack(struct vm_area_struct *vma, unsigned long address)
 {
 	struct vm_area_struct *next;
@@ -2512,6 +2563,10 @@ int expand_stack(struct vm_area_struct *vma, unsigned long address)
 		if (!(next->vm_flags & VM_GROWSUP))
 			return -ENOMEM;
 	}
+
+	// 向上扩展指定的 vma 虚拟地址空间范围的结束地址（vma->end）到我们指定的
+	// 位置（address）处（address > vma->start），并更新扩展后的 vma 在红黑树
+	// 上的位置
 	return expand_upwards(vma, address);
 }
 
@@ -2531,36 +2586,73 @@ find_extend_vma(struct mm_struct *mm, unsigned long addr)
 	return prev;
 }
 #else
+// 向下扩展指定的栈空间（vma）虚拟地址空间范围的起始地址（vma->start）到我
+// 们指定的位置（address）处（address < vma->start），并更新扩展后的 vma
+// 在红黑树上的位置
 int expand_stack(struct vm_area_struct *vma, unsigned long address)
 {
 	struct vm_area_struct *prev;
 
+	// address 按页向下对齐
 	address &= PAGE_MASK;
+	
 	prev = vma->vm_prev;
+
 	if (prev && prev->vm_end == address) {
 		if (!(prev->vm_flags & VM_GROWSDOWN))
 			return -ENOMEM;
 	}
+
+	// 向下扩展指定的 vma 虚拟地址空间范围的起始地址（vma->start）到我们指定的
+	// 位置（address）处（address < vma->start），并更新扩展后的 vma 在红黑树
+	// 上的位置
 	return expand_downwards(vma, address);
 }
 
+// 功能描述：
+// 在指定的进程地址空间内查找满足 vma->start <= addr && addr <= vma->end
+// 的 vma 结构，如果没能直接在已有的 vma 中找到满足条件的 vma，则通过扩展
+// vma 的地址空间范围到我们指定的地址处，然后返回扩展后的 vma 结构地址
+// 
+// 参数描述：
+// mm 表示我们要查找 vma 的进程地址空间
+// addr 表示我们要查找的虚拟地址
+//
+// 返回值描述：
+// vma 表示找到满足条件的 vma 结构地址
+// NULL 表示没找到满足条件的 vma 结构
 struct vm_area_struct *
 find_extend_vma(struct mm_struct *mm, unsigned long addr)
 {
 	struct vm_area_struct *vma;
 	unsigned long start;
 
+	// 地址按页向下对齐
 	addr &= PAGE_MASK;
+	
+	// 在指定的进程地址空间内，查找包含 addr 虚拟地址的 vma 结构，并返回找到
+	// 的 vma 结构地址
 	vma = find_vma(mm, addr);
 	if (!vma)
 		return NULL;
+
+	// 如果我们指定的 addr 在查找到的 vma 范围内，则直接返回这个 vma 地址
+	// 否则表示 addr < vma->start
 	if (vma->vm_start <= addr)
 		return vma;
+	
 	if (!(vma->vm_flags & VM_GROWSDOWN))
 		return NULL;
+
+	// 记录扩展 vma 地址范围前的 vma->vm_start 地址
 	start = vma->vm_start;
+
+	// 扩展指定的 vma 虚拟地址空间范围的起始地址（vma->start）到我们指
+	// 定的位置（address）处（address < vma->start），并更新扩展后的 vma
+	// 在红黑树上的位置
 	if (expand_stack(vma, addr))
 		return NULL;
+	
 	if (vma->vm_flags & VM_LOCKED)
 		__mlock_vma_pages_range(vma, addr, start, NULL);
 	return vma;

@@ -730,6 +730,7 @@ int __mm_populate(unsigned long start, unsigned long len, int ignore_errors)
 		 * double checks the vma flags, so that it won't mlock pages
 		 * if the vma was already munlocked.
 		 */
+		// 为指定的 vma 分配物理内存并添加映射
 		ret = __mlock_vma_pages_range(vma, nstart, nend, &locked);
 		if (ret < 0) {
 			if (ignore_errors) {

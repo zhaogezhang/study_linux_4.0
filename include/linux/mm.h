@@ -127,7 +127,7 @@ extern unsigned int kobjsize(const void *objp);
 #define VM_PFNMAP	0x00000400	/* Page-ranges managed without "struct page", just pure PFN */
 #define VM_DENYWRITE	0x00000800	/* ETXTBSY on write attempts.. */
 
-#define VM_LOCKED	0x00002000
+#define VM_LOCKED	0x00002000   // 表示在分配 vma 时就要为这段 vma 分配物理空间并添加映射关系
 #define VM_IO           0x00004000	/* Memory mapped I/O or similar */
 
 					/* Used by sys_madvise() */

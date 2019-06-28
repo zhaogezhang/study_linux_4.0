@@ -442,7 +442,12 @@ long __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 
 		/* first iteration or cross vma bound */
 		if (!vma || start >= vma->vm_end) {
+
+			// 在指定的进程地址空间内查找满足 vma->start <= start && start <= vma->end
+			// 的 vma 结构，如果没能直接在已有的 vma 中找到满足条件的 vma，则通过扩展
+			// vma 的地址空间范围到我们指定的地址处，然后返回扩展后的 vma 结构地址
 			vma = find_extend_vma(mm, start);
+
 			if (!vma && in_gate_area(mm, start)) {
 				int ret;
 				ret = get_gate_page(mm, start & PAGE_MASK,
@@ -492,6 +497,8 @@ retry:
 		}
 		if (IS_ERR(page))
 			return i ? i : PTR_ERR(page);
+
+		
 		if (pages) {
 			pages[i] = page;
 			flush_anon_page(vma, page, start);
