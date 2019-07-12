@@ -394,9 +394,20 @@ int pagecache_write_end(struct file *, struct address_space *mapping,
 				loff_t pos, unsigned len, unsigned copied,
 				struct page *page, void *fsdata);
 
+// 这个结构体主要在文件映射场景下使用，用来管理文件映射的内存页以及对文件内存页
+// 需要使用的所有操作函数集（匿名映射时不需要这个结构）
+// linux 中几乎所有文件的读和写操作都依赖于页高速缓存。只有在 O_DIRECT 标志置为才
+// 会出现意外：此时，I/O数据的传送绕过了页高速缓存而使用了进程用户态地址空间的缓
+// 冲区；另外，少量的数据库软件为了采用自己的磁盘高速缓存算法而使用了O_DIRECT标志
 struct address_space {
+	// 当前描述结构所属文件的 inode 指针
 	struct inode		*host;		/* owner: inode, block_device */
+
+	// 为了提高文件内存页管理效率，使用基数树管理所有相关的内存页
+	// 因为文件原始数据都是存储在磁盘类块设备上，为了快速定位相关数据页位置
+	// 所以这个地方使用了基数树来管理内存页
 	struct radix_tree_root	page_tree;	/* radix tree of all pages */
+	
 	spinlock_t		tree_lock;	/* and lock protecting it */
 	atomic_t		i_mmap_writable;/* count VM_SHARED mappings */
 	struct rb_root		i_mmap;		/* tree of private and shared mappings */
@@ -405,7 +416,12 @@ struct address_space {
 	unsigned long		nrpages;	/* number of total pages */
 	unsigned long		nrshadows;	/* number of shadow entries */
 	pgoff_t			writeback_index;/* writeback starts here */
+
+	// 对指定文件相关的所有操作函数集，实现了区分不同所有者页的不同读写操作
+	// 如普通文件、块设备文件、交换区文件读一个数据页必须使用不同的方式实现
+	// 所以内核根据页的不同所有者执行不同的操作。
 	const struct address_space_operations *a_ops;	/* methods */
+	
 	unsigned long		flags;		/* error bits/gfp mask */
 	spinlock_t		private_lock;	/* for use by the address_space */
 	struct list_head	private_list;	/* ditto */
