@@ -295,6 +295,11 @@ enum zone_watermarks {
 #define high_wmark_pages(z) (z->watermark[WMARK_HIGH])
 
 // 在每个 cpu 上都会缓存独立的 page 信息，这样可以提高内存管理系统效率
+// 当申请内存者只需要一个页框时，内核会从每 CPU 高速缓存中相应类型的单页框
+// 链表中获取一个页框交给申请者，这样的好处是，在释放单个页框时会放入每 CPU
+// 高速缓存链表，如果这时有需要申请单个页框，就把这个刚刚释放的页框交付出去
+// 因为这个页框可能还存在于 cache 中，处理时就可直接处理 cache 而不用把这个
+// 页框再放入 cache 中，提高了 cache 的命中率
 struct per_cpu_pages {
 	// 当前 CPU 高速缓存中页框个数
 	int count;		/* number of pages in the list */

@@ -61,6 +61,13 @@ struct page {
 	union {
 		// 在不同场景下，mapping 指向不同类型变量，我们是通过这个变量的低位判断的
 		// 详细的描述请参考 PAGE_MAPPING_ANON
+		
+        /* 
+         * 最低两位用于判断类型，其他位数用于保存指向的地址
+         * 如果为空，则该页属于交换高速缓存（swap cache，swap 时会产生竞争条件，用 swap cache 解决）  
+         * 不为空，如果最低位为 1，该页为匿名页，指向对应的 anon_vma （分配时需要对齐）
+         * 不为空，如果最低位为 0，则该页为文件页，指向文件的 address_space
+         */
 		struct address_space *mapping;	/* If low bit clear, points to
 						                 * inode address_space, or NULL.
 						                 * If page mapped as anonymous
@@ -195,12 +202,12 @@ struct page {
 	/* Remainder is not double word aligned */
 	union {
 		unsigned long private;		/* Mapping-private opaque data:
-					 	 * usually used for buffer_heads
-						 * if PagePrivate set; used for
-						 * swp_entry_t if PageSwapCache;
-						 * indicates order in the buddy
-						 * system if PG_buddy is set.
-						 */
+					 	             * usually used for buffer_heads
+						             * if PagePrivate set; used for
+						             * swp_entry_t if PageSwapCache;
+						             * indicates order in the buddy
+						             * system if PG_buddy is set.
+						             */
 #if USE_SPLIT_PTE_PTLOCKS
 #if ALLOC_SPLIT_PTLOCKS
 		spinlock_t *ptl;
@@ -311,12 +318,18 @@ struct vm_area_struct {
 	 * VMAs below us in the VMA rbtree and its ->vm_prev. This helps
 	 * get_unmapped_area find a free area of the right size.
 	 */
+	// 在整个 vma 线性地址空间中，记录在当前 vma 地址空间之前，最大的、空闲地址
+	// 空间块所代表的地址大小，在分配空闲 vma 的时候会使用到
 	unsigned long rb_subtree_gap;
 
 	/* Second cache line starts here. */
 
+	// 指向当前 vma 所属进程的内存空间描述符
 	struct mm_struct *vm_mm;	/* The address space we belong to. */
+
+	// 页表项标志的初值，当增加一个页时，内核根据这个字段的值设置相应页表项中的标志
 	pgprot_t vm_page_prot;		/* Access permissions of this VMA. */
+	
 	unsigned long vm_flags;		/* Flags, see mm.h. */
 
 	/*
@@ -334,20 +347,21 @@ struct vm_area_struct {
 	 * can only be in the i_mmap tree.  An anonymous MAP_PRIVATE, stack
 	 * or brk vma (with NULL file) can only be in an anon_vma list.
 	 */
-	// 这两个成员主要是在反向映射中使用，anon_vma_chain 表示当前
-	// vma 中所有 anon_vma 成员的链表头，anon_vma 表示
+	// 这个变量会和 struct anon_vma_chain 结构体中的 same_vma 变量形成一个链表
 	struct list_head anon_vma_chain; /* Serialized by mmap_sem &
 					                  * page_table_lock */
+
+	// anon_vma 变量会指向和当前 vma 相关的 struct anon_vma 结构
 	struct anon_vma *anon_vma;	     /* Serialized by page_table_lock */
 
 	/* Function pointers to deal with this struct. */
 	const struct vm_operations_struct *vm_ops;
 
 	/* Information about our backing store: */
-	// 如果当前 vma 是文件映射，用这个字段表示当前 vma->vm_start 在所映射
-	// 的文件内的偏移量，这个偏移量是以物理内存页大小为单位的。如果当前 vma 
-	// 是匿名映射，则用这个字段表示当前 vmavma->vm_start 按照物理内存页为单位
-	// 所对应的偏移量
+	// 如果当前 vma 是文件映射，用这个字段表示当前 vma 的 vma->vm_start 在所映
+	// 射的文件内的偏移量，这个偏移量是以物理内存页大小为单位的。如果当前 vma 
+	// 是匿名映射，则用这个字段表示当前 vma 的 vma->vm_start 按照物理内存页为
+	// 单位在整个物理内存空间中所对应的偏移量
 	unsigned long vm_pgoff;		/* Offset (within vm_file) in PAGE_SIZE
 					               units, *not* PAGE_CACHE_SIZE */
 
@@ -419,8 +433,10 @@ struct mm_struct {
 
 	// 记录当前进程地址空间中，最大的有效虚拟地址值
 	unsigned long highest_vm_end;		/* highest vma end address */
-	
+
+	// 记录当前进程的 pgd（页全局目录）数据指针
 	pgd_t * pgd;
+	
 	atomic_t mm_users;			/* How many users with user space? */
 	atomic_t mm_count;			/* How many references to "struct mm_struct" (users count as 1) */
 	atomic_long_t nr_ptes;		/* PTE page table pages */
@@ -440,12 +456,23 @@ struct mm_struct {
 	unsigned long hiwater_rss;	/* High-watermark of RSS usage */
 	unsigned long hiwater_vm;	/* High-water virtual memory usage */
 
+	// 当前进程映射的所有 vma 地址空间大小所占用的内存页数量
 	unsigned long total_vm;		/* Total pages mapped */
+
+	// 当亲进程映射的 vma 地址空间中，被锁住不能被换出的内存页数量
 	unsigned long locked_vm;	/* Pages that have PG_mlocked set */
+	
 	unsigned long pinned_vm;	/* Refcount permanently increased */
+
+	// 当亲进程映射的 vma 地址空间中，用作共享文件映射的内存页数量
 	unsigned long shared_vm;	/* Shared pages (files) */
+
+	// 当亲进程映射的 vma 地址空间中，用作可执行文件映射的内存页数量
 	unsigned long exec_vm;		/* VM_EXEC & ~VM_WRITE */
+
+	// 当亲进程映射的 vma 地址空间中，用作用户进程堆栈映射的内存页数量
 	unsigned long stack_vm;		/* VM_GROWSUP/DOWN */
+	
 	unsigned long def_flags;
 
 	// 一个进程的地址空间分配结构如下：
@@ -517,7 +544,9 @@ struct mm_struct {
 #endif
 
 	/* store ref to file /proc/<pid>/exe symlink points to */
+	// 当前进程的可执行文件对应的文件结构指针
 	struct file *exe_file;
+
 #ifdef CONFIG_MMU_NOTIFIER
 	struct mmu_notifier_mm *mmu_notifier_mm;
 #endif

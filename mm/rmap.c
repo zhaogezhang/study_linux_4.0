@@ -662,6 +662,8 @@ out:
  *
  * On success returns with pte mapped and locked.
  */
+// 在指定的地址空间中（mm），检查指定的虚拟地址（address）映射的是否是指定的物理内存页（page）
+// 如果校验成功，则返回对应的 pte 指针，如果校验失败则返回 NULL
 pte_t *__page_check_address(struct page *page, struct mm_struct *mm,
 			  unsigned long address, spinlock_t **ptlp, int sync)
 {
@@ -1194,6 +1196,8 @@ void page_remove_rmap(struct page *page)
 /*
  * @arg: enum ttu_flags will be passed to this argument
  */
+// 在指定的地址空间中（mm），检查指定的虚拟地址（address）映射的是否是指定的物理内存页（page）
+// 如果校验成功，则清除指定 pte 页表项中的数据内容，解除虚拟地址到物理地址的映射关系
 static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 		     unsigned long address, void *arg)
 {
@@ -1204,6 +1208,8 @@ static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 	int ret = SWAP_AGAIN;
 	enum ttu_flags flags = (enum ttu_flags)arg;
 
+	// 在指定的地址空间中（mm），检查指定的虚拟地址（address）映射的是否是指定的物理内存页（page）
+	// 如果校验成功，则返回对应的 pte 指针，如果校验失败则返回 NULL
 	pte = page_check_address(page, mm, address, &ptl, 0);
 	if (!pte)
 		goto out;
@@ -1229,6 +1235,8 @@ static int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 
 	/* Nuke the page table entry. */
 	flush_cache_page(vma, address, page_to_pfn(page));
+
+	// 清除指定 pte 页表项中的数据内容，解除虚拟地址到物理地址的映射关系
 	pteval = ptep_clear_flush(vma, address, pte);
 
 	/* Move the dirty bit to the physical page now the pte is gone. */

@@ -24,6 +24,10 @@
  * the anon_vma object itself: we're guaranteed no page can be
  * pointing to this anon_vma once its vma list is empty.
  */
+// 匿名映射虚拟内存块描述符，一个 struct anon_vma 和一个 struct page 相对应
+// 在执行反向映射一个物理内存页时，查找路径如下：
+// struct page -> struct anon_vma -> struct anon_vma_chain -> vma
+// 然后把每一个相关的 vma 中的对应虚拟内存页解除页表映射关系
 struct anon_vma {
 	struct anon_vma *root;		/* Root of this anon_vma tree */
 	struct rw_semaphore rwsem;	/* W: modification, R: walking the list */
@@ -54,6 +58,8 @@ struct anon_vma {
 	 * is serialized by a system wide lock only visible to
 	 * mm_take_all_locks() (mm_all_locks_mutex).
 	 */
+	// 这个变量会和 struct anon_vma_chain 结构体中的 rb 成员构成一个红黑树
+	// rb_root 为这个红黑树的根节点，rb 为红黑树中的子节点
 	struct rb_root rb_root;	/* Interval tree of private "related" vmas */
 };
 
@@ -71,10 +77,19 @@ struct anon_vma {
  * which link all the VMAs associated with this anon_vma.
  */
 struct anon_vma_chain {
+
+	// anon_vma 变量会指向和当前 anon_vma_chain 相关的 struct vm_area_struct 结构
 	struct vm_area_struct *vma;
+
+	// anon_vma 变量会指向和当前 anon_vma_chain 相关的 struct anon_vma 结构
 	struct anon_vma *anon_vma;
+
+	// 这个变量会和 struct vm_area_struct 中的 anon_vma_chain 变量构建成一个链表
 	struct list_head same_vma;   /* locked by mmap_sem & page_table_lock */
+
+	// 这个变量会和 struct anon_vma 结构体中的 rb_root 成员构成一个红黑树
 	struct rb_node rb;			/* locked by anon_vma->rwsem */
+	
 	unsigned long rb_subtree_last;
 #ifdef CONFIG_DEBUG_VM_RB
 	unsigned long cached_vma_start, cached_vma_last;
@@ -206,6 +221,8 @@ int try_to_unmap(struct page *, enum ttu_flags flags);
 pte_t *__page_check_address(struct page *, struct mm_struct *,
 				unsigned long, spinlock_t **, int);
 
+// 在指定的地址空间中（mm），检查指定的虚拟地址（address）映射的是否是指定的物理内存页（page）
+// 如果校验成功，则返回对应的 pte 指针，如果校验失败则返回 NULL
 static inline pte_t *page_check_address(struct page *page, struct mm_struct *mm,
 					unsigned long address,
 					spinlock_t **ptlp, int sync)
