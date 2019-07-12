@@ -579,6 +579,7 @@ void page_unlock_anon_vma_read(struct anon_vma *anon_vma)
 /*
  * At what user virtual address is page expected in @vma?
  */
+// 计算指定 vma 中指定的物理内存页所对应的虚拟地址
 static inline unsigned long
 __vma_address(struct page *page, struct vm_area_struct *vma)
 {
@@ -586,6 +587,7 @@ __vma_address(struct page *page, struct vm_area_struct *vma)
 	return vma->vm_start + ((pgoff - vma->vm_pgoff) << PAGE_SHIFT);
 }
 
+// 计算指定 vma 中指定的物理内存页所对应的虚拟地址，并校验虚拟地址合法性
 inline unsigned long
 vma_address(struct page *page, struct vm_area_struct *vma)
 {
@@ -1402,6 +1404,7 @@ int try_to_unmap(struct page *page, enum ttu_flags flags)
 	if ((flags & TTU_MIGRATION) && !PageKsm(page) && PageAnon(page))
 		rwc.invalid_vma = invalid_migration_vma;
 
+	// 判断指定的物理内存页的所有进程页表项，并解除每个进程到这个虚拟物理内存页的映射关系
 	ret = rmap_walk(page, &rwc);
 
 	if (ret != SWAP_MLOCK && !page_mapped(page))
@@ -1450,6 +1453,8 @@ void __put_anon_vma(struct anon_vma *anon_vma)
 		anon_vma_free(root);
 }
 
+// 检查指定的物理内存是否是匿名映射，如果是匿名映射，则返回这个物理
+// 内存页所对应的 struct anon_vma 结构
 static struct anon_vma *rmap_walk_anon_lock(struct page *page,
 					struct rmap_walk_control *rwc)
 {
@@ -1486,6 +1491,7 @@ static struct anon_vma *rmap_walk_anon_lock(struct page *page,
  * vm_flags for that VMA.  That should be OK, because that vma shouldn't be
  * LOCKED.
  */
+// 找出映射了指定匿名映射物理内存页的所有进程页表项，并解除每个进程到这个虚拟物理内存页的映射关系
 static int rmap_walk_anon(struct page *page, struct rmap_walk_control *rwc)
 {
 	struct anon_vma *anon_vma;
@@ -1493,18 +1499,25 @@ static int rmap_walk_anon(struct page *page, struct rmap_walk_control *rwc)
 	struct anon_vma_chain *avc;
 	int ret = SWAP_AGAIN;
 
+	// 返回匿名映射物理内存页对应的 struct anon_vma 结构
 	anon_vma = rmap_walk_anon_lock(page, rwc);
 	if (!anon_vma)
 		return ret;
 
+	// 获取指定的物理内存页在整个物理内存空间中以物理页为单位的偏移量
 	pgoff = page_to_pgoff(page);
+
+	// 遍历 anon_vma->rb_root 红黑树上的每一个节点 avc
 	anon_vma_interval_tree_foreach(avc, &anon_vma->rb_root, pgoff, pgoff) {
 		struct vm_area_struct *vma = avc->vma;
+
+		// 计算指定 vma 中指定的物理内存页所对应的虚拟地址，并校验虚拟地址合法性
 		unsigned long address = vma_address(page, vma);
 
 		if (rwc->invalid_vma && rwc->invalid_vma(vma, rwc->arg))
 			continue;
 
+		// 解除指定虚拟地址到指定物理内存页之间的映射关系
 		ret = rwc->rmap_one(page, vma, address, rwc->arg);
 		if (ret != SWAP_AGAIN)
 			break;
@@ -1528,6 +1541,7 @@ static int rmap_walk_anon(struct page *page, struct rmap_walk_control *rwc)
  * vm_flags for that VMA.  That should be OK, because that vma shouldn't be
  * LOCKED.
  */
+// 找出映射了指定文件映射物理内存页的所有进程页表项，并解除每个进程到这个虚拟物理内存页的映射关系
 static int rmap_walk_file(struct page *page, struct rmap_walk_control *rwc)
 {
 	struct address_space *mapping = page->mapping;
@@ -1566,13 +1580,16 @@ done:
 	return ret;
 }
 
+// 判断指定的物理内存页的所有进程页表项，并解除每个进程到这个虚拟物理内存页的映射关系
 int rmap_walk(struct page *page, struct rmap_walk_control *rwc)
 {
 	if (unlikely(PageKsm(page)))
 		return rmap_walk_ksm(page, rwc);
-	else if (PageAnon(page))
+	else if (PageAnon(page))		
+		// 找出映射了指定匿名映射物理内存页的所有进程页表项，并解除每个进程到这个虚拟物理内存页的映射关系
 		return rmap_walk_anon(page, rwc);
 	else
+		// 找出映射了指定文件映射物理内存页的所有进程页表项，并解除每个进程到这个虚拟物理内存页的映射关系
 		return rmap_walk_file(page, rwc);
 }
 
