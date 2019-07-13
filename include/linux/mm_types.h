@@ -82,6 +82,7 @@ struct page {
 	/* Second double word */
 	struct {
 		union {
+			// 表示当前物理内存页按照物理页框为单位在物理内存空间中的偏移量
 			pgoff_t index;		/* Our offset within mapping. */
 
 			// 在 sl[aou]b 内存分配算法中，一个内存页就是一个 slab，其中包含很对个 object 
@@ -330,7 +331,7 @@ struct vm_area_struct {
 	// 页表项标志的初值，当增加一个页时，内核根据这个字段的值设置相应页表项中的标志
 	pgprot_t vm_page_prot;		/* Access permissions of this VMA. */
 	
-	unsigned long vm_flags;		/* Flags, see mm.h. */
+	unsigned long vm_flags;		/* Flags, see mm.h. 传送门 - VM_NONE */
 
 	/*
 	 * For areas with an address space and backing store,

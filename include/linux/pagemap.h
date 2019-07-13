@@ -418,6 +418,8 @@ static inline pgoff_t linear_hugepage_index(struct vm_area_struct *vma,
 				     unsigned long address) {return 0;}
 #endif
 
+// 在指定的 vma 虚拟地址内存块中，计算这个 vma 中指定的虚拟地址在物理内存
+// 中按照物理页框为单位的偏移量
 static inline pgoff_t linear_page_index(struct vm_area_struct *vma,
 					unsigned long address)
 {

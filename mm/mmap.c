@@ -1302,6 +1302,7 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
  * driver is doing some kind of reference counting. But that doesn't
  * really matter for the anon_vma sharing case.
  */
+// 判断两个指定的 vma 是否可以共享使用同一个 anon_vma
 static int anon_vma_compatible(struct vm_area_struct *a, struct vm_area_struct *b)
 {
 	return a->vm_end == b->vm_start &&
@@ -1335,6 +1336,7 @@ static int anon_vma_compatible(struct vm_area_struct *a, struct vm_area_struct *
  */
 static struct anon_vma *reusable_anon_vma(struct vm_area_struct *old, struct vm_area_struct *a, struct vm_area_struct *b)
 {
+	// 判断两个指定的 vma 是否可以共享使用同一个 anon_vma
 	if (anon_vma_compatible(a, b)) {
 		struct anon_vma *anon_vma = ACCESS_ONCE(old->anon_vma);
 
@@ -1352,6 +1354,9 @@ static struct anon_vma *reusable_anon_vma(struct vm_area_struct *old, struct vm_
  * anon_vmas being allocated, preventing vma merge in subsequent
  * mprotect.
  */
+// 判断指定的 vma 是否可以和他临近的（在他前面或者后边且相邻）、已经存在
+// 的 vma 共用同一个 anon_vma 结构，如果可以则返回和它临近 vma 的 anon_vma
+// 结构地址，否则返回 NULL
 struct anon_vma *find_mergeable_anon_vma(struct vm_area_struct *vma)
 {
 	struct anon_vma *anon_vma;
