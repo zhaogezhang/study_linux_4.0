@@ -389,6 +389,7 @@ static inline struct page *read_mapping_page(struct address_space *mapping,
  * Get the offset in PAGE_SIZE.
  * (TODO: hugepage should have ->index in PAGE_SIZE)
  */
+// 获取指定的物理内存页在整个物理内存空间中以物理页为单位的偏移量
 static inline pgoff_t page_to_pgoff(struct page *page)
 {
 	if (unlikely(PageHeadHuge(page)))

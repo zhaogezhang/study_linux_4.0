@@ -1048,7 +1048,7 @@ void page_address_init(void);
 extern struct address_space *page_mapping(struct page *page);
 
 /* Neutral page->mapping pointer to address_space or anon_vma or other */
-// 清空指定内存页中和 PAGE_MAPPING_XXX 相关标志位
+// 返回指定物理内存页所对应的 struct anon_vma 结构
 static inline void *page_rmapping(struct page *page)
 {
 	return (void *)((unsigned long)page->mapping & ~PAGE_MAPPING_FLAGS);

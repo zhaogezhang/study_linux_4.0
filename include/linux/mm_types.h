@@ -302,7 +302,7 @@ struct vm_region {
 struct vm_area_struct {
 	/* The first cache line has the info for VMA tree walking. */
 
-	// 当亲 vma 表示的地址块的起始地址和结束地址值，即当前 vma 表示的地址范围
+	// 当前 vma 表示的地址块的起始地址和结束地址值，即当前 vma 表示的地址范围
 	unsigned long vm_start;		/* Our start address within vm_mm. */
 	unsigned long vm_end;		/* The first byte after our end address
 					               within vm_mm. */

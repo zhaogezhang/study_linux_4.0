@@ -120,6 +120,8 @@ static inline void put_anon_vma(struct anon_vma *anon_vma)
 		__put_anon_vma(anon_vma);
 }
 
+// 检查指定的物理内存是否是匿名映射，如果是匿名映射，则返回这个物理
+// 内存页所对应的 struct anon_vma 结构，否则返回 NULL
 static inline struct anon_vma *page_anon_vma(struct page *page)
 {
 	if (((unsigned long)page->mapping & PAGE_MAPPING_FLAGS) !=
