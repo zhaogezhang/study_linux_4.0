@@ -2549,18 +2549,24 @@ static inline int check_stack_guard_page(struct vm_area_struct *vma, unsigned lo
 		 * That's only ok if it's the same stack mapping
 		 * that has gotten split..
 		 */
+		// 检查指定的虚拟地址处的 vma 是否已经分配了，如果处于空闲状态，则需要扩展一个
+		// 物理内存页大小的 vma 地址空间
 		if (prev && prev->vm_end == address)
 			return prev->vm_flags & VM_GROWSDOWN ? 0 : -ENOMEM;
 
+		// 向下扩展一个虚拟内存页的地址空间大小，因为我们一次只分配一个内存页大小空间
 		return expand_downwards(vma, address - PAGE_SIZE);
 	}
 	if ((vma->vm_flags & VM_GROWSUP) && address + PAGE_SIZE == vma->vm_end) {
 		struct vm_area_struct *next = vma->vm_next;
 
 		/* As VM_GROWSDOWN but s/below/above/ */
+		// 检查指定的虚拟地址处的 vma 是否已经分配了，如果处于空闲状态，则需要扩展一个
+		// 物理内存页大小的 vma 地址空间
 		if (next && next->vm_start == address + PAGE_SIZE)
 			return next->vm_flags & VM_GROWSUP ? 0 : -ENOMEM;
 
+		// 向上扩展一个虚拟内存页的地址空间大小，因为我们一次只分配一个内存页大小空间
 		return expand_upwards(vma, address + PAGE_SIZE);
 	}
 	return 0;
@@ -2571,6 +2577,8 @@ static inline int check_stack_guard_page(struct vm_area_struct *vma, unsigned lo
  * but allow concurrent faults), and pte mapped but not yet locked.
  * We return with mmap_sem still held, but pte unmapped and unlocked.
  */
+// 为指定 vma 中的指定虚拟地址分配一个匿名物理内存页，并建立虚拟地址到物理地址的
+// 页表映射关系，同时建立物理内存页到虚拟地址的反向映射数据结构关系
 static int do_anonymous_page(struct mm_struct *mm, struct vm_area_struct *vma,
 		unsigned long address, pte_t *page_table, pmd_t *pmd,
 		unsigned int flags)
@@ -2597,11 +2605,17 @@ static int do_anonymous_page(struct mm_struct *mm, struct vm_area_struct *vma,
 	}
 
 	/* Allocate our own private page. */
+	// 为指定的 vma 关联一个 anon_vma 结构和一个 anon_vma_chain 结构，如果有已经
+	// 存在的 anon_vma 可以共用则直接使用即可，如果没有可以复用的，则需要申请创
+	// 建一个新的 anon_vma 结构
 	if (unlikely(anon_vma_prepare(vma)))
 		goto oom;
+
+	// 为指定的 vma 从 highmem 内存区分配一个 movable zeroed 物理内存页
 	page = alloc_zeroed_user_highpage_movable(vma, address);
 	if (!page)
 		goto oom;
+	
 	/*
 	 * The memory barrier inside __SetPageUptodate makes sure that
 	 * preceeding stores to the page contents become visible before
@@ -2612,6 +2626,7 @@ static int do_anonymous_page(struct mm_struct *mm, struct vm_area_struct *vma,
 	if (mem_cgroup_try_charge(page, mm, GFP_KERNEL, &memcg))
 		goto oom_free_page;
 
+	// 根据 vma->vm_page_prot 字段生成一个到指定物理内存页的 pte 页表项
 	entry = mk_pte(page, vma->vm_page_prot);
 	if (vma->vm_flags & VM_WRITE)
 		entry = pte_mkwrite(pte_mkdirty(entry));
@@ -2621,10 +2636,17 @@ static int do_anonymous_page(struct mm_struct *mm, struct vm_area_struct *vma,
 		goto release;
 
 	inc_mm_counter_fast(mm, MM_ANONPAGES);
+
+	// 在指定的 vma 中，设置在把指定的虚拟内存地址映射到指定的物理内存页时需要
+	// 设置的一些信息，建立了 page 到 anon_vma 的关联，同时更新相关统计变量值
+	// note：需要注意到的是，在这个函数中只是建立了数据结构体之间的关联关系，并
+	// 没有建立页表上的映射关系
 	page_add_new_anon_rmap(page, vma, address);
+	
 	mem_cgroup_commit_charge(page, memcg, false);
 	lru_cache_add_active_or_unevictable(page, vma);
 setpte:
+	// 建立页表上的映射关系
 	set_pte_at(mm, address, page_table, entry);
 
 	/* No need to invalidate - it was non-present before */
@@ -3165,7 +3187,9 @@ static int handle_pte_fault(struct mm_struct *mm,
 							pmd, flags, entry);
 			}
 
-			// 这是一个匿名映射
+			// 发生缺页异常访问的是匿名映射内存页，所以我们对指定 vma 中的指定虚拟
+			// 地址分配一个匿名物理内存页，并建立虚拟地址到物理地址的页表映射关系
+			// 同时建立物理内存页到虚拟地址的反向映射数据结构关系
 			return do_anonymous_page(mm, vma, address,
 						 pte, pmd, flags);
 		}

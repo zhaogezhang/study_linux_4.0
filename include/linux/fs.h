@@ -397,8 +397,8 @@ int pagecache_write_end(struct file *, struct address_space *mapping,
 // 这个结构体主要在文件映射场景下使用，用来管理文件映射的内存页以及对文件内存页
 // 需要使用的所有操作函数集（匿名映射时不需要这个结构）
 // linux 中几乎所有文件的读和写操作都依赖于页高速缓存。只有在 O_DIRECT 标志置为才
-// 会出现意外：此时，I/O数据的传送绕过了页高速缓存而使用了进程用户态地址空间的缓
-// 冲区；另外，少量的数据库软件为了采用自己的磁盘高速缓存算法而使用了O_DIRECT标志
+// 会出现意外：此时，I/O 数据的传送绕过了页高速缓存而使用了进程用户态地址空间的缓
+// 冲区；另外，少量的数据库软件为了采用自己的磁盘高速缓存算法而使用了 O_DIRECT 标志
 struct address_space {
 	// 当前描述结构所属文件的 inode 指针
 	struct inode		*host;		/* owner: inode, block_device */

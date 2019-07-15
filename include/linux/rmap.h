@@ -24,12 +24,18 @@
  * the anon_vma object itself: we're guaranteed no page can be
  * pointing to this anon_vma once its vma list is empty.
  */
-// 匿名映射虚拟内存块描述符，一个 struct anon_vma 和一个 struct page 相对应
-// 在执行反向映射一个物理内存页时，查找路径如下：
+// 匿名映射虚拟内存块描述符，一个 struct anon_vma 和一个 struct vm_area_struct
+// 相对应，而一个 struct page 属于一个 struct vm_area_struct，所以在查找一个物理
+// 内存页反向映射信息时，查找路径如下：
 // struct page -> struct anon_vma -> struct anon_vma_chain -> vma
-// 然后把每一个相关的 vma 中的对应虚拟内存页解除页表映射关系
+// 然后就可以把每一个相关的 vma 中的对应虚拟内存页解除页表映射关系了
 struct anon_vma {
+
+	// 因为会有多个进程 vma 同时映射到一个物理内存也，所以用 anon_vma.root
+	// 字段标记第一个映射物理内存页的 anon_vma 地址，所有的记录信息和锁同步
+	// 都统一使用 anon_vma.root 中的成员，这样大家可以保持一致性
 	struct anon_vma *root;		/* Root of this anon_vma tree */
+	
 	struct rw_semaphore rwsem;	/* W: modification, R: walking the list */
 	/*
 	 * The refcount is taken on an anon_vma when there is no

@@ -65,6 +65,7 @@
 static struct kmem_cache *anon_vma_cachep;
 static struct kmem_cache *anon_vma_chain_cachep;
 
+// 从 anon_vma_cachep kmem_cache 中申请一个 anon_vma 对象空间
 static inline struct anon_vma *anon_vma_alloc(void)
 {
 	struct anon_vma *anon_vma;
@@ -114,6 +115,7 @@ static inline void anon_vma_free(struct anon_vma *anon_vma)
 	kmem_cache_free(anon_vma_cachep, anon_vma);
 }
 
+// 从 anon_vma_chain_cachep kmem_cache 中申请一个 anon_vma_chain 对象空间
 static inline struct anon_vma_chain *anon_vma_chain_alloc(gfp_t gfp)
 {
 	return kmem_cache_alloc(anon_vma_chain_cachep, gfp);
@@ -124,8 +126,7 @@ static void anon_vma_chain_free(struct anon_vma_chain *anon_vma_chain)
 	kmem_cache_free(anon_vma_chain_cachep, anon_vma_chain);
 }
 
-// 把指定的 anon_vma 信息复制到新申请的 avc 中，然后再把 avc 添加
-// 到指定 vma 的 anon_vma 链表以及 anon_vma 红黑树中
+// 把指定的 avc 和 anon_vma 通过链表和红黑树和指定的 vma 中关联起来
 static void anon_vma_chain_link(struct vm_area_struct *vma,
 				struct anon_vma_chain *avc,
 				struct anon_vma *anon_vma)
@@ -163,6 +164,9 @@ static void anon_vma_chain_link(struct vm_area_struct *vma,
  *
  * This must be called with the mmap_sem held for reading.
  */
+// 为指定的 vma 关联一个 anon_vma 结构和一个 anon_vma_chain 结构，如果有已经
+// 存在的 anon_vma 可以共用则直接使用即可，如果没有可以复用的，则需要申请创
+// 建一个新的 anon_vma 结构
 int anon_vma_prepare(struct vm_area_struct *vma)
 {
 	struct anon_vma *anon_vma = vma->anon_vma;
@@ -173,12 +177,18 @@ int anon_vma_prepare(struct vm_area_struct *vma)
 		struct mm_struct *mm = vma->vm_mm;
 		struct anon_vma *allocated;
 
+		// 申请一个 anon_vma_chain 对象空间
 		avc = anon_vma_chain_alloc(GFP_KERNEL);
 		if (!avc)
 			goto out_enomem;
 
+		// 判断指定的 vma 是否可以和他临近的（在他前面或者后边且相邻）、已经存在
+		// 的 vma 共用同一个 anon_vma 结构，如果可以则返回和它临近 vma 的 anon_vma
+		// 结构地址，否则返回 NULL
 		anon_vma = find_mergeable_anon_vma(vma);
 		allocated = NULL;
+
+		// 如果没有可以共用的、已经存在的 anon_vma 结构，则需要新申请创建一个
 		if (!anon_vma) {
 			anon_vma = anon_vma_alloc();
 			if (unlikely(!anon_vma))
@@ -191,7 +201,10 @@ int anon_vma_prepare(struct vm_area_struct *vma)
 		spin_lock(&mm->page_table_lock);
 		if (likely(!vma->anon_vma)) {
 			vma->anon_vma = anon_vma;
+
+			// 把指定的 avc 和 anon_vma 通过链表和红黑树和指定的 vma 中关联起来
 			anon_vma_chain_link(vma, avc, anon_vma);
+		
 			/* vma reference or self-parent link for new root */
 			anon_vma->degree++;
 			allocated = NULL;
@@ -980,6 +993,8 @@ void page_move_anon_rmap(struct page *page,
  * @address:	User virtual address of the mapping	
  * @exclusive:	the page is exclusively owned by the current process
  */
+// 在指定的 vma 中，设置在把指定的虚拟内存地址映射到指定的物理内存页
+// 时需要设置的一些信息，建立了 page 到 anon_vma 的关联
 static void __page_set_anon_rmap(struct page *page,
 	struct vm_area_struct *vma, unsigned long address, int exclusive)
 {
@@ -987,6 +1002,7 @@ static void __page_set_anon_rmap(struct page *page,
 
 	BUG_ON(!anon_vma);
 
+	// 如果物理内存页不是内存页则返回
 	if (PageAnon(page))
 		return;
 
@@ -998,7 +1014,9 @@ static void __page_set_anon_rmap(struct page *page,
 	if (!exclusive)
 		anon_vma = anon_vma->root;
 
+	// 在 page->mapping 字段中标记当前内存映射为匿名映射类型
 	anon_vma = (void *) anon_vma + PAGE_MAPPING_ANON;
+	
 	page->mapping = (struct address_space *) anon_vma;
 	page->index = linear_page_index(vma, address);
 }
@@ -1090,11 +1108,18 @@ void do_page_add_anon_rmap(struct page *page,
  * This means the inc-and-test can be bypassed.
  * Page does not have to be locked.
  */
+// 在指定的 vma 中，设置在把指定的虚拟内存地址映射到指定的物理内存页时需要
+// 设置的一些信息，建立了 page 到 anon_vma 的关联，同时更新相关统计变量值
+// note：需要注意到的是，在这个函数中只是建立了数据结构体之间的关联关系，并
+// 没有建立页表上的映射关系
 void page_add_new_anon_rmap(struct page *page,
 	struct vm_area_struct *vma, unsigned long address)
 {
 	VM_BUG_ON_VMA(address < vma->vm_start || address >= vma->vm_end, vma);
+	
+	// 设置 PG_SwapBacked 标志，表示这个页面可以 swap 到磁盘
 	SetPageSwapBacked(page);
+	
 	atomic_set(&page->_mapcount, 0); /* increment count (starts at -1) */
 	if (PageTransHuge(page))
 		__inc_zone_page_state(page, NR_ANON_TRANSPARENT_HUGEPAGES);

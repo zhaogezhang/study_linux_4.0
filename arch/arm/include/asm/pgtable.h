@@ -212,6 +212,8 @@ static inline pte_t *pmd_page_vaddr(pmd_t pmd)
 #define pte_offset_kernel(pmd,addr)	(pmd_page_vaddr(*(pmd)) + pte_index(addr))
 
 #define pte_offset_map(pmd,addr)	(__pte_map(pmd) + pte_index(addr))
+
+// 解除指定 pte 的映射关系
 #define pte_unmap(pte)			__pte_unmap(pte)
 
 // 获取 pte 结构中 pfn 字段的值
