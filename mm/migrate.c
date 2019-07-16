@@ -559,6 +559,7 @@ void migrate_page_copy(struct page *newpage, struct page *page)
  *
  * Pages are locked upon entry and exit.
  */
+// 把指定的物理内存页迁移到新指定的物理内存页中
 int migrate_page(struct address_space *mapping,
 		struct page *newpage, struct page *page,
 		enum migrate_mode mode)
@@ -684,6 +685,7 @@ static int writeout(struct address_space *mapping, struct page *page)
 static int fallback_migrate_page(struct address_space *mapping,
 	struct page *newpage, struct page *page, enum migrate_mode mode)
 {
+	// 如果是脏的文件映射内存页，则执行内存回写操作
 	if (PageDirty(page)) {
 		/* Only writeback pages in full synchronous migration */
 		if (mode != MIGRATE_SYNC)
@@ -713,6 +715,8 @@ static int fallback_migrate_page(struct address_space *mapping,
  *   < 0 - error code
  *  MIGRATEPAGE_SUCCESS - success
  */
+// 把指定的物理内存页的相关内容迁移到新指定的物理内存页中
+// 这个函数会根据物理内存页的映射类型分别执行对应的内存迁移接口
 static int move_to_new_page(struct page *newpage, struct page *page,
 				int page_was_mapped, enum migrate_mode mode)
 {
@@ -735,6 +739,7 @@ static int move_to_new_page(struct page *newpage, struct page *page,
 
 	mapping = page_mapping(page);
 	if (!mapping)
+		// 如果是匿名映射物理内存页，则执行匿名内存页迁移操作
 		rc = migrate_page(mapping, newpage, page, mode);
 	else if (mapping->a_ops->migratepage)
 		/*
@@ -743,9 +748,12 @@ static int move_to_new_page(struct page *newpage, struct page *page,
 		 * space which also has its own migratepage callback. This
 		 * is the most common path for page migration.
 		 */
+		// 如果是文件映射内存页，则执行文件系统提供的文件内存页迁移操作
 		rc = mapping->a_ops->migratepage(mapping,
 						newpage, page, mode);
 	else
+		// 如果是文件映射内存页，但是文件系统没提供内存页迁移函数，则使用
+		// 默认的物理内存页迁移接口进行内存迁移
 		rc = fallback_migrate_page(mapping, newpage, page, mode);
 
 	if (rc != MIGRATEPAGE_SUCCESS) {
@@ -762,6 +770,8 @@ static int move_to_new_page(struct page *newpage, struct page *page,
 	return rc;
 }
 
+// 解除指定的、旧的物理内存页的所有页表映射关系，并把旧的页表内容迁移到新的指定的
+// 物理内存页中
 static int __unmap_and_move(struct page *page, struct page *newpage,
 				int force, enum migrate_mode mode)
 {
@@ -769,6 +779,8 @@ static int __unmap_and_move(struct page *page, struct page *newpage,
 	int page_was_mapped = 0;
 	struct anon_vma *anon_vma = NULL;
 
+	// 尝试设置物理内存页的 PG_locked 标志，如果之前已经被设置了 PG_locked 标志
+	// 则执行括号内的相应处理逻辑
 	if (!trylock_page(page)) {
 		if (!force || mode == MIGRATE_ASYNC)
 			goto out;
@@ -789,9 +801,12 @@ static int __unmap_and_move(struct page *page, struct page *newpage,
 		if (current->flags & PF_MEMALLOC)
 			goto out;
 
+		// 等待别人释放 PG_locked，然后在重新尝试设置 PG_locked 标志
+		// 直到成功设置为止
 		lock_page(page);
 	}
 
+	// 指定的物理内存页当前正处于回写 swap 分区过程中
 	if (PageWriteback(page)) {
 		/*
 		 * Only in the case of a full synchronous migration is it
@@ -805,6 +820,8 @@ static int __unmap_and_move(struct page *page, struct page *newpage,
 		}
 		if (!force)
 			goto out_unlock;
+
+		// 等待正在回写 swap 的物理内存页回写完成，然后被唤醒
 		wait_on_page_writeback(page);
 	}
 	/*
@@ -884,13 +901,16 @@ static int __unmap_and_move(struct page *page, struct page *newpage,
 	}
 
 skip_unmap:
+	// 如果已经没有映射到这个物理内存页的引用，则执行内存页迁移
 	if (!page_mapped(page))
 		rc = move_to_new_page(newpage, page, page_was_mapped, mode);
 
+	// 如果迁移内存页操作失败，则恢复旧的物理内存页映射关系
 	if (rc && page_was_mapped)
 		remove_migration_ptes(page, page);
 
 	/* Drop an anon_vma reference if we took one */
+	// 释放指定的 anon_vma 所占用的内存资源
 	if (anon_vma)
 		put_anon_vma(anon_vma);
 
