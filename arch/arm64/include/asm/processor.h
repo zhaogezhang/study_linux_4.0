@@ -134,6 +134,7 @@ unsigned long get_wchan(struct task_struct *p);
 extern struct task_struct *cpu_switch_to(struct task_struct *prev,
 					 struct task_struct *next);
 
+/* 获取指定任务的内核栈最高地址处的 pt_regs 结构，即内核线程栈的第一个 pt_regs 结构地址 */
 #define task_pt_regs(p) \
 	((struct pt_regs *)(THREAD_START_SP + task_stack_page(p)) - 1)
 

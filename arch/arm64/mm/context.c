@@ -38,6 +38,15 @@ unsigned int cpu_last_asid = ASID_FIRST_VERSION;
 /*
  * We fork()ed a process, and we need a new context for the child to run in.
  */
+/*********************************************************************************************************
+** 函数名称: __init_new_context
+** 功能描述: 设置指定的 mm_struct 的上下文为初始默认态
+** 输	 入: tsk - 未使用
+**         : mm - 指定的 mm_struct 数据结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void __init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 {
 	mm->context.id = 0;

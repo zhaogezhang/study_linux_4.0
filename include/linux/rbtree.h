@@ -46,9 +46,10 @@ struct rb_root {
 
 #define rb_parent(r)   ((struct rb_node *)((r)->__rb_parent_color & ~3))
 
+/* 声明并初始化一个空的红黑树根节点 */
 #define RB_ROOT	(struct rb_root) { NULL, }
 
-// 由红黑树节点地址，计算出节点所在结构体的地址
+/* 由红黑树节点地址，计算出节点所在结构体的地址 */
 #define	rb_entry(ptr, type, member) container_of(ptr, type, member)
 
 #define RB_EMPTY_ROOT(root)  ((root)->rb_node == NULL)

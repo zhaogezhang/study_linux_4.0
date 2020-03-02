@@ -5,9 +5,9 @@
 
 enum pid_type
 {
-	PIDTYPE_PID,
-	PIDTYPE_PGID,
-	PIDTYPE_SID,
+	PIDTYPE_PID,  /* 表示进程 ID */
+	PIDTYPE_PGID, /* 表示进程组 ID */
+	PIDTYPE_SID,  /* 表示会话 ID */
 	PIDTYPE_MAX
 };
 
@@ -57,7 +57,10 @@ struct upid {
 struct pid
 {
 	atomic_t count;
+
+	/* 表示在 namespace 中使用的 pid level 数据信息 */
 	unsigned int level;
+	
 	/* lists of tasks that use this pid */
 	struct hlist_head tasks[PIDTYPE_MAX];
 	struct rcu_head rcu;
@@ -72,6 +75,14 @@ struct pid_link
 	struct pid *pid;
 };
 
+/*********************************************************************************************************
+** 函数名称: get_pid
+** 功能描述: 增加指定的 pid 的引用计数并返回这个 pid 结构指针
+** 输	 入: pid - 指定的 pid 指针
+** 输	 出: pid - 返回的 pid 结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct pid *get_pid(struct pid *pid)
 {
 	if (pid)

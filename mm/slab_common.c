@@ -358,6 +358,19 @@ out_free_cache:
  * cacheline.  This can be beneficial if you're counting cycles as closely
  * as davem.
  */
+/*********************************************************************************************************
+** 函数名称: kmem_cache_create
+** 功能描述: 根据指定的参数创建一个 kmem_cache 内存分配单元
+** 输	 入: name - 指定的 kmem_cache 名
+**         : size - 指定的 kmem_cache 对象大小 
+**         : align - 指定的 kmem_cache 对象字节对齐要求
+**         : flags - SLAB flags
+**         : ctor - kmem_cache 对象的构造函数
+** 输	 出: s - 成功创建的 kmem_cache 指针
+**         : NULL - 创建失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct kmem_cache *
 kmem_cache_create(const char *name, size_t size, size_t align,
 		  unsigned long flags, void (*ctor)(void *))

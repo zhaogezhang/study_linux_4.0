@@ -39,6 +39,7 @@ extern struct fs_struct init_fs;
 #define INIT_CPUSET_SEQ(tsk)
 #endif
 
+/* 初始化系统 0 号进程的信号信息 */
 #define INIT_SIGNALS(sig) {						\
 	.nr_threads	= 1,						\
 	.thread_head	= LIST_HEAD_INIT(init_task.thread_node),	\
@@ -61,6 +62,7 @@ extern struct fs_struct init_fs;
 
 extern struct nsproxy init_nsproxy;
 
+/* 初始化系统 0 号进程的信号处理信息 */
 #define INIT_SIGHAND(sighand) {						\
 	.count		= ATOMIC_INIT(1), 				\
 	.action		= { { { .sa_handler = SIG_DFL, } }, },		\
@@ -70,6 +72,7 @@ extern struct nsproxy init_nsproxy;
 
 extern struct group_info init_groups;
 
+/* 初始化系统 0 号进程的 STRUCT_PID 信息 */
 #define INIT_STRUCT_PID {						\
 	.count 		= ATOMIC_INIT(1),				\
 	.tasks		= {						\
@@ -85,6 +88,7 @@ extern struct group_info init_groups;
 	}, }								\
 }
 
+/* 初始化系统 0 号进程的 PID_LINK 信息 */
 #define INIT_PID_LINK(type) 					\
 {								\
 	.node = {						\
@@ -186,6 +190,7 @@ extern struct task_group root_task_group;
  *  INIT_TASK is used to set up the first task table, touch at
  * your own risk!. Base=0, limit=0x1fffff (=2MB)
  */
+/* 初始化系统 0 号进程任务结构体信息 */
 #define INIT_TASK(tsk)	\
 {									\
 	.state		= 0,						\

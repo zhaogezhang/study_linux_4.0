@@ -359,6 +359,8 @@ static inline void user_single_step_siginfo(struct task_struct *tsk,
 #endif
 
 #ifndef current_pt_regs
+/* 获取当前运行任务的内核栈最高地址处的 pt_regs 结构，即内核线程栈的第一个 pt_regs 结构地址
+   这个 pt_regs 结构是在发生系统调用的时候保存的上下文环境 */
 #define current_pt_regs() task_pt_regs(current)
 #endif
 

@@ -27,7 +27,10 @@
 #define THREAD_SIZE_ORDER	2
 #endif
 
+/* 定义系统内核栈大小为 16KB，增长方向为自上而下 */
 #define THREAD_SIZE		16384
+
+/* 定义系统内核栈起始地址，预留 16 字节空洞 */
 #define THREAD_START_SP		(THREAD_SIZE - 16)
 
 #ifndef __ASSEMBLY__
@@ -52,6 +55,7 @@ struct thread_info {
 	int			cpu;		/* cpu */
 };
 
+/* 初始化 0 号进程的线程信息结构体成员 */
 #define INIT_THREAD_INFO(tsk)						\
 {									\
 	.task		= &tsk,						\
@@ -61,7 +65,10 @@ struct thread_info {
 	.addr_limit	= KERNEL_DS,					\
 }
 
+/* 执向系统 0 号进程的线程信息 */
 #define init_thread_info	(init_thread_union.thread_info)
+
+/* 指向系统 0 号进程的堆栈信息 */
 #define init_stack		(init_thread_union.stack)
 
 /*
@@ -74,6 +81,14 @@ register unsigned long current_stack_pointer asm ("sp");
  */
 static inline struct thread_info *current_thread_info(void) __attribute_const__;
 
+/*********************************************************************************************************
+** 函数名称: current_thread_info
+** 功能描述: 根据当前进程栈指针获取当前进程的线程信息结构指针
+** 输	 入: 
+** 输	 出: thread_info * - 当前进程的线程信息结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct thread_info *current_thread_info(void)
 {
 	return (struct thread_info *)

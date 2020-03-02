@@ -13,6 +13,7 @@
 #define INIT_MM_CONTEXT(name)
 #endif
 
+/* 声明并初始化系统 0 号进程内存空间数据结构 */
 struct mm_struct init_mm = {
 	.mm_rb		= RB_ROOT,
 	.pgd		= swapper_pg_dir,
