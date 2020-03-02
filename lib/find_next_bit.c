@@ -20,6 +20,16 @@
 /*
  * Find the next set bit in a memory region.
  */
+/*********************************************************************************************************
+** 函数名称: find_next_bit
+** 功能描述: 从指定的内存块的指定偏移位处开始查找下一个为 1 的 bit 位
+** 输	 入: addr - 指定的内存块
+**         : size - 指定的内存块长度
+**         : offset - 起始 bit 偏移量
+** 输	 出: long - 查找到的 0 bit 的偏移位
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 unsigned long find_next_bit(const unsigned long *addr, unsigned long size,
 			    unsigned long offset)
 {
@@ -66,6 +76,16 @@ EXPORT_SYMBOL(find_next_bit);
  * This implementation of find_{first,next}_zero_bit was stolen from
  * Linus' asm-alpha/bitops.h.
  */
+/*********************************************************************************************************
+** 函数名称: find_next_zero_bit
+** 功能描述: 从指定的内存块的指定偏移位处开始查找下一个为 0 的 bit 位
+** 输	 入: addr - 指定的内存块
+**         : size - 指定的内存块长度
+**         : offset - 起始 bit 偏移量
+** 输	 出: long - 查找到的 0 bit 的偏移位
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 unsigned long find_next_zero_bit(const unsigned long *addr, unsigned long size,
 				 unsigned long offset)
 {

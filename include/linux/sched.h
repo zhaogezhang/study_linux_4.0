@@ -1362,7 +1362,7 @@ struct task_struct {
 #if defined(SPLIT_RSS_COUNTING)
 	struct task_rss_stat	rss_stat;
 #endif
-/* task state */
+    /* task state */
 	int exit_state;
 	int exit_code, exit_signal;
 	int pdeath_signal;  /*  The signal sent when the parent dies  */
@@ -1387,7 +1387,10 @@ struct task_struct {
 
 	struct restart_block restart_block;
 
+	/* 表示当前任务的线程 id */
 	pid_t pid;
+
+	/* 表示当前任务的线程组 id，即所在进程的进程 id */
 	pid_t tgid;
 
 #ifdef CONFIG_CC_STACKPROTECTOR
@@ -1400,12 +1403,19 @@ struct task_struct {
 	 * p->real_parent->pid)
 	 */
 	struct task_struct __rcu *real_parent; /* real parent process */
+
+    /* 当前进程的父进程的 task_struct 结构指针 */
 	struct task_struct __rcu *parent; /* recipient of SIGCHLD, wait4() reports */
 	/*
 	 * children/sibling forms the list of my natural children
 	 */
+    /* 当前进程的孩子节点链表结构 */
 	struct list_head children;	/* list of my children */
+	
+    /* 当前进程的兄弟节点链表结构 */
 	struct list_head sibling;	/* linkage in my parent's children list */
+
+	/* 表示当前线程的线程组组长的任务结构体指针，即进程的第一个线程的任务结构体指针 */
 	struct task_struct *group_leader;	/* threadgroup leader */
 
 	/*
@@ -1418,6 +1428,7 @@ struct task_struct {
 
 	/* PID/PID hash table linkage. */
 	struct pid_link pids[PIDTYPE_MAX];
+	
 	struct list_head thread_group;
 	struct list_head thread_node;
 
@@ -1764,11 +1775,27 @@ static inline bool should_numa_migrate_memory(struct task_struct *p,
 }
 #endif
 
+/*********************************************************************************************************
+** 函数名称: task_pid
+** 功能描述: 获取指定任务的进程 pid 数据结构指针
+** 输	 入: task - 指定的任务指针
+** 输	 出: pid * - 获取到的 pid 结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct pid *task_pid(struct task_struct *task)
 {
 	return task->pids[PIDTYPE_PID].pid;
 }
 
+/*********************************************************************************************************
+** 函数名称: task_tgid
+** 功能描述: 获取指定任务的“线程组组长”的 pid 数据结构指针，即线程所在进程的 pid 数据结构指针
+** 输	 入: task - 指定的任务指针
+** 输	 出: pid * - 获取到的线程组组长的 pid 结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct pid *task_tgid(struct task_struct *task)
 {
 	return task->group_leader->pids[PIDTYPE_PID].pid;
@@ -1779,11 +1806,27 @@ static inline struct pid *task_tgid(struct task_struct *task)
  * the result of task_pgrp/task_session even if task == current,
  * we can race with another thread doing sys_setsid/sys_setpgid.
  */
+/*********************************************************************************************************
+** 函数名称: task_tgid
+** 功能描述: 获取指定任务的“进程组组长”的 pid 数据结构指针
+** 输	 入: task - 指定的任务指针
+** 输	 出: pid * - 获取到的进程组组长的 pid 结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct pid *task_pgrp(struct task_struct *task)
 {
 	return task->group_leader->pids[PIDTYPE_PGID].pid;
 }
 
+/*********************************************************************************************************
+** 函数名称: task_tgid
+** 功能描述: 获取指定任务的“会话组组长”的 pid 数据结构指针
+** 输	 入: task - 指定的任务指针
+** 输	 出: pid * - 获取到的会话组组长的 pid 结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct pid *task_session(struct task_struct *task)
 {
 	return task->group_leader->pids[PIDTYPE_SID].pid;
@@ -1807,23 +1850,55 @@ struct pid_namespace;
 pid_t __task_pid_nr_ns(struct task_struct *task, enum pid_type type,
 			struct pid_namespace *ns);
 
+/*********************************************************************************************************
+** 函数名称: task_pid_nr
+** 功能描述: 获取指定任务的线程 id
+** 输	 入: tsk - 指定的任务指针
+** 输	 出: pid_t - 获取到的线程 id 值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline pid_t task_pid_nr(struct task_struct *tsk)
 {
 	return tsk->pid;
 }
 
+/*********************************************************************************************************
+** 函数名称: __task_pid_nr_ns
+** 功能描述: 获取指定任务的 PIDTYPE_PID 类型的 pid 在指定的 pid namespace 中的 pid 偏移量 
+** 输	 入: task - 指定的任务结构指针
+**         : ns - 指定的 pid namespace 结构指针
+** 输	 出: nr - 获取到的对应的 pid 偏移量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline pid_t task_pid_nr_ns(struct task_struct *tsk,
 					struct pid_namespace *ns)
 {
 	return __task_pid_nr_ns(tsk, PIDTYPE_PID, ns);
 }
 
+/*********************************************************************************************************
+** 函数名称: task_pid_vnr
+** 功能描述: 获取指定任务的 PIDTYPE_PID 类型的 pid 在当前运行任务的 pid namespace 中的 pid 偏移量 
+** 输	 入: task - 指定的任务结构指针
+** 输	 出: nr - 获取到的对应的 pid 偏移量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline pid_t task_pid_vnr(struct task_struct *tsk)
 {
 	return __task_pid_nr_ns(tsk, PIDTYPE_PID, NULL);
 }
 
-
+/*********************************************************************************************************
+** 函数名称: task_tgid_nr
+** 功能描述: 获取指定任务的线程组 id
+** 输	 入: task - 指定的任务结构指针
+** 输	 出: tsk->tgid - 获取到的线程组 id
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline pid_t task_tgid_nr(struct task_struct *tsk)
 {
 	return tsk->tgid;
@@ -1831,6 +1906,14 @@ static inline pid_t task_tgid_nr(struct task_struct *tsk)
 
 pid_t task_tgid_nr_ns(struct task_struct *tsk, struct pid_namespace *ns);
 
+/*********************************************************************************************************
+** 函数名称: task_tgid_vnr
+** 功能描述: 获取指定任务的线程组在当前正在运行的进程的 pid namespace 中的 pid 偏移量
+** 输	 入: tsk - 指定的任务结构指针
+** 输	 出: pid_t - 获取到的 pid 偏移量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline pid_t task_tgid_vnr(struct task_struct *tsk)
 {
 	return pid_vnr(task_tgid(tsk));
@@ -1838,47 +1921,105 @@ static inline pid_t task_tgid_vnr(struct task_struct *tsk)
 
 
 static inline int pid_alive(const struct task_struct *p);
+
+/*********************************************************************************************************
+** 函数名称: task_ppid_nr_ns
+** 功能描述: 获取指定任务的进程组组长在指定的 pid namespace 中的 pid 偏移量 
+** 输	 入: task - 指定的任务结构指针
+**         : ns - 指定的 pid namespace 结构指针
+** 输	 出: pid_t - 获取到的对应的 pid 偏移量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline pid_t task_ppid_nr_ns(const struct task_struct *tsk, struct pid_namespace *ns)
 {
 	pid_t pid = 0;
 
 	rcu_read_lock();
 	if (pid_alive(tsk))
+		/* 获取指定任务的进程组组长在指定的 pid namespace 中的 pid 偏移量 */
 		pid = task_tgid_nr_ns(rcu_dereference(tsk->real_parent), ns);
 	rcu_read_unlock();
 
 	return pid;
 }
 
+/*********************************************************************************************************
+** 函数名称: task_ppid_nr
+** 功能描述: 获取指定任务的进程组组长在 init_pid_ns pid namespace 中的 pid 偏移量 
+** 输	 入: task - 指定的任务结构指针
+** 输	 出: pid_t - 获取到的对应的 pid 偏移量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline pid_t task_ppid_nr(const struct task_struct *tsk)
 {
 	return task_ppid_nr_ns(tsk, &init_pid_ns);
 }
 
+/*********************************************************************************************************
+** 函数名称: task_pgrp_nr_ns
+** 功能描述: 获取指定任务的 PIDTYPE_PGID 类型的 pid 在指定的 pid namespace 中的 pid 偏移量 
+** 输	 入: task - 指定的任务结构指针
+** 输	 出: pid_t - 获取到的对应的 pid 偏移量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline pid_t task_pgrp_nr_ns(struct task_struct *tsk,
 					struct pid_namespace *ns)
 {
 	return __task_pid_nr_ns(tsk, PIDTYPE_PGID, ns);
 }
 
+/*********************************************************************************************************
+** 函数名称: task_pgrp_vnr
+** 功能描述: 获取指定任务的 PIDTYPE_PGID 类型的 pid 在当前运行进程的 pid namespace 中的 pid 偏移量 
+** 输	 入: task - 指定的任务结构指针
+** 输	 出: pid_t - 获取到的对应的 pid 偏移量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline pid_t task_pgrp_vnr(struct task_struct *tsk)
 {
 	return __task_pid_nr_ns(tsk, PIDTYPE_PGID, NULL);
 }
 
-
+/*********************************************************************************************************
+** 函数名称: task_session_nr_ns
+** 功能描述: 获取指定任务的 PIDTYPE_SID 类型的 pid 在指定的 pid namespace 中的 pid 偏移量 
+** 输	 入: task - 指定的任务结构指针
+** 输	 出: pid_t - 获取到的对应的 pid 偏移量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline pid_t task_session_nr_ns(struct task_struct *tsk,
 					struct pid_namespace *ns)
 {
 	return __task_pid_nr_ns(tsk, PIDTYPE_SID, ns);
 }
 
+/*********************************************************************************************************
+** 函数名称: task_session_vnr
+** 功能描述: 获取指定任务的 PIDTYPE_SID 类型的 pid 在当前运行进程的 pid namespace 中的 pid 偏移量 
+** 输	 入: task - 指定的任务结构指针
+** 输	 出: pid_t - 获取到的对应的 pid 偏移量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline pid_t task_session_vnr(struct task_struct *tsk)
 {
 	return __task_pid_nr_ns(tsk, PIDTYPE_SID, NULL);
 }
 
 /* obsolete, do not use */
+/*********************************************************************************************************
+** 函数名称: task_pgrp_nr
+** 功能描述: 获取指定任务的 PIDTYPE_PGID 类型的 pid 在 init_pid_ns pid namespace 中的 pid 偏移量 
+** 输	 入: task - 指定的任务结构指针
+** 输	 出: pid_t - 获取到的对应的 pid 偏移量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline pid_t task_pgrp_nr(struct task_struct *tsk)
 {
 	return task_pgrp_nr_ns(tsk, &init_pid_ns);
@@ -1894,6 +2035,15 @@ static inline pid_t task_pgrp_nr(struct task_struct *tsk)
  *
  * Return: 1 if the process is alive. 0 otherwise.
  */
+/*********************************************************************************************************
+** 函数名称: pid_alive
+** 功能描述: 判断指定任务的进程 id 是否有效
+** 输	 入: p - 指定的任务结构指针
+** 输	 出: 1 - 有效
+**         : 0 - 无效
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int pid_alive(const struct task_struct *p)
 {
 	return p->pids[PIDTYPE_PID].pid != NULL;
@@ -1907,6 +2057,15 @@ static inline int pid_alive(const struct task_struct *p)
  *
  * Return: 1 if the task structure is init. 0 otherwise.
  */
+/*********************************************************************************************************
+** 函数名称: is_global_init
+** 功能描述: 判断指定的任务是否是系统 1 号进程
+** 输	 入: tsk - 指定的任务结构指针
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int is_global_init(struct task_struct *tsk)
 {
 	return tsk->pid == 1;

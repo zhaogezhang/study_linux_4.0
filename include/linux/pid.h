@@ -49,21 +49,31 @@ enum pid_type
 
 struct upid {
 	/* Try to keep pid_chain in the same cacheline as nr for find_vpid */
+    /* 表示当前 upid 在当前结构的 ns 字段中的偏移位 */
 	int nr;
+
+	/* 表示当前 upid 的 pid namespace 指针 */
 	struct pid_namespace *ns;
+
+	/* linux 系统通过链表的方式把散列哈希值相同的所有 pid 组织起来 */
 	struct hlist_node pid_chain;
 };
 
 struct pid
 {
+    /* 表示当前 pid 结构被引用的次数 */
 	atomic_t count;
 
-	/* 表示在 namespace 中使用的 pid level 数据信息 */
+	/* 表示该 pid 在 pid_namespace 中处于第几层 */
 	unsigned int level;
 	
 	/* lists of tasks that use this pid */
+    /* 通过链表的方式把所有使用当前 pid 的任务链接起来，一共有 3 个链表，分别链接不同类型的 pid */
 	struct hlist_head tasks[PIDTYPE_MAX];
+	
 	struct rcu_head rcu;
+
+	/* 表示当前 pid 在不同的 pid level 上的 upid 数据成员，数组长度等于当前数据结构的 level 字段值 */
 	struct upid numbers[1];
 };
 
@@ -142,6 +152,15 @@ extern void disable_pid_allocation(struct pid_namespace *ns);
  * 	is expected to be non-NULL. If @pid is NULL, caller should handle
  * 	the resulting NULL pid-ns.
  */
+/*********************************************************************************************************
+** 函数名称: ns_of_pid
+** 功能描述: 获取指定的 pid 所在的 pid namespace 结构指针
+** 输	 入: pid - 指定的 pid 结构指针
+** 输	 出: ns - 查找到 pid namespace 结构指针
+**         : NULL - 没找到指定 pid 的 pid namespace
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct pid_namespace *ns_of_pid(struct pid *pid)
 {
 	struct pid_namespace *ns = NULL;
@@ -171,7 +190,14 @@ static inline bool is_child_reaper(struct pid *pid)
  *
  * see also task_xid_nr() etc in include/linux/sched.h
  */
-
+/*********************************************************************************************************
+** 函数名称: pid_nr
+** 功能描述: 获取指定的 pid 结构在 pid namespace 树形结构的根节点处的 pid 偏移量
+** 输	 入: pid - 指定的 pid 结构指针
+** 输	 出: nr - 指定的 pid 结构在根节点处的 pid 偏移量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline pid_t pid_nr(struct pid *pid)
 {
 	pid_t nr = 0;

@@ -39,10 +39,25 @@
 #include <linux/proc_ns.h>
 #include <linux/proc_fs.h>
 
+/*********************************************************************************************************
+** 函数名称: pid_hashfn
+** 功能描述: 计算指定的 pid 的散列哈希值
+** 输	 入: nr - 指定的 pid
+**         : ns - 指定的 pid 的 namespace
+** 输	 出: return - 得到的哈希值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define pid_hashfn(nr, ns)	\
 	hash_long((unsigned long)nr + (unsigned long)ns, pidhash_shift)
+
+/* 指定了当前系统内 pid 散列哈希数组地址 */
 static struct hlist_head *pid_hash;
+
+/* 声明并初始化 pid hash 表的长度位移数，所以当前系统的 pid hash 表长度为 2^4 = 16 */
 static unsigned int pidhash_shift = 4;
+
+/* 声明并初始化系统 0 号进程的 STRUCT_PID 信息 */
 struct pid init_struct_pid = INIT_STRUCT_PID;
 
 int pid_max = PID_MAX_DEFAULT;
@@ -51,13 +66,32 @@ int pid_max = PID_MAX_DEFAULT;
 
 int pid_max_min = RESERVED_PIDS + 1;
 int pid_max_max = PID_MAX_LIMIT;
-
+
+/*********************************************************************************************************
+** 函数名称: mk_pid
+** 功能描述: 通过函数指定的参数生成一个 pid 值
+** 输	 入: pid_ns - 指定的 pid namespace 指针
+**         : map - 指定的 pid 的所在的 pidmap 数组成员结构指针
+**         : off - 指定的 pid 在指定的 pidmap 数组成员中的偏移量
+** 输	 出: int - 得到的 pid 数值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int mk_pid(struct pid_namespace *pid_ns,
 		struct pidmap *map, int off)
 {
 	return (map - pid_ns->pidmap)*BITS_PER_PAGE + off;
 }
 
+/*********************************************************************************************************
+** 函数名称: find_next_offset
+** 功能描述: 从指定的 pidmap 的指定偏移位处开始查找下一个为 0 的 bit 位
+** 输	 入: map - 指定的 pidmap 指针
+**         : offset - 起始 bit 偏移量
+** 输	 出: long - 查找到的 0 bit 的偏移位
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define find_next_offset(map, off)					\
 		find_next_zero_bit((map)->page, BITS_PER_PAGE, off)
 
@@ -66,7 +100,8 @@ static inline int mk_pid(struct pid_namespace *pid_ns,
  * first use and are never deallocated. This way a low pid_max
  * value does not cause lots of bitmaps to be allocated, but
  * the scheme scales to up to 4 million PIDs, runtime.
- */
+ */ 
+/* 声明并初始化系统 0 号进程的 pid_namespace 信息 */
 struct pid_namespace init_pid_ns = {
 	.kref = {
 		.refcount       = ATOMIC_INIT(2),
@@ -102,6 +137,14 @@ EXPORT_SYMBOL_GPL(init_pid_ns);
 
 static  __cacheline_aligned_in_smp DEFINE_SPINLOCK(pidmap_lock);
 
+/*********************************************************************************************************
+** 函数名称: free_pidmap
+** 功能描述: 释放指定的 upid 到系统中 
+** 输	 入: upid - 指定的 upid 指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void free_pidmap(struct upid *upid)
 {
 	int nr = upid->nr;
@@ -115,6 +158,17 @@ static void free_pidmap(struct upid *upid)
 /*
  * If we started walking pids at 'base', is 'a' seen before 'b'?
  */
+/*********************************************************************************************************
+** 函数名称: pid_before
+** 功能描述: 判断指定的 pid a 是否在指定的 pid b 前 
+** 输	 入: base - 指定的 pid base
+**         : a - 指定的 pid a
+**         : b - 指定的 pid b
+** 输	 出: 1 - 在前面
+**         : 0 - 不在前面
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int pid_before(int base, int a, int b)
 {
 	/*
@@ -151,6 +205,15 @@ static void set_last_pid(struct pid_namespace *pid_ns, int base, int pid)
 	} while ((prev != last_write) && (pid_before(base, last_write, pid)));
 }
 
+/*********************************************************************************************************
+** 函数名称: alloc_pidmap
+** 功能描述: 从指定的 pid namespace 中申请一个空闲的 pid 并更新 pid_ns->last_pid 的值
+** 输	 入: pid_ns - 指定的 pid namespace 结构指针
+** 输	 出: int - 成功申请的 pid 数值
+**         : -1 - 申请失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int alloc_pidmap(struct pid_namespace *pid_ns)
 {
 	int i, offset, max_scan, pid, last = pid_ns->last_pid;
@@ -213,6 +276,16 @@ static int alloc_pidmap(struct pid_namespace *pid_ns)
 	return -1;
 }
 
+/*********************************************************************************************************
+** 函数名称: next_pidmap
+** 功能描述: 从指定的 pid namespace 的指定偏移位处开始查找下一个最接近的已经被申请的 pid 的偏移量
+** 输	 入: pid_ns - 指定的 namespace 指针
+**         : last - 指定的最后一个 pid 偏移位
+** 输	 出: int - 和指定的 pid 最接近的 pid 的值
+**         : -1 - 没找到指定的 pid 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int next_pidmap(struct pid_namespace *pid_ns, unsigned int last)
 {
 	int offset;
@@ -258,12 +331,30 @@ void put_pid(struct pid *pid)
 }
 EXPORT_SYMBOL_GPL(put_pid);
 
+/*********************************************************************************************************
+** 函数名称: delayed_put_pid
+** 功能描述: 
+** 输	 入: pid_ns - 指定的 namespace 指针
+**         : last - 指定的最后一个 pid 偏移位
+** 输	 出: int - 和指定的 pid 最接近的 pid 的值
+**         : -1 - 没找到指定的 pid 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void delayed_put_pid(struct rcu_head *rhp)
 {
 	struct pid *pid = container_of(rhp, struct pid, rcu);
 	put_pid(pid);
 }
 
+/*********************************************************************************************************
+** 函数名称: free_pid
+** 功能描述: 释放指定的 pid 到系统中
+** 输	 入: pid - 指定的 pid 指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void free_pid(struct pid *pid)
 {
 	/* We can be called with write_lock_irq(&tasklist_lock) held */
@@ -302,6 +393,14 @@ void free_pid(struct pid *pid)
 	call_rcu(&pid->rcu, delayed_put_pid);
 }
 
+/*********************************************************************************************************
+** 函数名称: alloc_pid
+** 功能描述: 从指定的 pid namespace 中申请一个 pid
+** 输	 入: ns - 指定的 pid namespace 指针
+** 输	 出: pid * - 成功申请的 pid 结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct pid *alloc_pid(struct pid_namespace *ns)
 {
 	struct pid *pid;
@@ -370,10 +469,21 @@ void disable_pid_allocation(struct pid_namespace *ns)
 	spin_unlock_irq(&pidmap_lock);
 }
 
+/*********************************************************************************************************
+** 函数名称: find_pid_ns
+** 功能描述: 通过指定的 pid 偏移量和指定的 pid namespace 查找与其匹配的 pid 结构体指针
+** 输	 入: nr - 指定的 pid 偏移量
+**         : ns - 指定的 pid namespace 指针
+** 输	 出: pid * - 查找到匹配的 pid 结构指针
+**         : NULL - 没找到匹配的 pid 结构
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct pid *find_pid_ns(int nr, struct pid_namespace *ns)
 {
 	struct upid *pnr;
 
+    /* 遍历 pid 散列哈希值相同的 pid 链表 */
 	hlist_for_each_entry_rcu(pnr,
 			&pid_hash[pid_hashfn(nr, ns)], pid_chain)
 		if (pnr->nr == nr && pnr->ns == ns)
@@ -384,6 +494,14 @@ struct pid *find_pid_ns(int nr, struct pid_namespace *ns)
 }
 EXPORT_SYMBOL_GPL(find_pid_ns);
 
+/*********************************************************************************************************
+** 函数名称: find_vpid
+** 功能描述: 当前系统正在运行的任务的 pid namespace 中查找和指定的 pid 偏移量对应的 pid 结构指针
+** 输	 入: nr - 指定的 pid 偏移量
+** 输	 出: pid * - 当前运行任务的 pid 结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct pid *find_vpid(int nr)
 {
 	return find_pid_ns(nr, task_active_pid_ns(current));
@@ -393,6 +511,15 @@ EXPORT_SYMBOL_GPL(find_vpid);
 /*
  * attach_pid() must be called with the tasklist_lock write-held.
  */
+/*********************************************************************************************************
+** 函数名称: attach_pid
+** 功能描述: 把指定的任务添加到指定类型的 pid 的任务链表中
+** 输	 入: task - 指定的任务指针
+**         : type - 指定的 pid 类型
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void attach_pid(struct task_struct *task, enum pid_type type)
 {
 	struct pid_link *link = &task->pids[type];
@@ -439,6 +566,15 @@ void transfer_pid(struct task_struct *old, struct task_struct *new,
 	hlist_replace_rcu(&old->pids[type].node, &new->pids[type].node);
 }
 
+/*********************************************************************************************************
+** 函数名称: pid_task
+** 功能描述: 通过指定类型的 pid 获取使用这个 pid 的第一个任务结构指针
+** 输	 入: pid - 指定的 pid 结构指针
+**         : type - 指定的 pid 类型
+** 输	 出: result - 使用指定 pid 的第一个任务结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct task_struct *pid_task(struct pid *pid, enum pid_type type)
 {
 	struct task_struct *result = NULL;
@@ -456,6 +592,15 @@ EXPORT_SYMBOL(pid_task);
 /*
  * Must be called under rcu_read_lock().
  */
+/*********************************************************************************************************
+** 函数名称: find_task_by_pid_ns
+** 功能描述: 通过指定的 pid 偏移量和指定的 pid namespace 查找使用这个 pid 的第一个任务结构指针
+** 输	 入: nr - 指定的 pid 偏移量
+**         : ns - 指定的 pid namespace
+** 输	 出: result - 使用指定 pid 的第一个任务结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct task_struct *find_task_by_pid_ns(pid_t nr, struct pid_namespace *ns)
 {
 	rcu_lockdep_assert(rcu_read_lock_held(),
@@ -464,14 +609,22 @@ struct task_struct *find_task_by_pid_ns(pid_t nr, struct pid_namespace *ns)
 	return pid_task(find_pid_ns(nr, ns), PIDTYPE_PID);
 }
 
+/*********************************************************************************************************
+** 函数名称: find_task_by_vpid
+** 功能描述: 通过指定的 pid 偏移量查找在当前正在运行的进程的 namespace 中查找对应的任务结构指针
+** 输	 入: vnr - 指定的 pid 偏移量
+** 输	 出: task_struct * - 匹配的任务结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct task_struct *find_task_by_vpid(pid_t vnr)
 {
 	return find_task_by_pid_ns(vnr, task_active_pid_ns(current));
 }
 
 /*********************************************************************************************************
-** 函数名称: put_pid
-** 功能描述: 获取指定任务的指定类型的 pid 结构指针并递增这个 pid 的引用计数
+** 函数名称: get_task_pid
+** 功能描述: 获取指定任务的（属于某个进程）指定类型的 pid 数值
 ** 输	 入: task - 指定的任务指针
 **         : type - 指定的 pid 类型
 ** 输	 出: pid - 成功获取的 pid 结构指针
@@ -490,6 +643,15 @@ struct pid *get_task_pid(struct task_struct *task, enum pid_type type)
 }
 EXPORT_SYMBOL_GPL(get_task_pid);
 
+/*********************************************************************************************************
+** 函数名称: get_pid_task
+** 功能描述: 通过指定类型的 pid 查找与其对应的任务结构指针
+** 输	 入: pid - 指定的 pid 结构指针
+**         : type - 指定的 pid 类型
+** 输	 出: result - 匹配的任务结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct task_struct *get_pid_task(struct pid *pid, enum pid_type type)
 {
 	struct task_struct *result;
@@ -502,6 +664,14 @@ struct task_struct *get_pid_task(struct pid *pid, enum pid_type type)
 }
 EXPORT_SYMBOL_GPL(get_pid_task);
 
+/*********************************************************************************************************
+** 函数名称: find_vpid
+** 功能描述: 当前系统正在运行的任务的 pid namespace 中查找和指定的 pid 偏移量对应的 pid 结构指针
+** 输	 入: nr - 指定的 pid 偏移量
+** 输	 出: pid * - 当前运行任务的 pid 结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct pid *find_get_pid(pid_t nr)
 {
 	struct pid *pid;
@@ -514,6 +684,15 @@ struct pid *find_get_pid(pid_t nr)
 }
 EXPORT_SYMBOL_GPL(find_get_pid);
 
+/*********************************************************************************************************
+** 函数名称: pid_nr_ns
+** 功能描述: 获取指定的 pid 结构指针在指定的 pid namespace 中的 pid 偏移量
+** 输	 入: pid - 指定的 pid 结构指针
+**         : ns - 指定的 pid namespace 结构指针
+** 输	 出: nr - 获取到的对应的 pid 偏移量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 pid_t pid_nr_ns(struct pid *pid, struct pid_namespace *ns)
 {
 	struct upid *upid;
@@ -528,12 +707,30 @@ pid_t pid_nr_ns(struct pid *pid, struct pid_namespace *ns)
 }
 EXPORT_SYMBOL_GPL(pid_nr_ns);
 
+/*********************************************************************************************************
+** 函数名称: pid_vnr
+** 功能描述: 通过指定的 pid 结构指针和当前正在运行的进程的 pid namespace 获取与其对应的 pid 偏移量
+** 输	 入: pid - 指定的 pid 结构指针
+** 输	 出: nr - 获取到的对应的 pid 偏移量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 pid_t pid_vnr(struct pid *pid)
 {
 	return pid_nr_ns(pid, task_active_pid_ns(current));
 }
 EXPORT_SYMBOL_GPL(pid_vnr);
 
+/*********************************************************************************************************
+** 函数名称: __task_pid_nr_ns
+** 功能描述: 获取指定任务的指定类型的 pid 在指定的 pid namespace 中的 pid 偏移量 
+** 输	 入: task - 指定的任务结构指针
+**         : type - 指定的 pid 类型
+**         : ns - 指定的 pid namespace 结构指针
+** 输	 出: nr - 获取到的对应的 pid 偏移量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 pid_t __task_pid_nr_ns(struct task_struct *task, enum pid_type type,
 			struct pid_namespace *ns)
 {
@@ -553,12 +750,29 @@ pid_t __task_pid_nr_ns(struct task_struct *task, enum pid_type type,
 }
 EXPORT_SYMBOL(__task_pid_nr_ns);
 
+/*********************************************************************************************************
+** 函数名称: task_tgid_nr_ns
+** 功能描述: 获取指定任务的进程组组长在指定的 pid namespace 中的 pid 偏移量 
+** 输	 入: task - 指定的任务结构指针
+**         : ns - 指定的 pid namespace 结构指针
+** 输	 出: nr - 获取到的对应的 pid 偏移量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 pid_t task_tgid_nr_ns(struct task_struct *tsk, struct pid_namespace *ns)
 {
 	return pid_nr_ns(task_tgid(tsk), ns);
 }
 EXPORT_SYMBOL(task_tgid_nr_ns);
 
+/*********************************************************************************************************
+** 函数名称: task_active_pid_ns
+** 功能描述: 获取指定任务的进程 pid 所在的 pid namespace 结构指针
+** 输	 入: task - 指定的任务指针
+** 输	 出: pid_namespace * - 获取到的 pid namespace 结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct pid_namespace *task_active_pid_ns(struct task_struct *tsk)
 {
 	return ns_of_pid(task_pid(tsk));
@@ -570,6 +784,15 @@ EXPORT_SYMBOL_GPL(task_active_pid_ns);
  *
  * If there is a pid at nr this function is exactly the same as find_pid_ns.
  */
+/*********************************************************************************************************
+** 函数名称: find_ge_pid
+** 功能描述: 在指定的 pid namespace 中获取最接近且大于等于指定的 pid 偏移量的 pid 结构指针 
+** 输	 入: nr - 指定的 pid 偏移量
+**         : ns - 指定的 pid namespace 结构指针
+** 输	 出: nr - 获取到的匹配的 pid 结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct pid *find_ge_pid(int nr, struct pid_namespace *ns)
 {
 	struct pid *pid;
@@ -589,6 +812,14 @@ struct pid *find_ge_pid(int nr, struct pid_namespace *ns)
  * machine.  From a minimum of 16 slots up to 4096 slots at one gigabyte or
  * more.
  */
+/*********************************************************************************************************
+** 函数名称: pidhash_init
+** 功能描述: 初始化 pid 模块使用的 pid 散列哈希数组结构 
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void __init pidhash_init(void)
 {
 	unsigned int i, pidhash_size;
@@ -603,6 +834,14 @@ void __init pidhash_init(void)
 		INIT_HLIST_HEAD(&pid_hash[i]);
 }
 
+/*********************************************************************************************************
+** 函数名称: pidmap_init
+** 功能描述: 初始化 pid 模块使用的 pid 散列哈希数组结构 
+** 输	 入: 初始化 pid 模块使用的 pidmap 变量值以及系统 0 号进程的 pidmap 数据结构
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void __init pidmap_init(void)
 {
 	/* Veryify no one has done anything silly */
