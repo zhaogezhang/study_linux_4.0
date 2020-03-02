@@ -608,7 +608,9 @@ struct autogroup;
  * the locking of signal_struct.
  */
 struct signal_struct {
+    /* 当前信号引用计数 */
 	atomic_t		sigcnt;
+	
 	atomic_t		live;
 	int			nr_threads;
 	struct list_head	thread_head;
@@ -1277,7 +1279,10 @@ enum perf_event_task_context {
 
 struct task_struct {
 	volatile long state;	/* -1 unrunnable, 0 runnable, >0 stopped */
+
+	/* 这个成员指向了内核栈最低地址处，即内核栈中 struct thread_info 结构的起始地址 */
 	void *stack;
+	
 	atomic_t usage;
 	unsigned int flags;	/* per process flags, defined below */
 	unsigned int ptrace;
@@ -1347,10 +1352,10 @@ struct task_struct {
 #endif
 
 	/* per-thread vma caching */
-	// 表示每一个进程当前有效的 vma cache 序号，这个值和 struct mm_struct
-	// 结构中的 vmacache_seqnum 相对应，只有当这两个值相等的时候，才表示
-	// vmacache 有效，所以我们如果想要 invalid 当前 vmacache，只需要把 
-	// mm_struct 结构中的 vmacache_seqnum 加一即可
+	/* 表示每一个进程当前有效的 vma cache 序号，这个值和 struct mm_struct
+	   结构中的 vmacache_seqnum 相对应，只有当这两个值相等的时候，才表示
+	   vmacache 有效，所以我们如果想要 invalid 当前 vmacache，只需要把 
+	   mm_struct 结构中的 vmacache_seqnum 加一即可 */
 	u32 vmacache_seqnum;
 	struct vm_area_struct *vmacache[VMACACHE_SIZE];
 
@@ -1416,7 +1421,9 @@ struct task_struct {
 	struct list_head thread_group;
 	struct list_head thread_node;
 
+    /* 为 vfork 分配的条件变量，在子进程执行完毕后用来通知父进程时使用 */
 	struct completion *vfork_done;		/* for vfork() */
+	
 	int __user *set_child_tid;		/* CLONE_CHILD_SETTID */
 	int __user *clear_child_tid;		/* CLONE_CHILD_CLEARTID */
 
@@ -1493,11 +1500,12 @@ struct task_struct {
 #endif
 	struct seccomp seccomp;
 
-/* Thread group tracking */
+    /* Thread group tracking */
    	u32 parent_exec_id;
    	u32 self_exec_id;
-/* Protection of (de-)allocation: mm, files, fs, tty, keyrings, mems_allowed,
- * mempolicy */
+	
+    /* Protection of (de-)allocation: mm, files, fs, tty, keyrings, mems_allowed,
+     * mempolicy */
 	spinlock_t alloc_lock;
 
 	/* Protection of the PI data structures: */
@@ -1907,10 +1915,20 @@ static inline int is_global_init(struct task_struct *tsk)
 extern struct pid *cad_pid;
 
 extern void free_task(struct task_struct *tsk);
+
+/* 增加指定的 task_struct 的引用计数 */
 #define get_task_struct(tsk) do { atomic_inc(&(tsk)->usage); } while(0)
 
 extern void __put_task_struct(struct task_struct *t);
 
+/*********************************************************************************************************
+** 函数名称: free_task
+** 功能描述: 尝试释放指定的 task struct 结构及其占用的资源
+** 输	 入: tsk - 指定的 task struct 结构
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void put_task_struct(struct task_struct *t)
 {
 	if (atomic_dec_and_test(&t->usage))
@@ -2299,6 +2317,8 @@ void yield(void);
  */
 extern struct exec_domain	default_exec_domain;
 
+/* 通过联合体方式定义系统内核栈数据排列结构，低起始地址存储线程信息
+   高起始地址存储内核堆栈信息，增长方向为自上而下 */
 union thread_union {
 	struct thread_info thread_info;
 	unsigned long stack[THREAD_SIZE/sizeof(long)];
@@ -2687,12 +2707,22 @@ static inline void threadgroup_unlock(struct task_struct *tsk) {}
 
 #ifndef __HAVE_THREAD_FUNCTIONS
 
-// 获取指定线程的 struct task 结构体中的 thread_info 成员指针
+/* 获取指定线程的 struct task 结构体中的 thread_info 成员指针 */
 #define task_thread_info(task)	((struct thread_info *)(task)->stack)
 
-// 获取指定线程的 struct task 结构体中的 stack 成员指针
+/* 获取指定线程的 struct task 结构体中的 stack 成员指针，这个成员指向了内核栈最低地址处
+   即内核栈中 struct thread_info 结构的起始地址 */
 #define task_stack_page(task)	((task)->stack)
 
+/*********************************************************************************************************
+** 函数名称: setup_thread_stack
+** 功能描述: 根据指定的 task_struct 信息初始化指定的 task_struct 结构的内核栈信息
+** 输	 入: p - 需要初始化的 task_struct 结构指针
+**         : org - 指定的 task_struct 结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void setup_thread_stack(struct task_struct *p, struct task_struct *org)
 {
 	*task_thread_info(p) = *task_thread_info(org);
@@ -2708,6 +2738,14 @@ static inline void setup_thread_stack(struct task_struct *p, struct task_struct 
  * When the stack grows up, this is the highest address.
  * Beyond that position, we corrupt data on the next page.
  */
+/*********************************************************************************************************
+** 函数名称: end_of_stack
+** 功能描述: 获取指定 task_struct 的栈结构起始地址
+** 输	 入: unsigned long * - 栈结构起始地址
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline unsigned long *end_of_stack(struct task_struct *p)
 {
 #ifdef CONFIG_STACK_GROWSUP
@@ -3005,7 +3043,14 @@ static inline void ptrace_signal_wake_up(struct task_struct *t, bool resume)
  * Wrappers for p->thread_info->cpu access. No-op on UP.
  */
 #ifdef CONFIG_SMP
-
+/*********************************************************************************************************
+** 函数名称: task_cpu
+** 功能描述: 获取指定任务在哪个 cpu 上运行
+** 输	 入: p - 指定的 task_struct 结构指针
+** 输	 出: unsigned int - 指定的任务所运行的 cpu 号
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline unsigned int task_cpu(const struct task_struct *p)
 {
 	return task_thread_info(p)->cpu;

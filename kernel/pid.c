@@ -234,6 +234,14 @@ int next_pidmap(struct pid_namespace *pid_ns, unsigned int last)
 	return -1;
 }
 
+/*********************************************************************************************************
+** 函数名称: put_pid
+** 功能描述: 递减指定的 pid 的引用计数并尝试释放这个 pid 占用的资源
+** 输	 入: pid - 指定的 pid 指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void put_pid(struct pid *pid)
 {
 	struct pid_namespace *ns;
@@ -461,6 +469,15 @@ struct task_struct *find_task_by_vpid(pid_t vnr)
 	return find_task_by_pid_ns(vnr, task_active_pid_ns(current));
 }
 
+/*********************************************************************************************************
+** 函数名称: put_pid
+** 功能描述: 获取指定任务的指定类型的 pid 结构指针并递增这个 pid 的引用计数
+** 输	 入: task - 指定的任务指针
+**         : type - 指定的 pid 类型
+** 输	 出: pid - 成功获取的 pid 结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct pid *get_task_pid(struct task_struct *task, enum pid_type type)
 {
 	struct pid *pid;

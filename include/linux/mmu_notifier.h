@@ -274,6 +274,14 @@ static inline void mmu_notifier_invalidate_range(struct mm_struct *mm,
 		__mmu_notifier_invalidate_range(mm, start, end);
 }
 
+/*********************************************************************************************************
+** 函数名称: mmu_notifier_mm_init
+** 功能描述: 初始化指定的 mm_struct 数据结构的 mmu_notifier_mm 成员
+** 输	 入: mm - 指定的 mm_struct 数据结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void mmu_notifier_mm_init(struct mm_struct *mm)
 {
 	mm->mmu_notifier_mm = NULL;

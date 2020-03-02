@@ -586,6 +586,14 @@ struct mm_struct {
 #endif
 };
 
+/*********************************************************************************************************
+** 函数名称: mm_init_cpumask
+** 功能描述: 初始化指定的 mm_struct 数据结构的 cpumask 成员
+** 输	 入: mm - 指定的 mm_struct 数据结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void mm_init_cpumask(struct mm_struct *mm)
 {
 #ifdef CONFIG_CPUMASK_OFFSTACK
@@ -623,6 +631,14 @@ static inline void set_tlb_flush_pending(struct mm_struct *mm)
 	smp_mb__before_spinlock();
 }
 /* Clearing is done after a TLB flush, which also provides a barrier. */
+/*********************************************************************************************************
+** 函数名称: clear_tlb_flush_pending
+** 功能描述: 清除指定的 mm_struct 数据结构的 tlb_flush_pending 标志
+** 输	 入: mm - 指定的 mm_struct 数据结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void clear_tlb_flush_pending(struct mm_struct *mm)
 {
 	barrier();

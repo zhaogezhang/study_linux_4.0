@@ -259,8 +259,13 @@ int copy_thread(unsigned long clone_flags, unsigned long stack_start,
 	memset(&p->thread.cpu_context, 0, sizeof(struct cpu_context));
 
 	if (likely(!(p->flags & PF_KTHREAD))) {
+	    /* 获取当前运行任务的内核栈最高地址处的 pt_regs 结构，即内核线程栈的第一个 pt_regs 结构地址
+	       这个 pt_regs 结构是在发生系统调用的时候保存的上下文环境 */
 		*childregs = *current_pt_regs();
+
+	    /* 设置子进程的系统调用返回值为 0 */
 		childregs->regs[0] = 0;
+	
 		if (is_compat_thread(task_thread_info(p))) {
 			if (stack_start)
 				childregs->compat_sp = stack_start;
@@ -289,6 +294,7 @@ int copy_thread(unsigned long clone_flags, unsigned long stack_start,
 		p->thread.cpu_context.x19 = stack_start;
 		p->thread.cpu_context.x20 = stk_sz;
 	}
+	
 	p->thread.cpu_context.pc = (unsigned long)ret_from_fork;
 	p->thread.cpu_context.sp = (unsigned long)childregs;
 	p->thread.tp_value = tls;

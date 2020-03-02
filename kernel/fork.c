@@ -95,6 +95,7 @@ int nr_threads;			/* The idle threads do not count.. */
 
 int max_threads;		/* tunable limit on nr_threads */
 
+/* 每 cpu 变量，分别记录每个 cpu 上的有效进程数量 */
 DEFINE_PER_CPU(unsigned long, process_counts) = 0;
 
 __cacheline_aligned DEFINE_RWLOCK(tasklist_lock);  /* outer */
@@ -107,6 +108,14 @@ int lockdep_tasklist_lock_is_held(void)
 EXPORT_SYMBOL_GPL(lockdep_tasklist_lock_is_held);
 #endif /* #ifdef CONFIG_PROVE_RCU */
 
+/*********************************************************************************************************
+** 函数名称: nr_processes
+** 功能描述: 返回当前系统当前有效进程个数
+** 输	 入: 
+** 输	 出: total - 有效进程个数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int nr_processes(void)
 {
 	int cpu;
@@ -125,11 +134,27 @@ void __weak arch_release_task_struct(struct task_struct *tsk)
 #ifndef CONFIG_ARCH_TASK_STRUCT_ALLOCATOR
 static struct kmem_cache *task_struct_cachep;
 
+/*********************************************************************************************************
+** 函数名称: alloc_task_struct_node
+** 功能描述: 从指定的 kmem_cache 内存分配器的指定 node id 处申请一个 task struct 结构
+** 输	 入: node - 指定的 node id
+** 输	 出: task_struct * - 成功申请到的内存空间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct task_struct *alloc_task_struct_node(int node)
 {
 	return kmem_cache_alloc_node(task_struct_cachep, GFP_KERNEL, node);
 }
 
+/*********************************************************************************************************
+** 函数名称: free_task_struct
+** 功能描述: 释放指定的 task_struct 结构到指定的 kmem_cache 内存分配器中
+** 输	 入: tsk - 指定的 task_struct 结构
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void free_task_struct(struct task_struct *tsk)
 {
 	kmem_cache_free(task_struct_cachep, tsk);
@@ -147,6 +172,15 @@ void __weak arch_release_thread_info(struct thread_info *ti)
  * kmemcache based allocator.
  */
 # if THREAD_SIZE >= PAGE_SIZE
+/*********************************************************************************************************
+** 函数名称: alloc_task_struct_node
+** 功能描述: 从指定的 node id 处申请一个 thread_info 结构
+** 输	 入: tsk - 未使用
+**         : node - 指定的 node id
+** 输	 出: thread_info * - 成功申请到的内存空间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static struct thread_info *alloc_thread_info_node(struct task_struct *tsk,
 						  int node)
 {
@@ -156,24 +190,56 @@ static struct thread_info *alloc_thread_info_node(struct task_struct *tsk,
 	return page ? page_address(page) : NULL;
 }
 
+/*********************************************************************************************************
+** 函数名称: free_thread_info
+** 功能描述: 释放指定的 thread_info 结构
+** 输	 入: ti - 指定的 thread_info 结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void free_thread_info(struct thread_info *ti)
 {
 	free_kmem_pages((unsigned long)ti, THREAD_SIZE_ORDER);
 }
 # else
 static struct kmem_cache *thread_info_cache;
-
+/*********************************************************************************************************
+** 函数名称: alloc_task_struct_node
+** 功能描述: 从指定的 kmem_cache 内存分配器的指定 node id 处申请一个 thread_info 结构
+** 输	 入: tsk - 未使用
+**         : node - 指定的 node id
+** 输	 出: task_struct * - 成功申请到的内存空间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static struct thread_info *alloc_thread_info_node(struct task_struct *tsk,
 						  int node)
 {
 	return kmem_cache_alloc_node(thread_info_cache, THREADINFO_GFP, node);
 }
 
+/*********************************************************************************************************
+** 函数名称: free_thread_info
+** 功能描述: 释放指定的 thread_info 结构到指定的 kmem_cache 内存分配器中
+** 输	 入: ti - 指定的 thread_info 结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void free_thread_info(struct thread_info *ti)
 {
 	kmem_cache_free(thread_info_cache, ti);
 }
 
+/*********************************************************************************************************
+** 函数名称: thread_info_cache_init
+** 功能描述: 创建一个 thread_info 的 kmem_cache 内存分配器
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void thread_info_cache_init(void)
 {
 	thread_info_cache = kmem_cache_create("thread_info", THREAD_SIZE,
@@ -201,6 +267,15 @@ struct kmem_cache *vm_area_cachep;
 /* SLAB cache for mm_struct structures (tsk->mm) */
 static struct kmem_cache *mm_cachep;
 
+/*********************************************************************************************************
+** 函数名称: account_kernel_stack
+** 功能描述: 用来统计当前系统内核栈个数
+** 输	 入: ti - 指定进程的线程信息指针
+**         : account - 需要调整的计数值（可正可负）
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void account_kernel_stack(struct thread_info *ti, int account)
 {
 	struct zone *zone = page_zone(virt_to_page(ti));
@@ -208,6 +283,14 @@ static void account_kernel_stack(struct thread_info *ti, int account)
 	mod_zone_page_state(zone, NR_KERNEL_STACK, account);
 }
 
+/*********************************************************************************************************
+** 函数名称: free_task
+** 功能描述: 释放指定的 task_struct 结构
+** 输	 入: tsk - 指定的 task_struct 结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void free_task(struct task_struct *tsk)
 {
 	account_kernel_stack(tsk->stack, -1);
@@ -221,6 +304,14 @@ void free_task(struct task_struct *tsk)
 }
 EXPORT_SYMBOL(free_task);
 
+/*********************************************************************************************************
+** 函数名称: free_signal_struct
+** 功能描述: 释放指定的 signal_struct 结构
+** 输	 入: sig - 指定的 signal_struct 结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void free_signal_struct(struct signal_struct *sig)
 {
 	taskstats_tgid_free(sig);
@@ -228,12 +319,28 @@ static inline void free_signal_struct(struct signal_struct *sig)
 	kmem_cache_free(signal_cachep, sig);
 }
 
+/*********************************************************************************************************
+** 函数名称: put_signal_struct
+** 功能描述: 尝试释放指定的 signal_struct 结构
+** 输	 入: sig - 指定的 signal_struct 结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void put_signal_struct(struct signal_struct *sig)
 {
 	if (atomic_dec_and_test(&sig->sigcnt))
 		free_signal_struct(sig);
 }
 
+/*********************************************************************************************************
+** 函数名称: free_task
+** 功能描述: 释放指定的 task struct 结构及其占用的资源
+** 输	 入: tsk - 指定的 task struct 结构
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void __put_task_struct(struct task_struct *tsk)
 {
 	WARN_ON(!tsk->exit_state);
@@ -253,6 +360,14 @@ EXPORT_SYMBOL_GPL(__put_task_struct);
 
 void __init __weak arch_task_cache_init(void) { }
 
+/*********************************************************************************************************
+** 函数名称: fork_init
+** 功能描述: 初始化当前系统的 fork 功能模块
+** 输	 入: mempages - 当前系统物理内存空间页数
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void __init fork_init(unsigned long mempages)
 {
 #ifndef CONFIG_ARCH_TASK_STRUCT_ALLOCATOR
@@ -287,6 +402,15 @@ void __init fork_init(unsigned long mempages)
 		init_task.signal->rlim[RLIMIT_NPROC];
 }
 
+/*********************************************************************************************************
+** 函数名称: arch_dup_task_struct
+** 功能描述: 把指定的 task_struct 内容复制到指定的 task_struct 中
+** 输	 入: dst - 目的 task_struct 结构指针
+**         : src - 源 task_struct 结构指针
+** 输	 出: 0 - 复制成功
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int __weak arch_dup_task_struct(struct task_struct *dst,
 					       struct task_struct *src)
 {
@@ -294,6 +418,14 @@ int __weak arch_dup_task_struct(struct task_struct *dst,
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: set_task_stack_end_magic
+** 功能描述: 设置指定的 task_struct 的栈起始地址标志魔数，用于栈溢出检测
+** 输	 入: tsk - 指定的 task_struct 指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void set_task_stack_end_magic(struct task_struct *tsk)
 {
 	unsigned long *stackend;
@@ -302,10 +434,18 @@ void set_task_stack_end_magic(struct task_struct *tsk)
 	*stackend = STACK_END_MAGIC;	/* for overflow detection */
 }
 
+/*********************************************************************************************************
+** 函数名称: dup_task_struct
+** 功能描述: 创建并复制指定的 task_struct 数据结构
+** 输	 入: orig - 指定的 task_struct 结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static struct task_struct *dup_task_struct(struct task_struct *orig)
 {
 	struct task_struct *tsk;
-	struct thread_info *ti;
+	struct thread_info *ti; 
 	int node = tsk_fork_get_node(orig);
 	int err;
 
@@ -364,6 +504,15 @@ free_tsk:
 }
 
 #ifdef CONFIG_MMU
+/*********************************************************************************************************
+** 函数名称: dup_mmap
+** 功能描述: 从指定的源 mm_struct 数据结构中复制内存映射相关信息到指定的目的 mm_struct 数据结构中
+** 输	 入: mm - 指定的目的 mm_struct 数据结构指针
+**         : oldmm - 指定的源 mm_struct 数据结构指针
+** 输	 出: 0 - 复制成功
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
 {
 	struct vm_area_struct *mpnt, *tmp, *prev, **pprev;
@@ -492,6 +641,14 @@ fail_nomem:
 	goto out;
 }
 
+/*********************************************************************************************************
+** 函数名称: mm_alloc_pgd
+** 功能描述: 为指定的 mm_struct 结构申请一个全局页目录结构
+** 输	 入: mm - 指定的 mm_struct 数据结构指针
+** 输	 出: 0 - 申请成功
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int mm_alloc_pgd(struct mm_struct *mm)
 {
 	mm->pgd = pgd_alloc(mm);
@@ -500,6 +657,14 @@ static inline int mm_alloc_pgd(struct mm_struct *mm)
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: mm_free_pgd
+** 功能描述: 释放指定的 mm_struct 结构的全局页目录结构
+** 输	 入: mm - 指定的 mm_struct 数据结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void mm_free_pgd(struct mm_struct *mm)
 {
 	pgd_free(mm, mm->pgd);
@@ -529,6 +694,14 @@ __setup("coredump_filter=", coredump_filter_setup);
 
 #include <linux/init_task.h>
 
+/*********************************************************************************************************
+** 函数名称: mm_init_aio
+** 功能描述: 初始化指定的 mm_struct 数据结构的异步 IO 相关成员
+** 输	 入: mm - 指定的 mm_struct 数据结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void mm_init_aio(struct mm_struct *mm)
 {
 #ifdef CONFIG_AIO
@@ -537,6 +710,14 @@ static void mm_init_aio(struct mm_struct *mm)
 #endif
 }
 
+/*********************************************************************************************************
+** 函数名称: mm_init_owner
+** 功能描述: 初始化指定的 mm_struct 数据结构的 owner 成员
+** 输	 入: mm - 指定的 mm_struct 数据结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void mm_init_owner(struct mm_struct *mm, struct task_struct *p)
 {
 #ifdef CONFIG_MEMCG
@@ -544,6 +725,15 @@ static void mm_init_owner(struct mm_struct *mm, struct task_struct *p)
 #endif
 }
 
+/*********************************************************************************************************
+** 函数名称: mm_init
+** 功能描述: 初始化指定的 mm_struct 数据结构
+** 输	 入: mm - 指定的 mm_struct 数据结构指针
+**         : p - 指定的 mm_struct 所属的 task_struct 数据结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static struct mm_struct *mm_init(struct mm_struct *mm, struct task_struct *p)
 {
 	mm->mmap = NULL;
@@ -593,6 +783,14 @@ fail_nopgd:
 	return NULL;
 }
 
+/*********************************************************************************************************
+** 函数名称: check_mm
+** 功能描述: 校验指定的 mm_struct 数据结构是否处于空闲可释放状态
+** 输	 入: mm - 指定的 mm_struct 数据结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void check_mm(struct mm_struct *mm)
 {
 	int i;
@@ -620,6 +818,14 @@ static void check_mm(struct mm_struct *mm)
 /*
  * Allocate and initialize an mm_struct.
  */
+/*********************************************************************************************************
+** 函数名称: mm_alloc
+** 功能描述: 申请并初始化一个 mm_struct 结构
+** 输	 入: 
+** 输	 出: mm_struct * - 成功申请并初始化的 mm_struct 数据结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct mm_struct *mm_alloc(void)
 {
 	struct mm_struct *mm;
@@ -637,6 +843,14 @@ struct mm_struct *mm_alloc(void)
  * is dropped: either by a lazy thread or by
  * mmput. Free the page directory and the mm.
  */
+/*********************************************************************************************************
+** 函数名称: __mmdrop
+** 功能描述: 释放指定的 mm_struct 结构
+** 输	 入: mm - 指定的 mm_struct 数据结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void __mmdrop(struct mm_struct *mm)
 {
 	BUG_ON(mm == &init_mm);
@@ -651,6 +865,14 @@ EXPORT_SYMBOL_GPL(__mmdrop);
 /*
  * Decrement the use count and release all resources for an mm.
  */
+/*********************************************************************************************************
+** 函数名称: mmput
+** 功能描述: 减少指定 mm_struct 的引用计数并尝试释放其占用的资源
+** 输	 入: mm - 指定的 mm_struct 数据结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void mmput(struct mm_struct *mm)
 {
 	might_sleep();
@@ -674,6 +896,15 @@ void mmput(struct mm_struct *mm)
 }
 EXPORT_SYMBOL_GPL(mmput);
 
+/*********************************************************************************************************
+** 函数名称: set_mm_exe_file
+** 功能描述: 设置指定 mm_struct 的可执行文件结构指针信息
+** 输	 入: mm - 指定的 mm_struct 数据结构指针
+**         : new_exe_file - 新的可执行文件结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void set_mm_exe_file(struct mm_struct *mm, struct file *new_exe_file)
 {
 	if (new_exe_file)
@@ -683,6 +914,14 @@ void set_mm_exe_file(struct mm_struct *mm, struct file *new_exe_file)
 	mm->exe_file = new_exe_file;
 }
 
+/*********************************************************************************************************
+** 函数名称: get_mm_exe_file
+** 功能描述: 获取指定 mm_struct 的可执行文件结构指针信息
+** 输	 入: mm - 指定的 mm_struct 数据结构指针
+** 输	 出: file * - 获取到的可执行文件结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct file *get_mm_exe_file(struct mm_struct *mm)
 {
 	struct file *exe_file;
@@ -696,6 +935,15 @@ struct file *get_mm_exe_file(struct mm_struct *mm)
 	return exe_file;
 }
 
+/*********************************************************************************************************
+** 函数名称: dup_mm_exe_file
+** 功能描述: 复制指定的 mm_struct 结构中的可执行文件结构指针信息
+** 输	 入: oldmm - 指定的源 mm_struct 数据结构指针
+**         : newmm - 指定的目的 mm_struct 数据结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void dup_mm_exe_file(struct mm_struct *oldmm, struct mm_struct *newmm)
 {
 	/* It's safe to write the exe_file pointer without exe_file_lock because
@@ -712,6 +960,15 @@ static void dup_mm_exe_file(struct mm_struct *oldmm, struct mm_struct *newmm)
  * bumping up the use count.  User must release the mm via mmput()
  * after use.  Typically used by /proc and ptrace.
  */
+/*********************************************************************************************************
+** 函数名称: get_task_mm
+** 功能描述: 获取并引用指定的 task_struct 的 mm_struct 结构体信息
+** 输	 入: task - 指定的 task_struct 数据结构指针
+** 输	 出: mm_struct * - 成功获取并引用的 mm_struct 数据结构指针
+**         : NULL - 执行失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct mm_struct *get_task_mm(struct task_struct *task)
 {
 	struct mm_struct *mm;
@@ -729,6 +986,16 @@ struct mm_struct *get_task_mm(struct task_struct *task)
 }
 EXPORT_SYMBOL_GPL(get_task_mm);
 
+/*********************************************************************************************************
+** 函数名称: mm_access
+** 功能描述: 获取指定的 task_struct 的 mm_struct 结构指针
+** 注     释: 指定的 task_struct 结构需要是当前正在运行的进程的 task_struct 结构指针
+** 输	 入: task - 指定的 task_struct 数据结构指针
+**         : mode - 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct mm_struct *mm_access(struct task_struct *task, unsigned int mode)
 {
 	struct mm_struct *mm;
@@ -749,6 +1016,14 @@ struct mm_struct *mm_access(struct task_struct *task, unsigned int mode)
 	return mm;
 }
 
+/*********************************************************************************************************
+** 函数名称: complete_vfork_done
+** 功能描述: 通过 vfork 创建子进程后，在子进程执行完毕后通过条件变量通知父进程
+** 输	 入: task - 指定的 task_struct 数据结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void complete_vfork_done(struct task_struct *tsk)
 {
 	struct completion *vfork;
@@ -762,6 +1037,15 @@ static void complete_vfork_done(struct task_struct *tsk)
 	task_unlock(tsk);
 }
 
+/*********************************************************************************************************
+** 函数名称: wait_for_vfork_done
+** 功能描述: 通过 vfork 创建子进程后，父进通过条件变量等待子进程执行完毕
+** 输	 入: child - 子进程的 task_struct 数据结构指针
+**         : vfork - 指定的条件变量指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int wait_for_vfork_done(struct task_struct *child,
 				struct completion *vfork)
 {
@@ -794,6 +1078,15 @@ static int wait_for_vfork_done(struct task_struct *child,
  * restoring the old one. . .
  * Eric Biederman 10 January 1998
  */
+/*********************************************************************************************************
+** 函数名称: mm_release
+** 功能描述: 从指定的 task_struct 中移除指定的 mm_struct 数据结构
+** 输	 入: tsk - 指定的 task_struct 数据结构指针
+**         : mm - 指定的 mm_struct 数据结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void mm_release(struct task_struct *tsk, struct mm_struct *mm)
 {
 	/* Get rid of any futexes when releasing the mm */
@@ -850,6 +1143,15 @@ void mm_release(struct task_struct *tsk, struct mm_struct *mm)
  * Allocate a new mm structure and copy contents from the
  * mm structure of the passed in task structure.
  */
+/*********************************************************************************************************
+** 函数名称: dup_mm
+** 功能描述: 复制当前正在运行的进程的 mm_struct 到指定的 task_struct 的 mm_struct 数据结构中
+** 输	 入: tsk - 指定的 task_struct 数据结构指针
+** 输	 出: mm_struct * - 成功创建并复制指定的 mm_struct 结构指针
+**         : NULL - 操作失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static struct mm_struct *dup_mm(struct task_struct *tsk)
 {
 	struct mm_struct *mm, *oldmm = current->mm;
@@ -887,6 +1189,17 @@ fail_nomem:
 	return NULL;
 }
 
+/*********************************************************************************************************
+** 函数名称: copy_mm
+** 功能描述: 根据指定的函数参数复制当前正在运行的进程的 mm_struct 到指定的 task_struct 的 
+**         : mm_struct 数据结构中
+** 输	 入: clone_flags - 指定的资源共享标志
+**         : tsk - 指定的 task_struct 数据结构指针
+** 输	 出: 0 - 操作成功
+**         : ENOMEM - 操作失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int copy_mm(unsigned long clone_flags, struct task_struct *tsk)
 {
 	struct mm_struct *mm, *oldmm;
@@ -933,6 +1246,17 @@ fail_nomem:
 	return retval;
 }
 
+/*********************************************************************************************************
+** 函数名称: copy_fs
+** 功能描述: 根据指定的函数参数复制当前正在运行的进程的 fs_struct 到指定的 task_struct 的 
+**         : fs_struct 数据结构中
+** 输	 入: clone_flags - 指定的资源共享标志
+**         : tsk - 指定的 task_struct 数据结构指针
+** 输	 出: 0 - 操作成功
+**         : ENOMEM - 操作失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int copy_fs(unsigned long clone_flags, struct task_struct *tsk)
 {
 	struct fs_struct *fs = current->fs;
@@ -953,6 +1277,17 @@ static int copy_fs(unsigned long clone_flags, struct task_struct *tsk)
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: copy_files
+** 功能描述: 根据指定的函数参数复制当前正在运行的进程的 files_struct 到指定的 task_struct 的 
+**         : files_struct 数据结构中
+** 输	 入: clone_flags - 指定的资源共享标志
+**         : tsk - 指定的 task_struct 数据结构指针
+** 输	 出: 0 - 操作成功
+**         : ENOMEM - 操作失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int copy_files(unsigned long clone_flags, struct task_struct *tsk)
 {
 	struct files_struct *oldf, *newf;
@@ -980,6 +1315,17 @@ out:
 	return error;
 }
 
+/*********************************************************************************************************
+** 函数名称: copy_io
+** 功能描述: 根据指定的函数参数复制当前正在运行的进程的 io_context 到指定的 task_struct 的 
+**         : io_context 数据结构中
+** 输	 入: clone_flags - 指定的资源共享标志
+**         : tsk - 指定的 task_struct 数据结构指针
+** 输	 出: 0 - 操作成功
+**         : ENOMEM - 操作失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int copy_io(unsigned long clone_flags, struct task_struct *tsk)
 {
 #ifdef CONFIG_BLOCK
@@ -1006,6 +1352,17 @@ static int copy_io(unsigned long clone_flags, struct task_struct *tsk)
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: copy_sighand
+** 功能描述: 根据指定的函数参数复制当前正在运行的进程的 copy_sighand 到指定的 task_struct 的 
+**         : copy_sighand 数据结构中
+** 输	 入: clone_flags - 指定的资源共享标志
+**         : tsk - 指定的 task_struct 数据结构指针
+** 输	 出: 0 - 操作成功
+**         : ENOMEM - 操作失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int copy_sighand(unsigned long clone_flags, struct task_struct *tsk)
 {
 	struct sighand_struct *sig;
@@ -1023,6 +1380,14 @@ static int copy_sighand(unsigned long clone_flags, struct task_struct *tsk)
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: __cleanup_sighand
+** 功能描述: 尝试释放指定的信 sighand_struct 结构体占用的资源
+** 输	 入: sighand - 指定的信 sighand_struct 结构体指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void __cleanup_sighand(struct sighand_struct *sighand)
 {
 	if (atomic_dec_and_test(&sighand->count)) {
@@ -1038,6 +1403,14 @@ void __cleanup_sighand(struct sighand_struct *sighand)
 /*
  * Initialize POSIX timer handling for a thread group.
  */
+/*********************************************************************************************************
+** 函数名称: posix_cpu_timers_init_group
+** 功能描述: 初始化线程组的 POSIX 定时器处理函数结构信息
+** 输	 入: sig - 指定的信 signal_struct 结构体指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void posix_cpu_timers_init_group(struct signal_struct *sig)
 {
 	unsigned long cpu_limit;
@@ -1057,6 +1430,17 @@ static void posix_cpu_timers_init_group(struct signal_struct *sig)
 	INIT_LIST_HEAD(&sig->cpu_timers[2]);
 }
 
+/*********************************************************************************************************
+** 函数名称: copy_sighand
+** 功能描述: 根据指定的函数参数复制当前正在运行的进程的 signal_struct 到指定的 task_struct 的 
+**         : signal_struct 数据结构中
+** 输	 入: clone_flags - 指定的资源共享标志
+**         : tsk - 指定的 task_struct 数据结构指针
+** 输	 出: 0 - 操作成功
+**         : ENOMEM - 操作失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int copy_signal(unsigned long clone_flags, struct task_struct *tsk)
 {
 	struct signal_struct *sig;
@@ -1110,6 +1494,19 @@ static int copy_signal(unsigned long clone_flags, struct task_struct *tsk)
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: copy_seccomp
+** 功能描述: 根据指定的函数参数复制当前正在运行的进程的 secure computing 数据到指定的 task_struct 数据结构中
+** 注     释: 在 Linux 系统里，大量的系统调用（systemcall）直接暴露给用户态程序。但是，并不是所有的
+**         : 系统调用都被需要，而且不安全的代码滥用系统调用会对系统造成安全威胁。通过 seccomp，我们
+**         : 限制程序使用某些系统调用，这样可以减少系统的暴露面，同时是程序进入一种“安全”的状态。
+** 输	 入: clone_flags - 指定的资源共享标志
+**         : tsk - 指定的 task_struct 数据结构指针
+** 输	 出: 0 - 操作成功
+**         : ENOMEM - 操作失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void copy_seccomp(struct task_struct *p)
 {
 #ifdef CONFIG_SECCOMP
@@ -1150,6 +1547,14 @@ SYSCALL_DEFINE1(set_tid_address, int __user *, tidptr)
 	return task_pid_vnr(current);
 }
 
+/*********************************************************************************************************
+** 函数名称: rt_mutex_init_task
+** 功能描述: 初始化指定的 task_struct 的实时互斥锁
+** 输	 入: p - 化指定的 task_struct 结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void rt_mutex_init_task(struct task_struct *p)
 {
 	raw_spin_lock_init(&p->pi_lock);
@@ -1163,6 +1568,14 @@ static void rt_mutex_init_task(struct task_struct *p)
 /*
  * Initialize POSIX timer handling for a single task.
  */
+/*********************************************************************************************************
+** 函数名称: posix_cpu_timers_init
+** 功能描述: 初始化指定的 task_struct 的 POSIX 定时器处理函数结构信息
+** 输	 入: tsk - 化指定的 task_struct 结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void posix_cpu_timers_init(struct task_struct *tsk)
 {
 	tsk->cputime_expires.prof_exp = 0;
@@ -1173,6 +1586,14 @@ static void posix_cpu_timers_init(struct task_struct *tsk)
 	INIT_LIST_HEAD(&tsk->cpu_timers[2]);
 }
 
+/*********************************************************************************************************
+** 函数名称: init_task_pid
+** 功能描述: 设置指定的 task_struct 的指定类型的 PID 值
+** 输	 入: tsk - 化指定的 task_struct 结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void
 init_task_pid(struct task_struct *task, enum pid_type type, struct pid *pid)
 {
@@ -1187,6 +1608,19 @@ init_task_pid(struct task_struct *task, enum pid_type type, struct pid *pid)
  * parts of the process environment (as per the clone
  * flags). The actual kick-off is left to the caller.
  */
+/*********************************************************************************************************
+** 函数名称: copy_process
+** 功能描述: 根据指定的参数以及当前运行的进程信息创建并初始化一个新的 task_struct 结构
+** 输	 入: clone_flags - 资源共享标志
+**         : stack_start - 指定的栈起始地址
+**         : stack_size - 指定的栈空间大小
+**         : child_tidptr - 
+**         : pid - 指定的 pid 信息
+**         : trace - 
+** 输	 出: task_struct * - 新创建的 task_struct 结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static struct task_struct *copy_process(unsigned long clone_flags,
 					unsigned long stack_start,
 					unsigned long stack_size,
@@ -1257,6 +1691,7 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	DEBUG_LOCKS_WARN_ON(!p->hardirqs_enabled);
 	DEBUG_LOCKS_WARN_ON(!p->softirqs_enabled);
 #endif
+
 	retval = -EAGAIN;
 	if (atomic_read(&p->real_cred->user->processes) >=
 			task_rlimit(p, RLIMIT_NPROC)) {
@@ -1600,6 +2035,14 @@ fork_out:
 	return ERR_PTR(retval);
 }
 
+/*********************************************************************************************************
+** 函数名称: init_idle_pids
+** 功能描述: 初始化系统 0 号进程的 pid_link 数据结构信息
+** 输	 入: links - 系统 0 号进程的 pid_link 数据结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void init_idle_pids(struct pid_link *links)
 {
 	enum pid_type type;
@@ -1610,6 +2053,14 @@ static inline void init_idle_pids(struct pid_link *links)
 	}
 }
 
+/*********************************************************************************************************
+** 函数名称: fork_idle
+** 功能描述: 为指定的 cpu 创建一个 idle 进程
+** 输	 入: cpu - 指定的 cpu 号
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct task_struct *fork_idle(int cpu)
 {
 	struct task_struct *task;
@@ -1628,6 +2079,20 @@ struct task_struct *fork_idle(int cpu)
  * It copies the process, and if successful kick-starts
  * it and waits for it to finish using the VM if required.
  */
+/*********************************************************************************************************
+** 函数名称: do_fork
+** 功能描述: 根据函数指定的参数创建一个新的子进程并运行
+** 输	 入: clone_flags - 资源共享标志
+**         : stack_start - 指定的栈起始地址
+**         : stack_size - 指定的栈空间大小
+** 输	 出: parent_tidptr - 用来存储父进程的线程 id
+**         : child_tidptr - 用来存储子进程的线程 id
+**         : 0 - 子进程返回
+**         : > 0 - 父进程返回
+**         : < 0 - 执行出错
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 long do_fork(unsigned long clone_flags,
 	      unsigned long stack_start,
 	      unsigned long stack_size,
@@ -1674,18 +2139,21 @@ long do_fork(unsigned long clone_flags,
 		if (clone_flags & CLONE_PARENT_SETTID)
 			put_user(nr, parent_tidptr);
 
+        /* 如果当前是 vfork 则初初始化一个条件变量结构，用来子进程通知父进程执行完毕消息 */
 		if (clone_flags & CLONE_VFORK) {
 			p->vfork_done = &vfork;
 			init_completion(&vfork);
 			get_task_struct(p);
 		}
 
+        /* 为新创建的任务分配 cpu 并放到这个 cpu 的运行队列上并唤醒这个任务 */
 		wake_up_new_task(p);
 
 		/* forking complete and child started to run, tell ptracer */
 		if (unlikely(trace))
 			ptrace_event_pid(trace, pid);
 
+        /* 如果当前是 vfork 则父进程等待子进程运行完毕再运行 */
 		if (clone_flags & CLONE_VFORK) {
 			if (!wait_for_vfork_done(p, &vfork))
 				ptrace_event_pid(PTRACE_EVENT_VFORK_DONE, pid);

@@ -470,7 +470,9 @@ static inline pmd_t pmd_modify(pmd_t pmd, pgprot_t newprot)
 	return pte_pmd(pte_modify(pmd_pte(pmd), newprot));
 }
 
+/* 表示系统 0 号进程使用的根页目录结构 */
 extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
+
 extern pgd_t idmap_pg_dir[PTRS_PER_PGD];
 
 /*

@@ -211,6 +211,14 @@ static int kthread(void *_create)
 }
 
 /* called from do_fork() to get node information for about to be created task */
+/*********************************************************************************************************
+** 函数名称: tsk_fork_get_node
+** 功能描述: 获取指定的 task_struct 结构的 node id 信息
+** 输	 入: tsk - 指定的 task_struct 结构指针
+** 输	 出: tsk->pref_node_fork - node id 信息
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int tsk_fork_get_node(struct task_struct *tsk)
 {
 #ifdef CONFIG_NUMA

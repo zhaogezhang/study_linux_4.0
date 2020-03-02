@@ -680,9 +680,15 @@ static inline int cpu_of(struct rq *rq)
 
 DECLARE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
+/* 获取指定 cpu 上的运行队列指针 */
 #define cpu_rq(cpu)		(&per_cpu(runqueues, (cpu)))
+
+/* 获取当前 cpu 上的运行队列指针 */
 #define this_rq()		this_cpu_ptr(&runqueues)
+
+/* 获取指定任务所属的运行队列指针 */
 #define task_rq(p)		cpu_rq(task_cpu(p))
+
 #define cpu_curr(cpu)		(cpu_rq(cpu)->curr)
 #define raw_rq()		raw_cpu_ptr(&runqueues)
 
@@ -884,12 +890,29 @@ static inline void sched_ttwu_pending(void) { }
  * Instead we use a 'copy' which is updated from sched_move_task() while
  * holding both task_struct::pi_lock and rq::lock.
  */
+/*********************************************************************************************************
+** 函数名称: task_group
+** 功能描述: 获取指定任务的调度任务组信息
+** 输	 入: p - 指定的 task_struct 结构指针
+** 输	 出: task_group * - 获取到的任务组信息指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct task_group *task_group(struct task_struct *p)
 {
 	return p->sched_task_group;
 }
 
 /* Change a task's cfs_rq and parent entity if it moves across CPUs/groups */
+/*********************************************************************************************************
+** 函数名称: set_task_rq
+** 功能描述: 设置指定的任务的运行队列信息为指定 cpu 的运行队列信息
+** 输	 入: p - 指定的 task_struct 结构指针
+**         : cpu - 指定的 cpu 号
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void set_task_rq(struct task_struct *p, unsigned int cpu)
 {
 #if defined(CONFIG_FAIR_GROUP_SCHED) || defined(CONFIG_RT_GROUP_SCHED)
@@ -917,6 +940,15 @@ static inline struct task_group *task_group(struct task_struct *p)
 
 #endif /* CONFIG_CGROUP_SCHED */
 
+/*********************************************************************************************************
+** 函数名称: __set_task_cpu
+** 功能描述: 把指定的任务分配到指定的 cpu 的运行队列上并更新相关信息
+** 输	 入: p - 指定的 task_struct 结构指针
+**         : cpu - 指定的 cpu 号
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void __set_task_cpu(struct task_struct *p, unsigned int cpu)
 {
 	set_task_rq(p, cpu);
@@ -1383,6 +1415,14 @@ extern void start_bandwidth_timer(struct hrtimer *period_timer, ktime_t period);
 /*
  * __task_rq_lock - lock the rq @p resides on.
  */
+/*********************************************************************************************************
+** 函数名称: __task_rq_lock
+** 功能描述: 获取指定任务所在的运行队列的锁
+** 输	 入: p - 定的的 task_struct 结构指针
+** 输	 出: q * - 成功获取锁的运行队列指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct rq *__task_rq_lock(struct task_struct *p)
 	__acquires(rq->lock)
 {

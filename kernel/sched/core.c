@@ -782,6 +782,16 @@ static void set_load_weight(struct task_struct *p)
 	load->inv_weight = prio_to_wmult[prio];
 }
 
+/*********************************************************************************************************
+** 函数名称: enqueue_task
+** 功能描述: 把指定的任务添加到指定的运行队列上
+** 输	 入: rq - 指定任务所在的运行队列指针
+**         : p - 指定的任务指针
+**         : flags - 指定的标志
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	update_rq_clock(rq);
@@ -789,6 +799,16 @@ static void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 	p->sched_class->enqueue_task(rq, p, flags);
 }
 
+/*********************************************************************************************************
+** 函数名称: dequeue_task
+** 功能描述: 把指定的任务从指定的运行队列上移除
+** 输	 入: rq - 指定任务所在的运行队列指针
+**         : p - 指定的任务指针
+**         : flags - 指定的标志
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	update_rq_clock(rq);
@@ -796,6 +816,16 @@ static void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 	p->sched_class->dequeue_task(rq, p, flags);
 }
 
+/*********************************************************************************************************
+** 函数名称: activate_task
+** 功能描述: 激活指定的任务
+** 输	 入: rq - 指定任务所在的运行队列指针
+**         : p - 指定的任务指针
+**         : flags - 指定的标志
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void activate_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	if (task_contributes_to_load(p))
@@ -804,6 +834,16 @@ void activate_task(struct rq *rq, struct task_struct *p, int flags)
 	enqueue_task(rq, p, flags);
 }
 
+/*********************************************************************************************************
+** 函数名称: deactivate_task
+** 功能描述: 使指定的任务处于非激活状态
+** 输	 入: rq - 指定任务所在的运行队列指针
+**         : p - 指定的任务指针
+**         : flags - 指定的标志
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void deactivate_task(struct rq *rq, struct task_struct *p, int flags)
 {
 	if (task_contributes_to_load(p))
@@ -997,6 +1037,15 @@ void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags)
 }
 
 #ifdef CONFIG_SMP
+/*********************************************************************************************************
+** 函数名称: set_task_cpu
+** 功能描述: 把指定的任务从当前所在 cpu 运行队列上迁移到指定的 cpu 的运行队列上并更新相关信息
+** 输	 入: p - 指定的 task_struct 结构指针
+**         : new_cpu - 指定的新的 cpu 号
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void set_task_cpu(struct task_struct *p, unsigned int new_cpu)
 {
 #ifdef CONFIG_SCHED_DEBUG
@@ -1355,6 +1404,17 @@ out:
 /*
  * The caller (fork, wakeup) owns p->pi_lock, ->cpus_allowed is stable.
  */
+/*********************************************************************************************************
+** 函数名称: select_task_rq
+** 功能描述: 为指定的任务选择运行队列并返回这个运行队列所在的 cpu 号
+** 输	 入: p - 指定的 task_struct 结构指针
+**         : cpu - 指定的任务当前所在 cpu 号
+**         : sd_flags - 指定的调度域标志
+**         : wake_flags - 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline
 int select_task_rq(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 {
@@ -2054,6 +2114,14 @@ extern void init_dl_bw(struct dl_bw *dl_b);
  * that must be done for every newly created context, then puts the task
  * on the runqueue and wakes it.
  */
+/*********************************************************************************************************
+** 函数名称: wake_up_new_task
+** 功能描述: 为新创建的任务分配 cpu 并放到这个 cpu 的运行队列上并唤醒这个任务
+** 输	 入: p - 新创建的任务的 task_struct 结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void wake_up_new_task(struct task_struct *p)
 {
 	unsigned long flags;
@@ -4574,6 +4642,15 @@ void init_idle_bootup_task(struct task_struct *idle)
  * NOTE: this function does not set the idle thread's NEED_RESCHED
  * flag, to make booting more robust.
  */
+/*********************************************************************************************************
+** 函数名称: init_idle
+** 功能描述: 把指定的 idle 进程设置到指定的 cpu 上
+** 输	 入: idle - 指定的 idle 进程指针
+**         : cpu - 指定的 cpu 号
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void init_idle(struct task_struct *idle, int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);

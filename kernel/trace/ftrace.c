@@ -5914,6 +5914,14 @@ void ftrace_graph_init_idle_task(struct task_struct *t, int cpu)
 }
 
 /* Allocate a return stack for newly created task */
+/*********************************************************************************************************
+** 函数名称: ftrace_graph_init_task
+** 功能描述: 为新创建的任务申请一个返回栈
+** 输	 入: t - 新创建的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void ftrace_graph_init_task(struct task_struct *t)
 {
 	/* Make sure we do not use the parent ret_stack */

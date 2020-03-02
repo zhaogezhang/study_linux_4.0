@@ -211,6 +211,14 @@ static inline void siginitsetinv(sigset_t *set, unsigned long mask)
 
 #endif /* __HAVE_ARCH_SIG_SETOPS */
 
+/*********************************************************************************************************
+** 函数名称: init_sigpending
+** 功能描述: 初始化指定的挂起信号结构体
+** 输	 入: sig - 指定的挂起信号结构体指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void init_sigpending(struct sigpending *sig)
 {
 	sigemptyset(&sig->signal);

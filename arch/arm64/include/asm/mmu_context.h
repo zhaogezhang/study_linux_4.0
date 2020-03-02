@@ -106,7 +106,17 @@ static inline void check_and_switch_context(struct mm_struct *mm,
 		switch_new_context(mm);
 }
 
+/*********************************************************************************************************
+** 函数名称: __init_new_context
+** 功能描述: 设置指定的 mm_struct 的上下文为初始默认态
+** 输	 入: tsk - 未使用
+**         : mm - 指定的 mm_struct 数据结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define init_new_context(tsk,mm)	(__init_new_context(tsk,mm),0)
+
 #define destroy_context(mm)		do { } while(0)
 
 #define finish_arch_post_lock_switch \
