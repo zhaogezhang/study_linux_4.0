@@ -43,12 +43,28 @@
  *  nodes will be lowercase. Unknown color nodes shall be drawn as red within
  *  parentheses and have some accompanying text comment.
  */
-
+/*********************************************************************************************************
+** 函数名称: rb_set_black
+** 功能描述: 设置指定的节点颜色为黑色
+** 输	 入: rb - 指定的节点指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void rb_set_black(struct rb_node *rb)
 {
 	rb->__rb_parent_color |= RB_BLACK;
 }
 
+/*********************************************************************************************************
+** 函数名称: rb_red_parent
+** 功能描述: 获取指定红色节点的父节点的指针
+** 注     释: 因为指定的节点是红色，所以没有颜色信息，所以不需要执行 & ~3 操作
+** 输	 入: rb - 指定的节点指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct rb_node *rb_red_parent(struct rb_node *red)
 {
 	return (struct rb_node *)red->__rb_parent_color;
@@ -59,16 +75,44 @@ static inline struct rb_node *rb_red_parent(struct rb_node *red)
  * - old's parent and color get assigned to new
  * - old gets assigned new as a parent and 'color' as a color.
  */
+/*********************************************************************************************************
+** 函数名称: __rb_rotate_set_parents
+** 功能描述: 在指定的红黑树上把指定的新节点插入到指定的旧节点和这个旧节点的父节点之间，并为
+**         : 旧节点指定新的颜色信息
+** 输	 入: old - 指定的旧节点指针
+**         : new - 指定的新节点指针
+**         : root - 指定的红黑树根节点
+**         : color - 为旧节点指定的新颜色
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void
 __rb_rotate_set_parents(struct rb_node *old, struct rb_node *new,
 			struct rb_root *root, int color)
 {
 	struct rb_node *parent = rb_parent(old);
+
+	/* new->parent_color = old->parent_color */
 	new->__rb_parent_color = old->__rb_parent_color;
+
+	/* old->parent = new, old->color = color */
 	rb_set_parent_color(old, new, color);
+
+	/* parent->child = new */
 	__rb_change_child(old, new, parent, root);
 }
 
+/*********************************************************************************************************
+** 函数名称: __rb_insert
+** 功能描述: 把指定的节点插入到指定的红黑树上之后用来处理树的平衡和节点颜色
+** 输	 入: node - 指定的插入节点指针
+**         : root - 指定的红黑树根节点指针
+**         : augment_rotate - 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static __always_inline void
 __rb_insert(struct rb_node *node, struct rb_root *root,
 	    void (*augment_rotate)(struct rb_node *old, struct rb_node *new))
@@ -198,6 +242,16 @@ __rb_insert(struct rb_node *node, struct rb_root *root,
  * Inline version for rb_erase() use - we want to be able to inline
  * and eliminate the dummy_rotate callback there
  */
+/*********************************************************************************************************
+** 函数名称: ____rb_erase_color
+** 功能描述: 把指定的节点从指定的红黑树上移除之后用来处理树的平衡和节点颜色
+** 输	 入: parent - 移除节点的父节点指针
+**         : root - 指定的红黑树根节点指针
+**         : augment_rotate - 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static __always_inline void
 ____rb_erase_color(struct rb_node *parent, struct rb_root *root,
 	void (*augment_rotate)(struct rb_node *old, struct rb_node *new))
@@ -361,6 +415,16 @@ ____rb_erase_color(struct rb_node *parent, struct rb_root *root,
 }
 
 /* Non-inline version for rb_erase_augmented() use */
+/*********************************************************************************************************
+** 函数名称: __rb_erase_color
+** 功能描述: 把指定的节点从指定的红黑树上移除之后用来处理树的平衡和节点颜色
+** 输	 入: parent - 移除节点的父节点指针
+**         : root - 指定的红黑树根节点指针
+**         : augment_rotate - 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void __rb_erase_color(struct rb_node *parent, struct rb_root *root,
 	void (*augment_rotate)(struct rb_node *old, struct rb_node *new))
 {
@@ -383,12 +447,30 @@ static const struct rb_augment_callbacks dummy_callbacks = {
 	dummy_propagate, dummy_copy, dummy_rotate
 };
 
+/*********************************************************************************************************
+** 函数名称: rb_insert_color
+** 功能描述: 把指定的节点插入到指定的红黑树上之后用来处理树的平衡和节点颜色
+** 输	 入: node - 指定的插入节点指针
+**         : root - 指定的红黑树根节点指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void rb_insert_color(struct rb_node *node, struct rb_root *root)
 {
 	__rb_insert(node, root, dummy_rotate);
 }
 EXPORT_SYMBOL(rb_insert_color);
 
+/*********************************************************************************************************
+** 函数名称: rb_erase
+** 功能描述: 把指定的节点从指定的红黑树上移除并处理树的平衡和节点颜色
+** 输	 入: node - 指定的节点指针
+**         : root - 指定的红黑树根节点指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void rb_erase(struct rb_node *node, struct rb_root *root)
 {
 	struct rb_node *rebalance;
@@ -404,7 +486,16 @@ EXPORT_SYMBOL(rb_erase);
  * This instantiates the same __always_inline functions as in the non-augmented
  * case, but this time with user-defined callbacks.
  */
-
+/*********************************************************************************************************
+** 函数名称: __rb_insert_augmented
+** 功能描述: 把指定的节点插入到指定的红黑树上之后用来处理树的平衡和节点颜色
+** 输	 入: node - 指定的插入节点指针
+**         : root - 指定的红黑树根节点指针
+**         : augment_rotate - 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void __rb_insert_augmented(struct rb_node *node, struct rb_root *root,
 	void (*augment_rotate)(struct rb_node *old, struct rb_node *new))
 {
@@ -415,6 +506,15 @@ EXPORT_SYMBOL(__rb_insert_augmented);
 /*
  * This function returns the first node (in sort order) of the tree.
  */
+/*********************************************************************************************************
+** 函数名称: rb_first
+** 功能描述: 返回指定红黑树上键值最小的节点指针
+** 输	 入: root - 指定的红黑树根节点指针
+** 输	 出: n - 键值最小的节点指针
+**         : NULL - 指定的红黑树为空
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct rb_node *rb_first(const struct rb_root *root)
 {
 	struct rb_node	*n;
@@ -428,6 +528,15 @@ struct rb_node *rb_first(const struct rb_root *root)
 }
 EXPORT_SYMBOL(rb_first);
 
+/*********************************************************************************************************
+** 函数名称: rb_last
+** 功能描述: 返回指定红黑树上键值最大的节点指针
+** 输	 入: root - 指定的红黑树根节点指针
+** 输	 出: n - 键值最大的节点指针
+**         : NULL - 指定的红黑树为空
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct rb_node *rb_last(const struct rb_root *root)
 {
 	struct rb_node	*n;
@@ -441,6 +550,15 @@ struct rb_node *rb_last(const struct rb_root *root)
 }
 EXPORT_SYMBOL(rb_last);
 
+/*********************************************************************************************************
+** 函数名称: rb_next
+** 功能描述: 返回指定节点所在红黑树上键值最接近的下一个节点指针
+** 输	 入: root - 指定的节点指针
+** 输	 出: parent - 键值最接近的下一个节点指针
+**         : NULL - 指定的红黑树为空
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct rb_node *rb_next(const struct rb_node *node)
 {
 	struct rb_node *parent;
@@ -473,6 +591,15 @@ struct rb_node *rb_next(const struct rb_node *node)
 }
 EXPORT_SYMBOL(rb_next);
 
+/*********************************************************************************************************
+** 函数名称: rb_prev
+** 功能描述: 返回指定节点所在红黑树上键值最接近的上一个节点指针
+** 输	 入: root - 指定的节点指针
+** 输	 出: parent - 键值最接近的上一个节点指针
+**         : NULL - 指定的红黑树为空
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct rb_node *rb_prev(const struct rb_node *node)
 {
 	struct rb_node *parent;
@@ -502,6 +629,16 @@ struct rb_node *rb_prev(const struct rb_node *node)
 }
 EXPORT_SYMBOL(rb_prev);
 
+/*********************************************************************************************************
+** 函数名称: rb_replace_node
+** 功能描述: 在指定的红黑树上用指定的新节点替换指定的旧节点
+** 输	 入: victim - 指定的旧节点指针
+**         : new - 指定的新节点指针
+**         : root - 指定的红黑树根节点指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void rb_replace_node(struct rb_node *victim, struct rb_node *new,
 		     struct rb_root *root)
 {
@@ -519,6 +656,14 @@ void rb_replace_node(struct rb_node *victim, struct rb_node *new,
 }
 EXPORT_SYMBOL(rb_replace_node);
 
+/*********************************************************************************************************
+** 函数名称: rb_left_deepest_node
+** 功能描述: 按照左序优先的方式在红黑树上查找和指定节点之间深度相差最大的节点
+** 输	 入: node - 指定的节点指针
+** 输	 出: node - 和指定节点深度相差最大的节点指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static struct rb_node *rb_left_deepest_node(const struct rb_node *node)
 {
 	for (;;) {
@@ -531,6 +676,15 @@ static struct rb_node *rb_left_deepest_node(const struct rb_node *node)
 	}
 }
 
+/*********************************************************************************************************
+** 函数名称: rb_next_postorder
+** 功能描述: 返回指定节点所在红黑树上键值最接近的下一个节点指针
+** 输	 入: node - 指定的节点指针
+** 输	 出: parent - 和指定节点深度相差最大的节点指针
+**         : NULL - 没找到匹配的节点
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct rb_node *rb_next_postorder(const struct rb_node *node)
 {
 	const struct rb_node *parent;
@@ -550,6 +704,15 @@ struct rb_node *rb_next_postorder(const struct rb_node *node)
 }
 EXPORT_SYMBOL(rb_next_postorder);
 
+/*********************************************************************************************************
+** 函数名称: rb_first_postorder
+** 功能描述: 返回指定红黑树上键值最小的节点指针
+** 输	 入: root - 指定红黑树的根节点指针
+** 输	 出: rb_node * - 键值最小的节点指针
+**         : NULL - 没找到匹配的节点
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct rb_node *rb_first_postorder(const struct rb_root *root)
 {
 	if (!root->rb_node)
