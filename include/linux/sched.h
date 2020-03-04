@@ -1111,11 +1111,29 @@ struct mempolicy;
 struct pipe_inode_info;
 struct uts_namespace;
 
+/* 当前系统使用的调度负载权重结构体 */
 struct load_weight {
-	unsigned long weight;
-	u32 inv_weight;
+	unsigned long weight; /* 存储了负载权重信息  */
+	u32 inv_weight;       /* 存储了负载权重值用于重除的结果 weight * inv_weight = 2^32 = 0x80000000 */
 };
 
+/* PELT 负载贡献算法：
+   内核计算在一段周期 period 时间内，一个进程处于 runnable 状态的时间来表示该进程对负载的贡献值
+   为了统计的精确性，需要计算一个 average 值作为负载贡献值。可以把过去多个 period 周期的负载贡献
+   值取一个平均，但是这就带来一个问题，把很久之前的负载贡献加入到当前负载贡献平均值计算中，可能
+   会引起很大的误差，因此该算法引入了一个衰减因子来计算该平均值，距离当前时间越久的 period 周期
+   对当前的平均负载贡献计算影响越小。
+   PELT 把时间分成了 1024us 的序列，在每个 1024us 的周期中，一个调度实体（进程或者进程组）对系统
+   负载的贡献可以根据该实体处于 runnable 状态（正在 cpu 上运行或者在队列中等待 cpu 调度运行）的
+   时间进行计算。对于过去的负载，我们在计算的时候需要乘一个衰减因子。如果定义 Li 表示在周期 Pi
+   中该调度实体的对系统负载贡献，那么一个调度实体对系统负荷的总贡献可以表示为：
+   L = L0 + L1*y + L2*y^2 + L3*y^3 + ...
+
+   通过这个公式来看，由于我们是累加各个周期中的负载贡献值，所以一个实体在一个计算周期内的负载可能
+   会超过 1024us。使用这样序列的让计算非常简单，我们不需要使用数组来记录过去的负荷贡献，只要把上
+   次计算得到的总贡献值乘以 y 再加上新的 L0 负荷值就得到了新的贡献值了。内核中通过这种公式计算出
+   runnable_avg_sum 和 runnable_avg_period，然后两者 runnable_avg_sum / runnable_avg_period 可以
+   作为对系统平均负载贡献的描述。*/
 struct sched_avg {
 	/*
 	 * These sums represent an infinite geometric series and so are bound
@@ -1123,17 +1141,21 @@ struct sched_avg {
 	 * choices of y < 1-2^(-32)*1024.
 	 */
 	u32 runnable_avg_sum, runnable_avg_period;
+	
 	u64 last_runnable_update;
 	s64 decay_count;
+
+	/* 表示当前调度实例对整个系统的平均负载贡献值 */
 	unsigned long load_avg_contrib;
 };
 
 #ifdef CONFIG_SCHEDSTATS
 struct sched_statistics {
-	u64			wait_start;
-	u64			wait_max;
-	u64			wait_count;
-	u64			wait_sum;
+	u64			wait_start;                    /* 表示当前调度实例加入运行队列等待运行时的时钟信息 */
+	u64			wait_max;                      /* 追踪当前调度实例加入运行队列到实际运行等待时间的最大值 */
+	u64			wait_count;                    /* 记录当前调度实例加入运行队列后等待运行的次数 */
+	u64			wait_sum;                      /* 统计当前调度实例加入运行队列到实际运行的所有等待时间 */
+	
 	u64			iowait_count;
 	u64			iowait_sum;
 
@@ -1164,29 +1186,53 @@ struct sched_statistics {
 };
 #endif
 
+/* 用来抽象调度器中的一个调度实例，这个调度实例可以是线程也可以是一个任务组 */
 struct sched_entity {
+
+    /* 当前调度实例的负载权重信息 */
 	struct load_weight	load;		/* for load-balancing */
+
+    /* 通过这个红黑树节点把当前调度实例添加到调度器的红黑树上 */	
 	struct rb_node		run_node;
+
+    /* 通过链表的方式把属于同一个任务组中的所有调度实例链接起来 */
 	struct list_head	group_node;
+
+	/* 表示当前调度实例是否已经在所属的运行队列上 */
 	unsigned int		on_rq;
 
+    /* 表示当前调度实例本次调度开始运行时的运行队列时钟值 */
 	u64			exec_start;
+
+	/* 表示当前调度实例总计运行的 cpu 物理运行时间 */
 	u64			sum_exec_runtime;
+
+	/* 表示当前调度实例总计运行的虚拟时间 */
 	u64			vruntime;
+	
 	u64			prev_sum_exec_runtime;
 
 	u64			nr_migrations;
 
 #ifdef CONFIG_SCHEDSTATS
+    /* 表示当前调度实例的运行时调度统计信息 */
 	struct sched_statistics statistics;
 #endif
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
+    /* 表示当前调度任务组实例在任务组树形结构中的深度 */
 	int			depth;
+
+	/* 指向当前调度任务组实例的父节点指针 */
 	struct sched_entity	*parent;
+	
 	/* rq on which this entity is (to be) queued: */
+	/* 指向当前调度任务组实例所在的 cfs 运行队列指针 */
 	struct cfs_rq		*cfs_rq;
+	
 	/* rq "owned" by this entity/group: */
+	/* 如果当前调度实例代表的是一个任务组，则指向当前任务组拥有的运行队列
+	   如果当前调度实例代表的是一个线程，则指向 NULL */
 	struct cfs_rq		*my_q;
 #endif
 
@@ -1278,6 +1324,7 @@ enum perf_event_task_context {
 };
 
 struct task_struct {
+	/* 表示当前任务的状态 */
 	volatile long state;	/* -1 unrunnable, 0 runnable, >0 stopped */
 
 	/* 这个成员指向了内核栈最低地址处，即内核栈中 struct thread_info 结构的起始地址 */
@@ -1621,7 +1668,10 @@ struct task_struct {
 	int numa_scan_seq;
 	unsigned int numa_scan_period;
 	unsigned int numa_scan_period_max;
+
+	/* 表示当前任务在运行时优先选择的 node id 值 */
 	int numa_preferred_nid;
+
 	unsigned long numa_migrate_retry;
 	u64 node_stamp;			/* migration stamp  */
 	u64 last_task_numa_placement;
@@ -2899,7 +2949,7 @@ static inline void setup_thread_stack(struct task_struct *p, struct task_struct 
  */
 /*********************************************************************************************************
 ** 函数名称: end_of_stack
-** 功能描述: 获取指定 task_struct 的栈结构起始地址
+** 功能描述: 获取指定 task_struct 的栈结构和它的 thread_info 的交界空洞地址
 ** 输	 入: unsigned long * - 栈结构起始地址
 ** 输	 出: 
 ** 全局变量: 
@@ -3215,6 +3265,14 @@ static inline unsigned int task_cpu(const struct task_struct *p)
 	return task_thread_info(p)->cpu;
 }
 
+/*********************************************************************************************************
+** 函数名称: task_node
+** 功能描述: 获取为指定的任务分配的 node id
+** 输	 入: p - 指定的 task_struct 结构指针
+** 输	 出: int - node id
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int task_node(const struct task_struct *p)
 {
 	return cpu_to_node(task_cpu(p));
@@ -3223,12 +3281,28 @@ static inline int task_node(const struct task_struct *p)
 extern void set_task_cpu(struct task_struct *p, unsigned int cpu);
 
 #else
-
+/*********************************************************************************************************
+** 函数名称: task_cpu
+** 功能描述: 获取指定任务在哪个 cpu 上运行
+** 输	 入: p - 指定的 task_struct 结构指针
+** 输	 出: unsigned int - 指定的任务所运行的 cpu 号
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline unsigned int task_cpu(const struct task_struct *p)
 {
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: set_task_cpu
+** 功能描述: 把指定的任务从当前所在 cpu 运行队列上迁移到指定的 cpu 的运行队列上并更新相关信息
+** 输	 入: p - 指定的 task_struct 结构指针
+**         : new_cpu - 指定的新的 cpu 号
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void set_task_cpu(struct task_struct *p, unsigned int cpu)
 {
 }

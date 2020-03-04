@@ -59,6 +59,7 @@ unsigned int normalized_sysctl_sched_latency = 6000000ULL;
  * SCHED_TUNABLESCALING_LOG - scaled logarithmical, *1+ilog(ncpus)
  * SCHED_TUNABLESCALING_LINEAR - scaled linear, *ncpus
  */
+/* 表示当前系统使用的调度粒度调整策略 */
 enum sched_tunable_scaling sysctl_sched_tunable_scaling
 	= SCHED_TUNABLESCALING_LOG;
 
@@ -114,18 +115,45 @@ unsigned int __read_mostly sysctl_sched_shares_window = 10000000UL;
 unsigned int sysctl_sched_cfs_bandwidth_slice = 5000UL;
 #endif
 
+/*********************************************************************************************************
+** 函数名称: update_load_add
+** 功能描述: 对指定的负载权重执行指定的增量更新
+** 输	 入: lw - 指定的负载权重指针
+**         : inc - 指定的增量值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void update_load_add(struct load_weight *lw, unsigned long inc)
 {
 	lw->weight += inc;
 	lw->inv_weight = 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: update_load_sub
+** 功能描述: 对指定的负载权重执行指定的减量更新
+** 输	 入: lw - 指定的负载权重指针
+**         : inc - 指定的减量值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void update_load_sub(struct load_weight *lw, unsigned long dec)
 {
 	lw->weight -= dec;
 	lw->inv_weight = 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: update_load_set
+** 功能描述: 设置指定的负载权重为指定的值
+** 输	 入: lw - 指定的负载权重指针
+**         : w - 指定的负载权重值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void update_load_set(struct load_weight *lw, unsigned long w)
 {
 	lw->weight = w;
@@ -139,8 +167,20 @@ static inline void update_load_set(struct load_weight *lw, unsigned long w)
  * so pick a second-best guess by going with the log2 of the
  * number of CPUs.
  *
+ * 当有更多的 cpu 时，增加粒度值，因为 cpu 越多，用户可见的“有效延迟”
+ * 就越小。但是这个关系不是线性的，所以根据 cpu 数量的 log2 进行猜测
+ * 也是一个比较好的办法
+ *
  * This idea comes from the SD scheduler of Con Kolivas:
  */
+/*********************************************************************************************************
+** 函数名称: get_update_sysctl_factor
+** 功能描述: 获取当前系统使用的调度粒度调整策略获取系统控制系数值
+** 输	 入: 
+** 输	 出: factor - 当前系统控制系数值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int get_update_sysctl_factor(void)
 {
 	unsigned int cpus = min_t(int, num_online_cpus(), 8);
@@ -162,18 +202,36 @@ static int get_update_sysctl_factor(void)
 	return factor;
 }
 
+/*********************************************************************************************************
+** 函数名称: update_sysctl
+** 功能描述: 根据当前系统使用的调度粒度调整策略更新和系统控制相关的调度参数
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void update_sysctl(void)
 {
 	unsigned int factor = get_update_sysctl_factor();
 
 #define SET_SYSCTL(name) \
 	(sysctl_##name = (factor) * normalized_sysctl_##name)
+
+    /* 根据获取到的系统控制系数值更新当前系统控制相关的调度参数 */
 	SET_SYSCTL(sched_min_granularity);
 	SET_SYSCTL(sched_latency);
 	SET_SYSCTL(sched_wakeup_granularity);
 #undef SET_SYSCTL
 }
 
+/*********************************************************************************************************
+** 函数名称: sched_init_granularity
+** 功能描述: 初始化和当前系统控制相关的调度参数
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void sched_init_granularity(void)
 {
 	update_sysctl();
@@ -182,13 +240,22 @@ void sched_init_granularity(void)
 #define WMULT_CONST	(~0U)
 #define WMULT_SHIFT	32
 
+/*********************************************************************************************************
+** 函数名称: __update_inv_weight
+** 功能描述: 根据指定的负载权重的 lw->weight 值更新 lw->inv_weight 字段值
+** 输	 入: lw - 指定的负载权重指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void __update_inv_weight(struct load_weight *lw)
 {
 	unsigned long w;
 
 	if (likely(lw->inv_weight))
 		return;
-
+    
+	/* 获取和指定的负载权重对应的值 */
 	w = scale_load_down(lw->weight);
 
 	if (BITS_PER_LONG > 32 && unlikely(w >= WMULT_CONST))
@@ -196,7 +263,7 @@ static void __update_inv_weight(struct load_weight *lw)
 	else if (unlikely(!w))
 		lw->inv_weight = WMULT_CONST;
 	else
-		lw->inv_weight = WMULT_CONST / w;
+		lw->inv_weight = WMULT_CONST / w; /* lw->weight * lw->inv_weight = 2^32 = 0x80000000 */
 }
 
 /*
@@ -209,13 +276,30 @@ static void __update_inv_weight(struct load_weight *lw)
  * fit 32 bits, and NICE_0_LOAD gives another 10 bits; therefore shift >= 22.
  *
  * Or, weight =< lw.weight (because lw.weight is the runqueue weight), thus
- * weight/lw.weight <= 1, and therefore our shift will also be positive.
+ * weight/lw.weight <= 1, and therefore our shift will also be positive. 
  */
+/*********************************************************************************************************
+** 函数名称: __calc_delta
+** 功能描述: 计算指定权重的 cpu 物理运行时间在指定的负载权重下对应的物理/虚拟运行时间
+** 注     释: 1.    delta_exec * weight / lw.weight
+**         :    = delta_exec * weight / (2^32 / lw->inv_weight)
+**         :    = delta_exec * weight * lw->inv_weight / 2^32
+**         : 2. 当 weight = NICE_0_LOAD 时，计算得出的是虚拟运行时间
+** 输	 入: delta_exec - 指定调度实例的 cpu 物理运行时间
+**         : weight - 指定的权重参数
+**         : lw - 指定的负载权重参数
+** 输	 出: u64 - 对应的 cpu 物理运行时间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static u64 __calc_delta(u64 delta_exec, unsigned long weight, struct load_weight *lw)
 {
+	/* 获取和指定的负载权重对应的值 */
 	u64 fact = scale_load_down(weight);
+	
 	int shift = WMULT_SHIFT;
 
+	/* lw->weight * lw->inv_weight = 2^32 = 0x80000000 */
 	__update_inv_weight(lw);
 
 	if (unlikely(fact >> 32)) {
@@ -233,6 +317,7 @@ static u64 __calc_delta(u64 delta_exec, unsigned long weight, struct load_weight
 		shift--;
 	}
 
+    /* 将指定的 u64 和指定的 u32 相乘后右移指定的位数 */
 	return mul_u64_u32_shr(delta_exec, fact, shift);
 }
 
@@ -244,16 +329,40 @@ const struct sched_class fair_sched_class;
  */
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
-
 /* cpu runqueue to which this cfs_rq is attached */
+/*********************************************************************************************************
+** 函数名称: rq_of
+** 功能描述: 获取指定的 cfs 运行队列所属的 cpu 运行队列指针
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: cfs_rq->rq - cpu 的运行队列指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct rq *rq_of(struct cfs_rq *cfs_rq)
 {
 	return cfs_rq->rq;
 }
 
 /* An entity is a task if it doesn't "own" a runqueue */
+/*********************************************************************************************************
+** 函数名称: entity_is_task
+** 功能描述: 判断指定的调度实例是否是一个线程
+** 输	 入: se - 指定的调度实例指针
+** 输	 出: 1 - 是一个线程
+**         : 0 - 是一个调度组
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define entity_is_task(se)	(!se->my_q)
 
+/*********************************************************************************************************
+** 函数名称: task_of
+** 功能描述: 获取指定的调度实体所在的 task_struct 结构指针
+** 输	 入: se - 指定的调度实体指针
+** 输	 出: task_struct * - 获取到的 task_struct 结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct task_struct *task_of(struct sched_entity *se)
 {
 #ifdef CONFIG_SCHED_DEBUG
@@ -263,21 +372,55 @@ static inline struct task_struct *task_of(struct sched_entity *se)
 }
 
 /* Walk up scheduling entities hierarchy */
+/*********************************************************************************************************
+** 函数名称: for_each_sched_entity
+** 功能描述: 遍历指定的调度实例在树形结构中的路径
+** 输	 入: se - 指定的调度实体指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define for_each_sched_entity(se) \
 		for (; se; se = se->parent)
 
+/*********************************************************************************************************
+** 函数名称: task_cfs_rq
+** 功能描述: 获取指定线程的调度实例所在的 cfs 运行队列指针
+** 输	 入: p - 指定线程的 task_struct 结构指针
+** 输	 出: p->se.cfs_rq - 获取到的 cfs 运行队列指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct cfs_rq *task_cfs_rq(struct task_struct *p)
 {
 	return p->se.cfs_rq;
 }
 
 /* runqueue on which this entity is (to be) queued */
+/*********************************************************************************************************
+** 函数名称: cfs_rq_of
+** 功能描述: 获取指定的调度实例所在的 cfs 运行队列指针
+** 输	 入: se - 指定的调度实例指针
+** 输	 出: se->cfs_rq - 获取到的 cfs 运行队列指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct cfs_rq *cfs_rq_of(struct sched_entity *se)
 {
 	return se->cfs_rq;
 }
 
 /* runqueue "owned" by this group */
+/*********************************************************************************************************
+** 函数名称: group_cfs_rq
+** 功能描述: 获取指定的任务组拥有的运行队列指针
+** 注     释: 如果当前调度实例代表的是一个任务组，则指向当前任务组拥有的运行队列，如果当前调度实例
+**         : 代表的是一个线程，则指向 NULL
+** 输	 入: grp - 指定的任务组指针
+** 输	 出: grp->my_q - 运行队列指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct cfs_rq *group_cfs_rq(struct sched_entity *grp)
 {
 	return grp->my_q;
@@ -286,6 +429,15 @@ static inline struct cfs_rq *group_cfs_rq(struct sched_entity *grp)
 static void update_cfs_rq_blocked_load(struct cfs_rq *cfs_rq,
 				       int force_update);
 
+/*********************************************************************************************************
+** 函数名称: list_add_leaf_cfs_rq
+** 功能描述: 把指定的 cfs 运行队列添加到其所属的 cpu 运行队列上
+** 注     释: 这个函数是在任务组功能中调用的
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void list_add_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 {
 	if (!cfs_rq->on_list) {
@@ -295,6 +447,7 @@ static inline void list_add_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 		 * enqueued.  The fact that we always enqueue bottom-up
 		 * reduces this to two cases.
 		 */
+		/* 把指定的任务组的 cfs 运行队列添加到所属父节点任务组的 cfs 运行队列的前面 */
 		if (cfs_rq->tg->parent &&
 		    cfs_rq->tg->parent->cfs_rq[cpu_of(rq_of(cfs_rq))]->on_list) {
 			list_add_rcu(&cfs_rq->leaf_cfs_rq_list,
@@ -310,6 +463,15 @@ static inline void list_add_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 	}
 }
 
+/*********************************************************************************************************
+** 函数名称: list_del_leaf_cfs_rq
+** 功能描述: 把指定的 cfs 运行队列从其所属的 cpu 运行队列上移除
+** 注     释: 这个函数是在任务组功能中调用的
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void list_del_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 {
 	if (cfs_rq->on_list) {
@@ -319,10 +481,29 @@ static inline void list_del_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 }
 
 /* Iterate thr' all leaf cfs_rq's on a runqueue */
+/*********************************************************************************************************
+** 函数名称: for_each_leaf_cfs_rq
+** 功能描述: 遍历指定的 cpu 运行队列的
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : cfs_rq - 遍历时使用的临时变量指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define for_each_leaf_cfs_rq(rq, cfs_rq) \
 	list_for_each_entry_rcu(cfs_rq, &rq->leaf_cfs_rq_list, leaf_cfs_rq_list)
 
 /* Do the two (enqueued) entities belong to the same group ? */
+/*********************************************************************************************************
+** 函数名称: is_same_group
+** 功能描述: 判断指定的两个调度实例是否属于相同的 cfs 运行队列
+** 输	 入: se - 指定的第一个调度实例指针
+**         : pse - 指定的第二个调度实例指针
+** 输	 出: se->cfs_rq - 他们共同所属的 cfs 运行队列指针
+**         : NULL - 不属于同一个 cfs 运行队列
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct cfs_rq *
 is_same_group(struct sched_entity *se, struct sched_entity *pse)
 {
@@ -332,11 +513,29 @@ is_same_group(struct sched_entity *se, struct sched_entity *pse)
 	return NULL;
 }
 
+/*********************************************************************************************************
+** 函数名称: parent_entity
+** 功能描述: 获取指定的调度任务组实例的父节点指针
+** 输	 入: se - 指定的调度任务组实例指针
+** 输	 出: se->parent - 父节点指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct sched_entity *parent_entity(struct sched_entity *se)
 {
 	return se->parent;
 }
 
+/*********************************************************************************************************
+** 函数名称: find_matching_se
+** 功能描述: 获取指定的两个调度任务组实例在任务组树形结构上相同深度的父节点调度任务组实例指针
+** 输	 入: se - 指定的第一个调度任务组实例指针
+**         : pse - 指定的第二个调度任务组实例指针
+** 输	 出: *se - 第一个调度任务组实例的父节点指针
+**         : *pse - 第二个调度任务组实例的父节点指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void
 find_matching_se(struct sched_entity **se, struct sched_entity **pse)
 {
@@ -353,6 +552,7 @@ find_matching_se(struct sched_entity **se, struct sched_entity **pse)
 	se_depth = (*se)->depth;
 	pse_depth = (*pse)->depth;
 
+    /* 让指定的两个调度任务组实例在任务组树形结构上的深度相同 */
 	while (se_depth > pse_depth) {
 		se_depth--;
 		*se = parent_entity(*se);
@@ -363,6 +563,7 @@ find_matching_se(struct sched_entity **se, struct sched_entity **pse)
 		*pse = parent_entity(*pse);
 	}
 
+    /* 在两个调度任务组实例在任务组树形结构上的深度相同时，获取他们的父节点调度任务组实例指针 */
 	while (!is_same_group(*se, *pse)) {
 		*se = parent_entity(*se);
 		*pse = parent_entity(*pse);
@@ -371,26 +572,76 @@ find_matching_se(struct sched_entity **se, struct sched_entity **pse)
 
 #else	/* !CONFIG_FAIR_GROUP_SCHED */
 
+/*********************************************************************************************************
+** 函数名称: entity_is_task
+** 功能描述: 判断指定的调度实例是否是一个线程
+** 输	 入: se - 指定的调度实例指针
+** 输	 出: 1 - 是一个线程
+**         : 0 - 是一个调度组
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct task_struct *task_of(struct sched_entity *se)
 {
 	return container_of(se, struct task_struct, se);
 }
 
+/*********************************************************************************************************
+** 函数名称: rq_of
+** 功能描述: 获取指定的 cfs 运行队列所属的 cpu 运行队列指针
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: cfs_rq->rq - cpu 的运行队列指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct rq *rq_of(struct cfs_rq *cfs_rq)
 {
 	return container_of(cfs_rq, struct rq, cfs);
 }
 
+/*********************************************************************************************************
+** 函数名称: entity_is_task
+** 功能描述: 判断指定的调度实例是否是一个线程
+** 输	 入: se - 指定的调度实例指针
+** 输	 出: 1 - 是一个线程
+**         : 0 - 是一个调度组
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define entity_is_task(se)	1
 
+/*********************************************************************************************************
+** 函数名称: for_each_sched_entity
+** 功能描述: 遍历指定的调度实例在树形结构中的路径
+** 输	 入: se - 指定的调度实体指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define for_each_sched_entity(se) \
 		for (; se; se = NULL)
 
+/*********************************************************************************************************
+** 函数名称: task_cfs_rq
+** 功能描述: 获取指定线程的调度实例所在的 cfs 运行队列指针
+** 输	 入: p - 指定线程的 task_struct 结构指针
+** 输	 出: p->se.cfs_rq - 获取到的 cfs 运行队列指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct cfs_rq *task_cfs_rq(struct task_struct *p)
 {
 	return &task_rq(p)->cfs;
 }
 
+/*********************************************************************************************************
+** 函数名称: cfs_rq_of
+** 功能描述: 获取指定的调度实例所在的 cfs 运行队列指针
+** 输	 入: se - 指定的调度实例指针
+** 输	 出: se->cfs_rq - 获取到的 cfs 运行队列指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct cfs_rq *cfs_rq_of(struct sched_entity *se)
 {
 	struct task_struct *p = task_of(se);
@@ -400,27 +651,82 @@ static inline struct cfs_rq *cfs_rq_of(struct sched_entity *se)
 }
 
 /* runqueue "owned" by this group */
+/*********************************************************************************************************
+** 函数名称: group_cfs_rq
+** 功能描述: 获取指定的任务组拥有的运行队列指针
+** 注     释: 如果当前调度实例代表的是一个任务组，则指向当前任务组拥有的运行队列，如果当前调度实例
+**         : 代表的是一个线程，则指向 NULL
+** 输	 入: grp - 指定的任务组指针
+** 输	 出: grp->my_q - 运行队列指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct cfs_rq *group_cfs_rq(struct sched_entity *grp)
 {
 	return NULL;
 }
 
+/*********************************************************************************************************
+** 函数名称: list_add_leaf_cfs_rq
+** 功能描述: 把指定的 cfs 运行队列添加到其所属的 cpu 运行队列上
+** 注     释: 这个函数是在任务组功能中调用的
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void list_add_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 {
 }
 
+/*********************************************************************************************************
+** 函数名称: list_del_leaf_cfs_rq
+** 功能描述: 把指定的 cfs 运行队列从其所属的 cpu 运行队列上移除
+** 注     释: 这个函数是在任务组功能中调用的
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void list_del_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 {
 }
 
+/*********************************************************************************************************
+** 函数名称: for_each_leaf_cfs_rq
+** 功能描述: 遍历指定的 cpu 运行队列的
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : cfs_rq - 遍历时使用的临时变量指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define for_each_leaf_cfs_rq(rq, cfs_rq) \
 		for (cfs_rq = &rq->cfs; cfs_rq; cfs_rq = NULL)
 
+/*********************************************************************************************************
+** 函数名称: parent_entity
+** 功能描述: 获取指定的调度任务组实例的父节点指针
+** 输	 入: se - 指定的调度任务组实例指针
+** 输	 出: se->parent - 父节点指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct sched_entity *parent_entity(struct sched_entity *se)
 {
 	return NULL;
 }
 
+/*********************************************************************************************************
+** 函数名称: find_matching_se
+** 功能描述: 获取指定的两个调度任务组实例在任务组树形结构上相同深度的父节点调度任务组实例指针
+** 输	 入: se - 指定的第一个调度任务组实例指针
+**         : pse - 指定的第二个调度任务组实例指针
+** 输	 出: *se - 第一个调度任务组实例的父节点指针
+**         : *pse - 第二个调度任务组实例的父节点指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void
 find_matching_se(struct sched_entity **se, struct sched_entity **pse)
 {
@@ -435,6 +741,15 @@ void account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec);
  * Scheduling class tree data structure manipulation methods:
  */
 
+/*********************************************************************************************************
+** 函数名称: max_vruntime
+** 功能描述: 获取指定的两个虚拟时间中的较大者
+** 输	 入: max_vruntime - 指定的第一个虚拟时间
+**         : vruntime - 指定的第二个虚拟时间
+** 输	 出: max_vruntime - 较大的虚拟时间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline u64 max_vruntime(u64 max_vruntime, u64 vruntime)
 {
 	s64 delta = (s64)(vruntime - max_vruntime);
@@ -444,6 +759,15 @@ static inline u64 max_vruntime(u64 max_vruntime, u64 vruntime)
 	return max_vruntime;
 }
 
+/*********************************************************************************************************
+** 函数名称: min_vruntime
+** 功能描述: 获取指定的两个虚拟时间中的较小者
+** 输	 入: min_vruntime - 指定的第一个虚拟时间
+**         : vruntime - 指定的第二个虚拟时间
+** 输	 出: min_vruntime - 较小的虚拟时间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline u64 min_vruntime(u64 min_vruntime, u64 vruntime)
 {
 	s64 delta = (s64)(vruntime - min_vruntime);
@@ -453,12 +777,30 @@ static inline u64 min_vruntime(u64 min_vruntime, u64 vruntime)
 	return min_vruntime;
 }
 
+/*********************************************************************************************************
+** 函数名称: entity_before
+** 功能描述: 判断指定的第一个调度实例的虚拟时间是否小于指定的第二个调度实例的虚拟时间
+** 输	 入: a - 指定的第一个调度实例指针
+**         : b - 指定的第二个调度实例指针
+** 输	 出: 1 - 小于
+**         : 0 - 不小于
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int entity_before(struct sched_entity *a,
 				struct sched_entity *b)
 {
 	return (s64)(a->vruntime - b->vruntime) < 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: update_min_vruntime
+** 功能描述: 更新指定的 cfs 运行队列的 min_vruntime 成员值
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void update_min_vruntime(struct cfs_rq *cfs_rq)
 {
 	u64 vruntime = cfs_rq->min_vruntime;
@@ -488,6 +830,15 @@ static void update_min_vruntime(struct cfs_rq *cfs_rq)
 /*
  * Enqueue an entity into the rb-tree:
  */
+/*********************************************************************************************************
+** 函数名称: __enqueue_entity
+** 功能描述: 把指定的调度实例以虚拟运行时间为键值添加到指定的 cfs 运行队列的红黑树上
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+**         : se - 指定的调度实例指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void __enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
 	struct rb_node **link = &cfs_rq->tasks_timeline.rb_node;
@@ -524,6 +875,15 @@ static void __enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	rb_insert_color(&se->run_node, &cfs_rq->tasks_timeline);
 }
 
+/*********************************************************************************************************
+** 函数名称: __dequeue_entity
+** 功能描述: 把指定的调度实例从指定的 cfs 运行队列的红黑树上移除
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+**         : se - 指定的调度实例指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void __dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
 	if (cfs_rq->rb_leftmost == &se->run_node) {
@@ -536,6 +896,14 @@ static void __dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	rb_erase(&se->run_node, &cfs_rq->tasks_timeline);
 }
 
+/*********************************************************************************************************
+** 函数名称: __pick_first_entity
+** 功能描述: 获取指定的 cfs 运行队列中第一个需要运行的调度实例指针
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: sched_entity * - 获取的调度实例指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
 {
 	struct rb_node *left = cfs_rq->rb_leftmost;
@@ -546,6 +914,14 @@ struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
 	return rb_entry(left, struct sched_entity, run_node);
 }
 
+/*********************************************************************************************************
+** 函数名称: __pick_next_entity
+** 功能描述: 获取指定的 cfs 运行队列中第二个需要运行的调度实例指针
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: sched_entity * - 获取的调度实例指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static struct sched_entity *__pick_next_entity(struct sched_entity *se)
 {
 	struct rb_node *next = rb_next(&se->run_node);
@@ -557,6 +933,14 @@ static struct sched_entity *__pick_next_entity(struct sched_entity *se)
 }
 
 #ifdef CONFIG_SCHED_DEBUG
+/*********************************************************************************************************
+** 函数名称: __pick_next_entity
+** 功能描述: 获取指定的 cfs 运行队列中最后一个需要运行的调度实例指针
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: sched_entity * - 获取的调度实例指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct sched_entity *__pick_last_entity(struct cfs_rq *cfs_rq)
 {
 	struct rb_node *last = rb_last(&cfs_rq->tasks_timeline);
@@ -598,10 +982,19 @@ int sched_proc_update_handler(struct ctl_table *table, int write,
 /*
  * delta /= w
  */
+/*********************************************************************************************************
+** 函数名称: calc_delta_fair
+** 功能描述: 计算指定的调度实例指定的 cpu 物理运行时间对应的虚拟运行时间
+** 输	 入: delta - 指定的 cpu 物理运行时间
+**         : se - 指定的调度实例指针
+** 输	 出: delta - 对应的虚拟运行时间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline u64 calc_delta_fair(u64 delta, struct sched_entity *se)
 {
 	if (unlikely(se->load.weight != NICE_0_LOAD))
-		delta = __calc_delta(delta, NICE_0_LOAD, &se->load);
+		delta = __calc_delta(delta, NICE_0_LOAD, &se->load); /* delta_exec * weight / lw.weight */
 
 	return delta;
 }
@@ -614,6 +1007,14 @@ static inline u64 calc_delta_fair(u64 delta, struct sched_entity *se)
  *
  * p = (nr <= nl) ? l : l*nr/nl
  */
+/*********************************************************************************************************
+** 函数名称: __sched_period
+** 功能描述: 根据当前正在运行的调度实例个数计算为每个调度实例分配的调度周期
+** 输	 入: nr_running - 当前正在运行的调度实例个数
+** 输	 出: period - 每个调度实例分配的调度周期
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static u64 __sched_period(unsigned long nr_running)
 {
 	u64 period = sysctl_sched_latency;
@@ -633,6 +1034,15 @@ static u64 __sched_period(unsigned long nr_running)
  *
  * s = p*P[w/rw]
  */
+/*********************************************************************************************************
+** 函数名称: sched_slice
+** 功能描述: 计算指定的 cfs 运行队列上指定的调度实例（调度任务组实例）可以分配到的 cpu 物理运行时间
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+**         : se - 指定的调度实例（调度任务组实例）指针
+** 输	 出: slice - 指定调度实例可分配到的 cpu 物理运行时间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static u64 sched_slice(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
 	u64 slice = __sched_period(cfs_rq->nr_running + !se->on_rq);
@@ -660,6 +1070,15 @@ static u64 sched_slice(struct cfs_rq *cfs_rq, struct sched_entity *se)
  *
  * vs = s/w
  */
+/*********************************************************************************************************
+** 函数名称: sched_vslice
+** 功能描述: 计算指定的 cfs 运行队列上指定的调度实例（调度任务组实例）可以分配到的虚拟运行时间
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+**         : se - 指定的调度实例（调度任务组实例）指针
+** 输	 出: u64 - 指定调度实例可分配到的虚拟运行时间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static u64 sched_vslice(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
 	return calc_delta_fair(sched_slice(cfs_rq, se), se);
@@ -672,6 +1091,14 @@ static unsigned long task_h_load(struct task_struct *p);
 static inline void __update_task_entity_contrib(struct sched_entity *se);
 
 /* Give new task start runnable values to heavy its load in infant time */
+/*********************************************************************************************************
+** 函数名称: init_task_runnable_average
+** 功能描述: 初始化指定任务的系统负载相关的数据结构信息
+** 输	 入: p - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void init_task_runnable_average(struct task_struct *p)
 {
 	u32 slice;
@@ -690,6 +1117,14 @@ void init_task_runnable_average(struct task_struct *p)
 /*
  * Update the current task's runtime statistics.
  */
+/*********************************************************************************************************
+** 函数名称: update_curr
+** 功能描述: 更新指定的 cfs 运行队列中当前正在运行的调度实例的运行时统计信息
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void update_curr(struct cfs_rq *cfs_rq)
 {
 	struct sched_entity *curr = cfs_rq->curr;
@@ -725,11 +1160,28 @@ static void update_curr(struct cfs_rq *cfs_rq)
 	account_cfs_rq_runtime(cfs_rq, delta_exec);
 }
 
+/*********************************************************************************************************
+** 函数名称: update_curr_fair
+** 功能描述: 更新指定的 cpu 运行队列的 cfs 运行队列中当前正在运行的调度实例的运行时统计信息
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void update_curr_fair(struct rq *rq)
 {
 	update_curr(cfs_rq_of(&rq->curr->se));
 }
 
+/*********************************************************************************************************
+** 函数名称: update_stats_wait_start
+** 功能描述: 更新指定的 cfs 运行队列中指定的调度实例的运行时调度统计信息的 wait_start 字段值
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+**         : se - 指定的调度实例指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void
 update_stats_wait_start(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
@@ -739,6 +1191,15 @@ update_stats_wait_start(struct cfs_rq *cfs_rq, struct sched_entity *se)
 /*
  * Task is being enqueued - update stats:
  */
+/*********************************************************************************************************
+** 函数名称: update_stats_enqueue
+** 功能描述: 尝试更新指定的 cfs 运行队列中指定的调度实例的运行时调度统计信息的 wait_start 字段值
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+**         : se - 指定的调度实例指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void update_stats_enqueue(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
 	/*
@@ -749,6 +1210,15 @@ static void update_stats_enqueue(struct cfs_rq *cfs_rq, struct sched_entity *se)
 		update_stats_wait_start(cfs_rq, se);
 }
 
+/*********************************************************************************************************
+** 函数名称: update_stats_wait_end
+** 功能描述: 更新指定的 cfs 运行队列中指定的调度实例相关的入队等待时间统计信息并结束本次统计
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+**         : se - 指定的调度实例指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void
 update_stats_wait_end(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
@@ -766,6 +1236,16 @@ update_stats_wait_end(struct cfs_rq *cfs_rq, struct sched_entity *se)
 	schedstat_set(se->statistics.wait_start, 0);
 }
 
+/*********************************************************************************************************
+** 函数名称: update_stats_dequeue
+** 功能描述: 在从指定的 cfs 运行队列中移除处于等待状态的指定调度实例时更新这个调度实例和入队等待时间
+**         : 相关的统计信息并结束本次统计
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+**         : se - 指定的调度实例指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void
 update_stats_dequeue(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
@@ -780,6 +1260,15 @@ update_stats_dequeue(struct cfs_rq *cfs_rq, struct sched_entity *se)
 /*
  * We are picking a new current task - update its stats:
  */
+/*********************************************************************************************************
+** 函数名称: update_stats_curr_start
+** 功能描述: 更新指定的 cfs 运行队列中指定的调度实例的开始运行时的时钟信息
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+**         : se - 指定的调度实例指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void
 update_stats_curr_start(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
@@ -808,6 +1297,14 @@ unsigned int sysctl_numa_balancing_scan_size = 256;
 /* Scan @scan_size MB every @scan_period after an initial @scan_delay in ms */
 unsigned int sysctl_numa_balancing_scan_delay = 1000;
 
+/*********************************************************************************************************
+** 函数名称: task_nr_scan_windows
+** 功能描述: 根据指定任务占用的物理内存页数计算处对应的扫描窗口个数
+** 输	 入: p - 指定的任务指针
+** 输	 出: unsigned int - 扫描窗口个数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static unsigned int task_nr_scan_windows(struct task_struct *p)
 {
 	unsigned long rss = 0;
@@ -830,6 +1327,14 @@ static unsigned int task_nr_scan_windows(struct task_struct *p)
 /* For sanitys sake, never scan more PTEs than MAX_SCAN_WINDOW MB/sec. */
 #define MAX_SCAN_WINDOW 2560
 
+/*********************************************************************************************************
+** 函数名称: task_scan_min
+** 功能描述: 计算指定任务在扫描一个内存窗口时可以耗费的最小时间
+** 输	 入: p - 指定的任务指针
+** 输	 出: unsigned int - 最小时间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static unsigned int task_scan_min(struct task_struct *p)
 {
 	unsigned int scan_size = ACCESS_ONCE(sysctl_numa_balancing_scan_size);
@@ -844,6 +1349,14 @@ static unsigned int task_scan_min(struct task_struct *p)
 	return max_t(unsigned int, floor, scan);
 }
 
+/*********************************************************************************************************
+** 函数名称: task_scan_min
+** 功能描述: 计算指定任务在扫描一个内存窗口时可以耗费的最大时间
+** 输	 入: p - 指定的任务指针
+** 输	 出: unsigned int - 最大时间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static unsigned int task_scan_max(struct task_struct *p)
 {
 	unsigned int smin = task_scan_min(p);
@@ -854,12 +1367,30 @@ static unsigned int task_scan_max(struct task_struct *p)
 	return max(smin, smax);
 }
 
+/*********************************************************************************************************
+** 函数名称: account_numa_enqueue
+** 功能描述: 在任务入队列时根据指定任务的 numa 数据更新指定的 cpu 运行队列中和 numa 相关的统计信息
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : p - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void account_numa_enqueue(struct rq *rq, struct task_struct *p)
 {
 	rq->nr_numa_running += (p->numa_preferred_nid != -1);
 	rq->nr_preferred_running += (p->numa_preferred_nid == task_node(p));
 }
 
+/*********************************************************************************************************
+** 函数名称: account_numa_enqueue
+** 功能描述: 在任务出队列时根据指定任务的 numa 数据更新指定的 cpu 运行队列中和 numa 相关的统计信息
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : p - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void account_numa_dequeue(struct rq *rq, struct task_struct *p)
 {
 	rq->nr_numa_running -= (p->numa_preferred_nid != -1);
@@ -871,6 +1402,8 @@ struct numa_group {
 
 	spinlock_t lock; /* nr_tasks, tasks */
 	int nr_tasks;
+
+	/* 表示当前 numa 组 id 值 */
 	pid_t gid;
 
 	struct rcu_head rcu;
@@ -894,6 +1427,14 @@ struct numa_group {
 /* Averaged statistics, and temporary buffers. */
 #define NR_NUMA_HINT_FAULT_BUCKETS (NR_NUMA_HINT_FAULT_STATS * 2)
 
+/*********************************************************************************************************
+** 函数名称: task_numa_group_id
+** 功能描述: 获取指定任务所属 numa 组的组 id
+** 输	 入: p - 指定的任务指针
+** 输	 出: pid_t - 组 id
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 pid_t task_numa_group_id(struct task_struct *p)
 {
 	return p->numa_group ? p->numa_group->gid : 0;
@@ -905,11 +1446,31 @@ pid_t task_numa_group_id(struct task_struct *p)
  * array is for current counters, which are averaged into the
  * first set by task_numa_placement.
  */
+/*********************************************************************************************************
+** 函数名称: task_faults_idx
+** 功能描述: 通过指定的参数计算出在 task_struct.numa_faults/task_struct.numa_group->faults 或者
+**         : task_struct.numa_group->faults_cpu 数组中对应的索引值
+** 输	 入: s - 指定的 faults 类型
+**         : nid - 指定的 node id
+**         : priv - 表示是否为私有 faults
+** 输	 出: int - 对应的数组索引值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int task_faults_idx(enum numa_faults_stats s, int nid, int priv)
 {
 	return NR_NUMA_HINT_FAULT_TYPES * (s * nr_node_ids + nid) + priv;
 }
 
+/*********************************************************************************************************
+** 函数名称: task_faults
+** 功能描述: 通过指定的参数计算出在 task_struct.numa_faults 数组中 NUMA_MEM 对应的索引值
+** 输	 入: p - 指定的任务指针
+**         : nid - 指定的 node id
+** 输	 出: int - 对应的数组索引值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline unsigned long task_faults(struct task_struct *p, int nid)
 {
 	if (!p->numa_faults)
@@ -919,6 +1480,15 @@ static inline unsigned long task_faults(struct task_struct *p, int nid)
 		p->numa_faults[task_faults_idx(NUMA_MEM, nid, 1)];
 }
 
+/*********************************************************************************************************
+** 函数名称: task_faults
+** 功能描述: 通过指定的参数计算出在 task_struct.numa_group->faults 数组中 NUMA_MEM 对应的索引值
+** 输	 入: p - 指定的任务指针
+**         : nid - 指定的 node id
+** 输	 出: int - 对应的数组索引值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline unsigned long group_faults(struct task_struct *p, int nid)
 {
 	if (!p->numa_group)
@@ -928,6 +1498,15 @@ static inline unsigned long group_faults(struct task_struct *p, int nid)
 		p->numa_group->faults[task_faults_idx(NUMA_MEM, nid, 1)];
 }
 
+/*********************************************************************************************************
+** 函数名称: task_faults
+** 功能描述: 通过指定的参数计算出在 task_struct.numa_group->faults_cpu 数组中 NUMA_MEM 对应的索引值
+** 输	 入: group - 指定的 numa group 指针
+**         : nid - 指定的 node id
+** 输	 出: int - 对应的数组索引值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline unsigned long group_faults_cpu(struct numa_group *group, int nid)
 {
 	return group->faults_cpu[task_faults_idx(NUMA_MEM, nid, 0)] +
@@ -2684,6 +3263,14 @@ static inline void __update_group_entity_contrib(struct sched_entity *se) {}
 static inline void update_rq_runnable_avg(struct rq *rq, int runnable) {}
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
+/*********************************************************************************************************
+** 函数名称: __update_task_entity_contrib
+** 功能描述: 更新指定的调度实例对整个系统的平均负载贡献值
+** 输	 入: se - 指定的调度实例指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void __update_task_entity_contrib(struct sched_entity *se)
 {
 	u32 contrib;

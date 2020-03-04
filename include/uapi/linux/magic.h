@@ -55,7 +55,8 @@
 #define SMB_SUPER_MAGIC		0x517B
 #define CGROUP_SUPER_MAGIC	0x27e0eb
 
-
+/* 在每一个任务的内核栈的 thread_info 和内核线程堆栈之间设置的魔数
+   用来检测是否出现过内核线程栈溢出 */
 #define STACK_END_MAGIC		0x57AC6E9D
 
 #define V9FS_MAGIC		0x01021997

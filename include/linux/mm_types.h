@@ -406,6 +406,7 @@ struct task_rss_stat {
 };
 #endif /* USE_SPLIT_PTE_PTLOCKS */
 
+/* 分别统计进程不同种类的内存使用情况 */
 struct mm_rss_stat {
 	atomic_long_t count[NR_MM_COUNTERS];
 };
@@ -514,6 +515,7 @@ struct mm_struct {
 	 * Special counters, in some configurations protected by the
 	 * page_table_lock, in other configurations by being atomic.
 	 */
+	/* 表示当前进程不同种类的内存使用情况 */
 	struct mm_rss_stat rss_stat;
 
 	struct linux_binfmt *binfmt;

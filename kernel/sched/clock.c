@@ -67,6 +67,14 @@
  * This is default implementation.
  * Architectures and sub-architectures can override this.
  */
+/*********************************************************************************************************
+** 函数名称: sched_clock
+** 功能描述: 通过 jiffies 时间计算出当前调度系统时间，单位是纳秒
+** 输	 入: 
+** 输	 出: unsigned long long - 当前调度系统时间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 unsigned long long __weak sched_clock(void)
 {
 	return (unsigned long long)(jiffies - INITIAL_JIFFIES)

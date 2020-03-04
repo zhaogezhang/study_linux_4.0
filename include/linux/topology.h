@@ -52,6 +52,15 @@ int arch_update_cpu_topology(void);
 #define LOCAL_DISTANCE		10
 #define REMOTE_DISTANCE		20
 #ifndef node_distance
+/*********************************************************************************************************
+** 函数名称: node_distance
+** 功能描述: 获取从指定的起始 numa node 到指定的目的 numa node 之间的距离
+** 输	 入: from - 起始 numa node
+**         : to - 目的 numa node
+** 输	 出: ret - 两个节点间的距离
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define node_distance(from,to)	((from) == (to) ? LOCAL_DISTANCE : REMOTE_DISTANCE)
 #endif
 #ifndef RECLAIM_DISTANCE
@@ -72,6 +81,14 @@ DECLARE_PER_CPU(int, numa_node);
 
 #ifndef numa_node_id
 /* Returns the number of the current Node. */
+/*********************************************************************************************************
+** 函数名称: numa_node_id
+** 功能描述: 获取为当前 cpu 分配的 node id
+** 输	 入: 
+** 输	 出: int - 当前 cpu 的 node id
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int numa_node_id(void)
 {
 	return raw_cpu_read(numa_node);
@@ -79,6 +96,14 @@ static inline int numa_node_id(void)
 #endif
 
 #ifndef cpu_to_node
+/*********************************************************************************************************
+** 函数名称: cpu_to_node
+** 功能描述: 获取为指定的 cpu 分配的 node id
+** 输	 入: cpu - 指定的 cpu id
+** 输	 出: int - node id
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int cpu_to_node(int cpu)
 {
 	return per_cpu(numa_node, cpu);
@@ -86,6 +111,14 @@ static inline int cpu_to_node(int cpu)
 #endif
 
 #ifndef set_numa_node
+/*********************************************************************************************************
+** 函数名称: set_numa_node
+** 功能描述: 设置当前 cpu 的 node id 值
+** 输	 入: node - 要设置的 node id 值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void set_numa_node(int node)
 {
 	this_cpu_write(numa_node, node);
@@ -93,6 +126,15 @@ static inline void set_numa_node(int node)
 #endif
 
 #ifndef set_cpu_numa_node
+/*********************************************************************************************************
+** 函数名称: set_cpu_numa_node
+** 功能描述: 设置指定 cpu 的 node id 值
+** 输	 入: cpu - 指定的 cpu id
+**         : node - 要设置的 node id 值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void set_cpu_numa_node(int cpu, int node)
 {
 	per_cpu(numa_node, cpu) = node;
@@ -103,6 +145,14 @@ static inline void set_cpu_numa_node(int cpu, int node)
 
 /* Returns the number of the current Node. */
 #ifndef numa_node_id
+/*********************************************************************************************************
+** 函数名称: numa_node_id
+** 功能描述: 获取为当前 cpu 分配的 node id
+** 输	 入: 
+** 输	 出: int - 当前 cpu 的 node id
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int numa_node_id(void)
 {
 	return cpu_to_node(raw_smp_processor_id());

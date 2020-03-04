@@ -45,6 +45,7 @@ extern void update_cpu_load_active(struct rq *this_rq);
  * when BITS_PER_LONG <= 32 are pretty high and the returns do not justify the
  * increased costs.
  */
+/* 获取和指定的负载权重对应的值 */
 #if 0 /* BITS_PER_LONG > 32 -- currently broken: it increases power usage under light load  */
 # define SCHED_LOAD_RESOLUTION	10
 # define scale_load(w)		((w) << SCHED_LOAD_RESOLUTION)
@@ -55,11 +56,11 @@ extern void update_cpu_load_active(struct rq *this_rq);
 # define scale_load_down(w)	(w)
 #endif
 
-#define SCHED_LOAD_SHIFT	(10 + SCHED_LOAD_RESOLUTION)
-#define SCHED_LOAD_SCALE	(1L << SCHED_LOAD_SHIFT)
+#define SCHED_LOAD_SHIFT	(10 + SCHED_LOAD_RESOLUTION)  /*       10 */
+#define SCHED_LOAD_SCALE	(1L << SCHED_LOAD_SHIFT)      /* 1L << 10 */
 
-#define NICE_0_LOAD		SCHED_LOAD_SCALE
-#define NICE_0_SHIFT		SCHED_LOAD_SHIFT
+#define NICE_0_LOAD		SCHED_LOAD_SCALE                  /* 1L << 10 */
+#define NICE_0_SHIFT		SCHED_LOAD_SHIFT              /*       10 */
 
 /*
  * Single value that decides SCHED_DEADLINE internal math precision.
@@ -225,14 +226,19 @@ struct cfs_bandwidth {
 };
 
 /* task group related information */
+/* 表示组调度中的任务组结构，调度器通过树形结构把所有任务组链接起来 */
 struct task_group {
 	struct cgroup_subsys_state css;
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* schedulable entities of this group on each cpu */
+    /* 这是一个二维数组指针，表示的是当前任务组在每一个 cpu 上拥有的可调度实例链表指针 */
 	struct sched_entity **se;
+
 	/* runqueue "owned" by this group on each cpu */
+    /* 这是一个二维数组指针，表示的是当前任务组在每一个 cpu 上拥有的 cfs 运行队列指针 */
 	struct cfs_rq **cfs_rq;
+	
 	unsigned long shares;
 
 #ifdef	CONFIG_SMP
@@ -251,8 +257,13 @@ struct task_group {
 	struct rcu_head rcu;
 	struct list_head list;
 
+    /* 指向当前任务组的父节点指针 */
 	struct task_group *parent;
+
+    /* 通过链表的方式把当前任务组的所有兄弟节点链接起来 */
 	struct list_head siblings;
+	
+    /* 通过链表的方式把当前任务组的所有子节点链接起来 */
 	struct list_head children;
 
 #ifdef CONFIG_SCHED_AUTOGROUP
@@ -334,22 +345,33 @@ struct cfs_bandwidth { };
 
 /* CFS-related fields in a runqueue */
 struct cfs_rq {
+    /* 表示当前 cfs 运行队列上所有调度实例的调度负载权重的总和，即把当前运行队列当成一个调度实例
+       的时候，这个运行队列拥有的调度负载权重信息 */
 	struct load_weight load;
+
+	/* nr_running - 表示当前 cfs 运行队列上包含的调度实例个数 */
 	unsigned int nr_running, h_nr_running;
 
 	u64 exec_clock;
+
+	/* 记录了当前 cfs 运行队列的调度实例中虚拟运行时间最小的值 */
 	u64 min_vruntime;
+	
 #ifndef CONFIG_64BIT
 	u64 min_vruntime_copy;
 #endif
 
+    /* 红黑树根节点，通过红黑树的方式把属于当前 cfs 运行队列的所有调度实例以虚拟运行时间为键值组织起来 */
 	struct rb_root tasks_timeline;
+
+    /* 表示在当前 cfs 运行队列的红黑树上剩余运行时间最多的调度实例节点，即下一次需要运行的调度实例 */
 	struct rb_node *rb_leftmost;
 
 	/*
 	 * 'curr' points to currently running entity on this cfs_rq.
 	 * It is set to NULL otherwise (i.e when none are currently running).
 	 */
+	/* curr - 指向了当前 cfs 运行队列中正在运行的调度实例指针 */
 	struct sched_entity *curr, *next, *last, *skip;
 
 #ifdef	CONFIG_SCHED_DEBUG
@@ -386,6 +408,7 @@ struct cfs_rq {
 #endif /* CONFIG_SMP */
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
+    /* 指向当前 cfs 运行队列所属的 cpu 运行队列 */
 	struct rq *rq;	/* cpu runqueue to which this cfs_rq is attached */
 
 	/*
@@ -396,8 +419,13 @@ struct cfs_rq {
 	 * leaf_cfs_rq_list ties together list of leaf cfs_rq's in a cpu. This
 	 * list is used during load balance.
 	 */
+	/* 在当前运行队列属于某个任务组的时候，表示当前运行队列是否已经添加到了所属的 cpu 运行队列上 */
 	int on_list;
+
+	/* 在当前运行队列属于某个任务组的时候，通过这个链表节点把当前 cfs 运行队列添加到所属的 cpu 运行队列上 */
 	struct list_head leaf_cfs_rq_list;
+
+	/* 在当前运行队列属于某个任务组的时候，表示当前运行队列所属的任务组 */
 	struct task_group *tg;	/* group that "owns" this runqueue */
 
 #ifdef CONFIG_CFS_BANDWIDTH
@@ -543,9 +571,15 @@ struct rq {
 	 * nr_running and cpu_load should be in the same cacheline because
 	 * remote CPUs use both these fields when doing load calculation.
 	 */
+
+	/* 表示当前 cpu 运行队列上包含的调度实例数 */
 	unsigned int nr_running;
+	
 #ifdef CONFIG_NUMA_BALANCING
+    /* 表示当前 cpu 运行队列中包含的已经分配了 preferred_node 的调度实例数 */
 	unsigned int nr_numa_running;
+
+    /* 表示当前 cpu 运行队列中包含的 preferred_node == rq.node_id 的调度实例数 */
 	unsigned int nr_preferred_running;
 #endif
 	#define CPU_LOAD_IDX_MAX 5
@@ -559,7 +593,10 @@ struct rq {
 	unsigned long last_sched_tick;
 #endif
 	/* capture load from *all* tasks on this cpu: */
+    /* 表示当前 cpu 运行队列上所有调度实例的调度负载权重的总和，即把当前 cpu 运行队列当成一个调度实例
+       的时候，这个 cpu 运行队列拥有的调度负载权重信息 */	
 	struct load_weight load;
+
 	unsigned long nr_load_updates;
 	u64 nr_switches;
 
@@ -569,6 +606,7 @@ struct rq {
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* list of leaf cfs_rq on this cpu: */
+    /* 通过链表的方式把当前 cpu 运行队列上的所有任务组的 cfs 运行队列链接起来 */
 	struct list_head leaf_cfs_rq_list;
 
 	struct sched_avg avg;
@@ -587,7 +625,10 @@ struct rq {
 	struct mm_struct *prev_mm;
 
 	unsigned int clock_skip_update;
+
+	/* 用来记录当前运行队列的基准时钟信息 */
 	u64 clock;
+
 	u64 clock_task;
 
 	atomic_t nr_iowait;
@@ -669,6 +710,14 @@ struct rq {
 #endif
 };
 
+/*********************************************************************************************************
+** 函数名称: cpu_of
+** 功能描述: 获取指定的 cpu 运行队列所属的 cpu 号
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int cpu_of(struct rq *rq)
 {
 #ifdef CONFIG_SMP
@@ -680,29 +729,55 @@ static inline int cpu_of(struct rq *rq)
 
 DECLARE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
-/* 获取指定 cpu 上的运行队列指针 */
+/* 获取指定 cpu 上的 cpu 运行队列指针 */
 #define cpu_rq(cpu)		(&per_cpu(runqueues, (cpu)))
 
-/* 获取当前 cpu 上的运行队列指针 */
+/* 获取当前 cpu 上的 cpu 运行队列指针 */
 #define this_rq()		this_cpu_ptr(&runqueues)
 
-/* 获取指定任务所属的运行队列指针 */
+/* 获取指定任务所属的 cpu 运行队列指针 */
 #define task_rq(p)		cpu_rq(task_cpu(p))
 
+/* 获取指定 cpu 上的 cpu 运行队列上当前正在运行的线程结构指针 */
 #define cpu_curr(cpu)		(cpu_rq(cpu)->curr)
+
 #define raw_rq()		raw_cpu_ptr(&runqueues)
 
+/*********************************************************************************************************
+** 函数名称: __rq_clock_broken
+** 功能描述: 更新指定的 cpu 运行队列的时钟信息
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline u64 __rq_clock_broken(struct rq *rq)
 {
 	return ACCESS_ONCE(rq->clock);
 }
 
+/*********************************************************************************************************
+** 函数名称: rq_clock
+** 功能描述: 获取指定的 cpu 运行队列的基准时钟信息
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline u64 rq_clock(struct rq *rq)
 {
 	lockdep_assert_held(&rq->lock);
 	return rq->clock;
 }
 
+/*********************************************************************************************************
+** 函数名称: rq_clock_task
+** 功能描述: 获取指定的 cpu 运行队列的任务时钟信息
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline u64 rq_clock_task(struct rq *rq)
 {
 	lockdep_assert_held(&rq->lock);
@@ -712,6 +787,15 @@ static inline u64 rq_clock_task(struct rq *rq)
 #define RQCF_REQ_SKIP	0x01
 #define RQCF_ACT_SKIP	0x02
 
+/*********************************************************************************************************
+** 函数名称: rq_clock_skip_update
+** 功能描述: 设置指定的 cpu 运行队列的 RQCF_REQ_SKIP 标志
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : skip - 设置或清除标志
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void rq_clock_skip_update(struct rq *rq, bool skip)
 {
 	lockdep_assert_held(&rq->lock);
@@ -723,7 +807,7 @@ static inline void rq_clock_skip_update(struct rq *rq, bool skip)
 
 #ifdef CONFIG_NUMA
 enum numa_topology_type {
-	NUMA_DIRECT,
+	NUMA_DIRECT,        /* 表示所有的 numa 节点时直接相连在一起的，他们之间的距离相等 */
 	NUMA_GLUELESS_MESH,
 	NUMA_BACKPLANE,
 };

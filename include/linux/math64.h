@@ -136,6 +136,16 @@ __iter_div_u64_rem(u64 dividend, u32 divisor, u64 *remainder)
 #if defined(CONFIG_ARCH_SUPPORTS_INT128) && defined(__SIZEOF_INT128__)
 
 #ifndef mul_u64_u32_shr
+/*********************************************************************************************************
+** 函数名称: mul_u64_u32_shr
+** 功能描述: 将指定的 u64 和指定的 u32 相乘后右移指定的位数
+** 输	 入: a - 指定的 u64
+**         : mul - 指定的 u32
+**         : shift - 指定的位移数
+** 输	 出: 执行后的数值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline u64 mul_u64_u32_shr(u64 a, u32 mul, unsigned int shift)
 {
 	return (u64)(((unsigned __int128)a * mul) >> shift);

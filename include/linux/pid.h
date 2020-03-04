@@ -46,7 +46,7 @@ enum pid_type
  * seen in particular namespace. Later the struct pid is found with
  * find_pid_ns() using the int nr and struct pid_namespace *ns.
  */
-
+/* 通过这个数据结构记录了一个 pid 数据结构在系统 pid namespace 树形结构中的路径信息 */
 struct upid {
 	/* Try to keep pid_chain in the same cacheline as nr for find_vpid */
     /* 表示当前 upid 在当前结构的 ns 字段中的偏移位 */
@@ -64,7 +64,7 @@ struct pid
     /* 表示当前 pid 结构被引用的次数 */
 	atomic_t count;
 
-	/* 表示该 pid 在 pid_namespace 中处于第几层 */
+	/* 表示该 pid 在 pid_namespace 树形结构中处于第几层 */
 	unsigned int level;
 	
 	/* lists of tasks that use this pid */
@@ -73,7 +73,7 @@ struct pid
 	
 	struct rcu_head rcu;
 
-	/* 表示当前 pid 在不同的 pid level 上的 upid 数据成员，数组长度等于当前数据结构的 level 字段值 */
+	/* 通过这个数组记录了当前 pid 数据结构在系统 pid namespace 树形结构中的路径信息 */
 	struct upid numbers[1];
 };
 

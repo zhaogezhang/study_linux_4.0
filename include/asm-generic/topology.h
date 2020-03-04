@@ -32,6 +32,14 @@
 /* Other architectures wishing to use this simple topology API should fill
    in the below functions as appropriate in their own <asm/topology.h> file. */
 #ifndef cpu_to_node
+/*********************************************************************************************************
+** 函数名称: cpu_to_node
+** 功能描述: 获取为指定的 cpu 分配的 node id
+** 输	 入: cpu - 指定的 cpu id
+** 输	 出: int - node id
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define cpu_to_node(cpu)	((void)(cpu),0)
 #endif
 #ifndef set_numa_node
