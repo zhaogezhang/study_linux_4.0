@@ -112,24 +112,58 @@ extern nodemask_t _unused_nodemask_arg_;
  * to fix the problem.  If other functions in the future also end up in
  * this situation they will also need to be annotated as __always_inline
  */
+/*********************************************************************************************************
+** 函数名称: node_set
+** 功能描述: 设置指定的 nodemask_t 中指定的 bit 位
+** 输	 入: node - 指定的 bit 位
+**         : dst - 指定的 nodemask_t 变量
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define node_set(node, dst) __node_set((node), &(dst))
 static __always_inline void __node_set(int node, volatile nodemask_t *dstp)
 {
 	set_bit(node, dstp->bits);
 }
 
+/*********************************************************************************************************
+** 函数名称: node_set
+** 功能描述: 清除指定的 nodemask_t 中指定的 bit 位
+** 输	 入: node - 指定的 bit 位
+**         : dst - 指定的 nodemask_t 变量
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define node_clear(node, dst) __node_clear((node), &(dst))
 static inline void __node_clear(int node, volatile nodemask_t *dstp)
 {
 	clear_bit(node, dstp->bits);
 }
 
+/*********************************************************************************************************
+** 函数名称: nodes_setall
+** 功能描述: 设置指定的 nodemask_t 中所有的 bit 位
+** 输	 入: dst - 指定的 nodemask_t 变量
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define nodes_setall(dst) __nodes_setall(&(dst), MAX_NUMNODES)
 static inline void __nodes_setall(nodemask_t *dstp, unsigned int nbits)
 {
 	bitmap_fill(dstp->bits, nbits);
 }
 
+/*********************************************************************************************************
+** 函数名称: nodes_clear
+** 功能描述: 清空指定的 nodemask_t 中的所有 bit 位
+** 输	 入: dst - 指定的 nodemask_t 变量
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define nodes_clear(dst) __nodes_clear(&(dst), MAX_NUMNODES)
 static inline void __nodes_clear(nodemask_t *dstp, unsigned int nbits)
 {
@@ -137,8 +171,26 @@ static inline void __nodes_clear(nodemask_t *dstp, unsigned int nbits)
 }
 
 /* No static inline type checking - see Subtlety (1) above. */
+/*********************************************************************************************************
+** 函数名称: node_isset
+** 功能描述: 判断指定的 nodemask_t 中指定的 bit 位是否已经置位
+** 输	 入: node - 指定的 bit 位
+**         : nodemask - 指定的 nodemask_t 变量
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define node_isset(node, nodemask) test_bit((node), (nodemask).bits)
 
+/*********************************************************************************************************
+** 函数名称: node_test_and_set
+** 功能描述: 设置指定的 nodemask_t 中指定的 bit 位并返回之前的旧值
+** 输	 入: node - 指定的 bit 位
+**         : nodemask - 指定的 nodemask_t 变量
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define node_test_and_set(node, nodemask) \
 			__node_test_and_set((node), &(nodemask))
 static inline int __node_test_and_set(int node, nodemask_t *addr)
@@ -146,98 +198,365 @@ static inline int __node_test_and_set(int node, nodemask_t *addr)
 	return test_and_set_bit(node, addr->bits);
 }
 
+/*********************************************************************************************************
+** 函数名称: nodes_and
+** 功能描述: 对指定的两个 nodemask_t 变量进行位与操作并把结果存储到指定的 nodemask_t 变量中
+** 输	 入: src1 - 第一个 nodemask_t 变量
+**         : src2 - 第二个 nodemask_t 变量
+** 输	 出: dst - 存储操作结果的变量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define nodes_and(dst, src1, src2) \
 			__nodes_and(&(dst), &(src1), &(src2), MAX_NUMNODES)
+
+/*********************************************************************************************************
+** 函数名称: nodes_and
+** 功能描述: 对指定的两个 nodemask_t 变量中指定位数的 bit 位进行位与操作并把结果存储到指定的
+**         : nodemask_t 变量中
+** 输	 入: src1p - 第一个 nodemask_t 变量指针
+**         : src2p - 第二个 nodemask_t 变量指针
+**         : nbits - 需要操作的 bit 位数
+** 输	 出: dstp - 存储操作结果的变量指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void __nodes_and(nodemask_t *dstp, const nodemask_t *src1p,
 					const nodemask_t *src2p, unsigned int nbits)
 {
 	bitmap_and(dstp->bits, src1p->bits, src2p->bits, nbits);
 }
 
+/*********************************************************************************************************
+** 函数名称: nodes_or
+** 功能描述: 对指定的两个 nodemask_t 变量进行位或操作并把结果存储到指定的 nodemask_t 变量中
+** 输	 入: src1 - 第一个 nodemask_t 变量
+**         : src2 - 第二个 nodemask_t 变量
+** 输	 出: dst - 存储操作结果的变量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define nodes_or(dst, src1, src2) \
 			__nodes_or(&(dst), &(src1), &(src2), MAX_NUMNODES)
+
+/*********************************************************************************************************
+** 函数名称: nodes_and
+** 功能描述: 对指定的两个 nodemask_t 变量中指定位数的 bit 位进行位或操作并把结果存储到指定的
+**         : nodemask_t 变量中
+** 输	 入: src1p - 第一个 nodemask_t 变量指针
+**         : src2p - 第二个 nodemask_t 变量指针
+**         : nbits - 需要操作的 bit 位数
+** 输	 出: dstp - 存储操作结果的变量指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void __nodes_or(nodemask_t *dstp, const nodemask_t *src1p,
 					const nodemask_t *src2p, unsigned int nbits)
 {
 	bitmap_or(dstp->bits, src1p->bits, src2p->bits, nbits);
 }
 
+/*********************************************************************************************************
+** 函数名称: nodes_xor
+** 功能描述: 对指定的两个 nodemask_t 变量进行位异或操作并把结果存储到指定的 nodemask_t 变量中
+** 输	 入: src1 - 第一个 nodemask_t 变量
+**         : src2 - 第二个 nodemask_t 变量
+** 输	 出: dst - 存储操作结果的变量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define nodes_xor(dst, src1, src2) \
 			__nodes_xor(&(dst), &(src1), &(src2), MAX_NUMNODES)
+
+/*********************************************************************************************************
+** 函数名称: nodes_and
+** 功能描述: 对指定的两个 nodemask_t 变量中指定位数的 bit 位进行位异或操作并把结果存储到指定的
+**         : nodemask_t 变量中
+** 输	 入: src1p - 第一个 nodemask_t 变量指针
+**         : src2p - 第二个 nodemask_t 变量指针
+**         : nbits - 需要操作的 bit 位数
+** 输	 出: dstp - 存储操作结果的变量指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void __nodes_xor(nodemask_t *dstp, const nodemask_t *src1p,
 					const nodemask_t *src2p, unsigned int nbits)
 {
 	bitmap_xor(dstp->bits, src1p->bits, src2p->bits, nbits);
 }
 
+/*********************************************************************************************************
+** 函数名称: nodes_xor
+** 功能描述: 对指定的两个 nodemask_t 变量进行位与非操作并把结果存储到指定的 nodemask_t 变量中
+** 输	 入: src1 - 第一个 nodemask_t 变量
+**         : src2 - 第二个 nodemask_t 变量
+** 输	 出: dst - 存储操作结果的变量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define nodes_andnot(dst, src1, src2) \
 			__nodes_andnot(&(dst), &(src1), &(src2), MAX_NUMNODES)
+
+/*********************************************************************************************************
+** 函数名称: nodes_and
+** 功能描述: 对指定的两个 nodemask_t 变量中指定位数的 bit 位进行位与非操作并把结果存储到指定的
+**         : nodemask_t 变量中
+** 输	 入: src1p - 第一个 nodemask_t 变量指针
+**         : src2p - 第二个 nodemask_t 变量指针
+**         : nbits - 需要操作的 bit 位数
+** 输	 出: dstp - 存储操作结果的变量指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void __nodes_andnot(nodemask_t *dstp, const nodemask_t *src1p,
 					const nodemask_t *src2p, unsigned int nbits)
 {
 	bitmap_andnot(dstp->bits, src1p->bits, src2p->bits, nbits);
 }
 
+/*********************************************************************************************************
+** 函数名称: nodes_complement
+** 功能描述: 对指定的两个 nodemask_t 变量进行位取反操作并把结果存储到指定的 nodemask_t 变量中
+** 输	 入: src - 指定的 nodemask_t 变量
+** 输	 出: dst - 存储操作结果的变量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define nodes_complement(dst, src) \
 			__nodes_complement(&(dst), &(src), MAX_NUMNODES)
+
+/*********************************************************************************************************
+** 函数名称: nodes_and
+** 功能描述: 对指定的两个 nodemask_t 变量中指定位数的 bit 位进行位取反操作并把结果存储到指定的
+**         : nodemask_t 变量中
+** 输	 入: dstp - 指定的 nodemask_t 变量指针
+**         : nbits - 需要操作的 bit 位数
+** 输	 出: dstp - 存储操作结果的变量指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void __nodes_complement(nodemask_t *dstp,
 					const nodemask_t *srcp, unsigned int nbits)
 {
 	bitmap_complement(dstp->bits, srcp->bits, nbits);
 }
 
+/*********************************************************************************************************
+** 函数名称: nodes_equal
+** 功能描述: 判断两个指定的两个 nodemask_t 变量是否相等
+** 输	 入: src1 - 第一个 nodemask_t 变量
+**         : src2 - 第二个 nodemask_t 变量
+** 输	 出: 1 - 相等
+**         : 0 - 不相等
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define nodes_equal(src1, src2) \
 			__nodes_equal(&(src1), &(src2), MAX_NUMNODES)
+
+/*********************************************************************************************************
+** 函数名称: nodes_equal
+** 功能描述: 判断两个指定的两个 nodemask_t 变量是否相等
+** 输	 入: src1 - 第一个 nodemask_t 变量指针
+**         : src2 - 第二个 nodemask_t 变量指针
+**         : nbits - 需要操作的 bit 位数
+** 输	 出: 1 - 相等
+**         : 0 - 不相等
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int __nodes_equal(const nodemask_t *src1p,
 					const nodemask_t *src2p, unsigned int nbits)
 {
 	return bitmap_equal(src1p->bits, src2p->bits, nbits);
 }
 
+/*********************************************************************************************************
+** 函数名称: nodes_intersects
+** 功能描述: 判断两个指定的两个 nodemask_t 变量是否有相交的比特位，即同时为 1 的比特位
+** 输	 入: src1 - 第一个 nodemask_t 变量
+**         : src2 - 第二个 nodemask_t 变量
+** 输	 出: 1 - 有相交
+**         : 0 - 没有相交
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define nodes_intersects(src1, src2) \
 			__nodes_intersects(&(src1), &(src2), MAX_NUMNODES)
+
+/*********************************************************************************************************
+** 函数名称: __nodes_intersects
+** 功能描述: 判断两个指定的两个 nodemask_t 变量是否有相交的比特位，即同时为 1 的比特位
+** 输	 入: src1p - 第一个 nodemask_t 变量指针
+**         : src2p - 第二个 nodemask_t 变量指针
+** 输	 出: 1 - 有相交
+**         : 0 - 没有相交
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int __nodes_intersects(const nodemask_t *src1p,
 					const nodemask_t *src2p, unsigned int nbits)
 {
 	return bitmap_intersects(src1p->bits, src2p->bits, nbits);
 }
 
+/*********************************************************************************************************
+** 函数名称: nodes_subset
+** 功能描述: 判断指定的第一个 nodemask_t 变量为 1 的比特位是否为第二个 nodemask_t 变量为 1 的比特位的子集
+** 输	 入: src1 - 第一个 nodemask_t 变量
+**         : src2 - 第二个 nodemask_t 变量
+** 输	 出: 1 - 是子集
+**         : 0 - 不是子集
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define nodes_subset(src1, src2) \
 			__nodes_subset(&(src1), &(src2), MAX_NUMNODES)
+
+/*********************************************************************************************************
+** 函数名称: __nodes_subset
+** 功能描述: 判断指定的第一个 nodemask_t 变量中指定 bit 位为 1 的区域是否为第二个 nodemask_t 
+**         : 变量指定 bit 位为 1 的区域的子集
+** 输	 入: src1p - 第一个 nodemask_t 变量
+**         : src2p - 第二个 nodemask_t 变量
+**         : nbits - 需要操作的 bit 位数
+** 输	 出: 1 - 是子集
+**         : 0 - 不是子集
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int __nodes_subset(const nodemask_t *src1p,
 					const nodemask_t *src2p, unsigned int nbits)
 {
 	return bitmap_subset(src1p->bits, src2p->bits, nbits);
 }
 
+/*********************************************************************************************************
+** 函数名称: nodes_empty
+** 功能描述: 判断指定的 nodemask_t 变量比特位是否都为 0
+** 输	 入: src - 指定的 nodemask_t 变量
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define nodes_empty(src) __nodes_empty(&(src), MAX_NUMNODES)
+
+/*********************************************************************************************************
+** 函数名称: __nodes_empty
+** 功能描述: 判断指定的 nodemask_t 变量中指定 bit 位是否都为 0
+** 输	 入: src - 指定的 nodemask_t 变量
+**         : nbits - 需要操作的 bit 位数
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int __nodes_empty(const nodemask_t *srcp, unsigned int nbits)
 {
 	return bitmap_empty(srcp->bits, nbits);
 }
 
+/*********************************************************************************************************
+** 函数名称: nodes_full
+** 功能描述: 判断指定的 nodemask_t 变量比特位是否都为 1
+** 输	 入: src - 指定的 nodemask_t 变量
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define nodes_full(nodemask) __nodes_full(&(nodemask), MAX_NUMNODES)
+
+/*********************************************************************************************************
+** 函数名称: __nodes_empty
+** 功能描述: 判断指定的 nodemask_t 变量中指定 bit 位是否都为 1
+** 输	 入: src - 指定的 nodemask_t 变量
+**         : nbits - 需要操作的 bit 位数
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int __nodes_full(const nodemask_t *srcp, unsigned int nbits)
 {
 	return bitmap_full(srcp->bits, nbits);
 }
 
+/*********************************************************************************************************
+** 函数名称: nodes_full
+** 功能描述: 判断指定的 nodemask_t 变量中为 1 的 bit 位的个数
+** 输	 入: src - 指定的 nodemask_t 变量
+** 输	 出: int - 为 1 的 bit 位的个数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define nodes_weight(nodemask) __nodes_weight(&(nodemask), MAX_NUMNODES)
+
+/*********************************************************************************************************
+** 函数名称: __nodes_weight
+** 功能描述: 判断指定的 nodemask_t 变量中指定位数的 bit 位中为 1 的 bit 位的个数
+** 输	 入: srcp - 指定的 nodemask_t 变量
+**         : nbits - 需要操作的 bit 位数
+** 输	 出: int - 为 1 的 bit 位的个数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int __nodes_weight(const nodemask_t *srcp, unsigned int nbits)
 {
 	return bitmap_weight(srcp->bits, nbits);
 }
 
+/*********************************************************************************************************
+** 函数名称: nodes_shift_right
+** 功能描述: 把指定的 nodemask_t 变量逻辑右移指定的 bit 数后写入到指定的 nodemask_t 变量中
+** 输	 入: src - 指定的 nodemask_t 变量
+**         : n - 需要右移的位数
+** 输	 出: dst - 存储操作结果的 nodemask_t 变量 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define nodes_shift_right(dst, src, n) \
 			__nodes_shift_right(&(dst), &(src), (n), MAX_NUMNODES)
+
+/*********************************************************************************************************
+** 函数名称: __nodes_shift_right
+** 功能描述: 把指定的 nodemask_t 变量逻辑右移指定的 bit 数后写入到指定的 nodemask_t 变量中
+** 输	 入: src - 指定的 nodemask_t 变量
+**         : n - 需要右移的位数
+**         : nbits - 指定的 nodemask_t 变量有效 bit 数
+** 输	 出: dst - 存储操作结果的 nodemask_t 变量 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void __nodes_shift_right(nodemask_t *dstp,
 					const nodemask_t *srcp, int n, int nbits)
 {
 	bitmap_shift_right(dstp->bits, srcp->bits, n, nbits);
 }
 
+/*********************************************************************************************************
+** 函数名称: nodes_shift_left
+** 功能描述: 把指定的 nodemask_t 变量逻辑左移指定的 bit 数后写入到指定的 nodemask_t 变量中
+** 输	 入: src - 指定的 nodemask_t 变量
+**         : n - 需要左移的位数
+** 输	 出: dst - 存储操作结果的 nodemask_t 变量 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define nodes_shift_left(dst, src, n) \
 			__nodes_shift_left(&(dst), &(src), (n), MAX_NUMNODES)
+
+/*********************************************************************************************************
+** 函数名称: __nodes_shift_right
+** 功能描述: 把指定的 nodemask_t 变量逻辑左移指定的 bit 数后写入到指定的 nodemask_t 变量中
+** 输	 入: src - 指定的 nodemask_t 变量
+**         : n - 需要左移的位数
+**         : nbits - 指定的 nodemask_t 变量有效 bit 数
+** 输	 出: dst - 存储操作结果的 nodemask_t 变量 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void __nodes_shift_left(nodemask_t *dstp,
 					const nodemask_t *srcp, int n, int nbits)
 {
@@ -247,12 +566,29 @@ static inline void __nodes_shift_left(nodemask_t *dstp,
 /* FIXME: better would be to fix all architectures to never return
           > MAX_NUMNODES, then the silly min_ts could be dropped. */
 
+/*********************************************************************************************************
+** 函数名称: first_node
+** 功能描述: 从指定的 nodemask_t 掩码值中计算第一个有效的 node id 值
+** 输	 入: srcp - 指定的 nodemask_t 指针
+** 输	 出: int - 对应的 node id 值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define first_node(src) __first_node(&(src))
 static inline int __first_node(const nodemask_t *srcp)
 {
 	return min_t(int, MAX_NUMNODES, find_first_bit(srcp->bits, MAX_NUMNODES));
 }
 
+/*********************************************************************************************************
+** 函数名称: next_node
+** 功能描述: 从指定的 nodemask_t 掩码值中查找和指定的 node id 相邻的下一个有效的 node id 值
+** 输	 入: n - 指定的 node id 值
+**         : srcp - 指定的 nodemask_t 指针
+** 输	 出: int - 对应的 node id 值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define next_node(n, src) __next_node((n), &(src))
 static inline int __next_node(int n, const nodemask_t *srcp)
 {
@@ -355,6 +691,14 @@ static inline void __nodes_fold(nodemask_t *dstp, const nodemask_t *origp,
 	bitmap_fold(dstp->bits, origp->bits, sz, nbits);
 }
 
+/*********************************************************************************************************
+** 函数名称: for_each_node_mask
+** 功能描述: 遍历指定的 nodemask_t 变量表示的每一个 node
+** 输	 入: mask - 指定的 nodemask_t 变量值
+** 输	 出: node - 遍历过程中可操的 node id 临时变量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #if MAX_NUMNODES > 1
 #define for_each_node_mask(node, mask)			\
 	for ((node) = first_node(mask);			\
