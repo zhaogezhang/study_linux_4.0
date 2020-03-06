@@ -11,7 +11,7 @@
  * are used to select a priority ordered list of memory zones which
  * match the requested limits. See gfp_zone() in include/linux/gfp.h
  */
-// 我们可以用 ZONES_SHIFT 个 bit 给系统中每一个 zone 一个编号
+/* 表示在用位图对系统 zone 进行标志时需要的 bit 位数 */
 #if MAX_NR_ZONES < 2
 #define ZONES_SHIFT 0
 #elif MAX_NR_ZONES <= 2
@@ -51,8 +51,10 @@
 #define SECTIONS_WIDTH		0
 #endif
 
+/* 表示在用位图对系统 zone 进行标志时需要的 bit 位数 */
 #define ZONES_WIDTH		ZONES_SHIFT
 
+/* 表示在用位图对系统 node 进行标志时需要的 bit 位数 */
 #if SECTIONS_WIDTH+ZONES_WIDTH+NODES_SHIFT <= BITS_PER_LONG - NR_PAGEFLAGS
 #define NODES_WIDTH		NODES_SHIFT
 #else
@@ -69,6 +71,7 @@
 #define LAST__CPU_SHIFT NR_CPUS_BITS
 #define LAST__CPU_MASK  ((1 << LAST__CPU_SHIFT)-1)
 
+/* cpu 和 pid 标志组成一个变量且 cpu 标志位在变量的高位，pid 标志位在变量的低位 */
 #define LAST_CPUPID_SHIFT (LAST__PID_SHIFT+LAST__CPU_SHIFT)
 #else
 #define LAST_CPUPID_SHIFT 0

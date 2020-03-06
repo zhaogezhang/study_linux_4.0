@@ -104,6 +104,15 @@ void lruvec_init(struct lruvec *lruvec)
 }
 
 #if defined(CONFIG_NUMA_BALANCING) && !defined(LAST_CPUPID_NOT_IN_PAGE_FLAGS)
+/*********************************************************************************************************
+** 函数名称: page_cpupid_xchg_last
+** 功能描述: 设置指定的物理内存页的 _last_cpupid 字段为指定的值并返回原来的旧值
+** 输	 入: page - 指定的物理内存页指针
+**         : cpupid - 指定的 cpupid 标志值
+** 输	 出: int - 原来的旧值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int page_cpupid_xchg_last(struct page *page, int cpupid)
 {
 	unsigned long old_flags, flags;

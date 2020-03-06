@@ -814,7 +814,14 @@ static inline int page_zone_id(struct page *page)
 	return (page->flags >> ZONEID_PGSHIFT) & ZONEID_MASK;
 }
 
-// 获取制定 zone 所在 node 的 id
+/*********************************************************************************************************
+** 函数名称: group_weight
+** 功能描述: 获取指定的 zone 所属 node 的 id 值
+** 输	 入: zone - 指定的 zone 指针
+** 输	 出: zone->node - 所属 node 的 id 值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int zone_to_nid(struct zone *zone)
 {
 #ifdef CONFIG_NUMA
@@ -834,43 +841,129 @@ static inline int page_to_nid(const struct page *page)
 #endif
 
 #ifdef CONFIG_NUMA_BALANCING
+/*********************************************************************************************************
+** 函数名称: cpu_pid_to_cpupid
+** 功能描述: 通过指定的 cpu id 和指定的 pid 计算对应的 cpupid 标志值
+** 输	 入: cpu - 指定的 cpu id 值
+**         : pid - 指定的 pid 值
+** 输	 出: int - 对应的 cpupid 标志值
+**         : -1 - 无效的 cpupid 标志值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int cpu_pid_to_cpupid(int cpu, int pid)
 {
 	return ((cpu & LAST__CPU_MASK) << LAST__PID_SHIFT) | (pid & LAST__PID_MASK);
 }
 
+/*********************************************************************************************************
+** 函数名称: cpupid_to_pid
+** 功能描述: 通过指定的 cpupid 标志计算对应的 pid 值
+** 输	 入: cpupid - 指定的 cpupid 标志值
+** 输	 出: int - 对应的 pid 值
+**         : -1 - 无效的 pid 值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int cpupid_to_pid(int cpupid)
 {
 	return cpupid & LAST__PID_MASK;
 }
 
+/*********************************************************************************************************
+** 函数名称: cpupid_to_cpu
+** 功能描述: 通过指定的 cpupid 标志计算对应的 cpu 值
+** 输	 入: cpupid - 指定的 cpupid 标志值
+** 输	 出: int - 对应的 cpu 值
+**         : -1 - 无效的 cpu 值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int cpupid_to_cpu(int cpupid)
 {
 	return (cpupid >> LAST__PID_SHIFT) & LAST__CPU_MASK;
 }
 
+/*********************************************************************************************************
+** 函数名称: cpupid_to_cpu
+** 功能描述: 通过指定的 cpupid 标志计算对应的 node id 值
+** 输	 入: cpupid - 指定的 cpupid 标志值
+** 输	 出: int - 对应的 node id 值
+**         : -1 - 无效的 node id 值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int cpupid_to_nid(int cpupid)
 {
 	return cpu_to_node(cpupid_to_cpu(cpupid));
 }
 
+/*********************************************************************************************************
+** 函数名称: cpupid_pid_unset
+** 功能描述: 判断指定的 cpupid 标志值的 pid 域是否全是 1
+** 输	 入: cpupid - 指定的 cpupid 标志值
+** 输	 出: 1 - 全是 1
+**         : 0 - 不全是 1
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline bool cpupid_pid_unset(int cpupid)
 {
 	return cpupid_to_pid(cpupid) == (-1 & LAST__PID_MASK);
 }
 
+/*********************************************************************************************************
+** 函数名称: cpupid_cpu_unset
+** 功能描述: 判断指定的 cpupid 标志值的 cpu 域是否全是 1
+** 输	 入: cpupid - 指定的 cpupid 标志值
+** 输	 出: 1 - 全是 1
+**         : 0 - 不全是 1
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline bool cpupid_cpu_unset(int cpupid)
 {
 	return cpupid_to_cpu(cpupid) == (-1 & LAST__CPU_MASK);
 }
 
+/*********************************************************************************************************
+** 函数名称: __cpupid_match_pid
+** 功能描述: 判断指定的 task_pid 值和指定的 cpupid 标志值的 pid 域是否相同
+** 输	 入: task_pid - 指定的 task_pid 值
+**         : cpupid - 指定的 cpupid 标志值
+** 输	 出: 1 - 相同
+**         : 0 - 不相同
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline bool __cpupid_match_pid(pid_t task_pid, int cpupid)
 {
 	return (task_pid & LAST__PID_MASK) == cpupid_to_pid(cpupid);
 }
 
+/*********************************************************************************************************
+** 函数名称: cpupid_match_pid
+** 功能描述: 判断指定的任务的 pid 和指定的 cpupid 标志值的 pid 域是否相同
+** 输	 入: task - 指定的任务指针
+**         : cpupid - 指定的 cpupid 标志值
+** 输	 出: 1 - 相同
+**         : 0 - 不相同
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define cpupid_match_pid(task, cpupid) __cpupid_match_pid(task->pid, cpupid)
+
+
 #ifdef LAST_CPUPID_NOT_IN_PAGE_FLAGS
+/*********************************************************************************************************
+** 函数名称: page_cpupid_xchg_last
+** 功能描述: 设置指定的物理内存页的 _last_cpupid 字段为指定的值并返回原来的旧值
+** 输	 入: page - 指定的物理内存页指针
+**         : cpupid - 指定的 cpupid 标志值
+** 输	 出: int - 原来的旧值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int page_cpupid_xchg_last(struct page *page, int cpupid)
 {
 	return xchg(&page->_last_cpupid, cpupid & LAST_CPUPID_MASK);
@@ -901,6 +994,15 @@ static inline void page_cpupid_reset_last(struct page *page)
 }
 #endif /* LAST_CPUPID_NOT_IN_PAGE_FLAGS */
 #else /* !CONFIG_NUMA_BALANCING */
+/*********************************************************************************************************
+** 函数名称: page_cpupid_xchg_last
+** 功能描述: 设置指定的物理内存页的 _last_cpupid 字段为指定的值并返回原来的旧值
+** 输	 入: page - 指定的物理内存页指针
+**         : cpupid - 指定的 cpupid 标志值
+** 输	 出: int - 原来的旧值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int page_cpupid_xchg_last(struct page *page, int cpupid)
 {
 	return page_to_nid(page); /* XXX */
@@ -911,26 +1013,72 @@ static inline int page_cpupid_last(struct page *page)
 	return page_to_nid(page); /* XXX */
 }
 
+/*********************************************************************************************************
+** 函数名称: cpupid_to_cpu
+** 功能描述: 通过指定的 cpupid 标志计算对应的 node id 值
+** 输	 入: cpupid - 指定的 cpupid 标志值
+** 输	 出: int - 对应的 node id 值
+**         : -1 - 无效的 node id 值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int cpupid_to_nid(int cpupid)
 {
 	return -1;
 }
 
+/*********************************************************************************************************
+** 函数名称: cpupid_to_pid
+** 功能描述: 通过指定的 cpupid 标志计算对应的 pid 值
+** 输	 入: cpupid - 指定的 cpupid 标志值
+** 输	 出: int - 对应的 pid 值
+**         : -1 - 无效的 pid 值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int cpupid_to_pid(int cpupid)
 {
 	return -1;
 }
 
+/*********************************************************************************************************
+** 函数名称: cpupid_to_cpu
+** 功能描述: 通过指定的 cpupid 标志计算对应的 cpu 值
+** 输	 入: cpupid - 指定的 cpupid 标志值
+** 输	 出: int - 对应的 cpu 值
+**         : -1 - 无效的 cpu 值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int cpupid_to_cpu(int cpupid)
 {
 	return -1;
 }
 
+/*********************************************************************************************************
+** 函数名称: cpu_pid_to_cpupid
+** 功能描述: 通过指定的 cpu id 和指定的 pid 计算对应的 cpupid 标志值
+** 输	 入: cpu - 指定的 cpu id 值
+**         : pid - 指定的 pid 值
+** 输	 出: int - 对应的 cpupid 标志值
+**         : -1 - 无效的 cpupid 标志值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int cpu_pid_to_cpupid(int nid, int pid)
 {
 	return -1;
 }
 
+/*********************************************************************************************************
+** 函数名称: cpupid_pid_unset
+** 功能描述: 判断指定的 cpupid 标志值的 pid 域是否全是 1
+** 输	 入: cpupid - 指定的 cpupid 标志值
+** 输	 出: 1 - 全是 1
+**         : 0 - 不全是 1
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline bool cpupid_pid_unset(int cpupid)
 {
 	return 1;
@@ -940,37 +1088,89 @@ static inline void page_cpupid_reset_last(struct page *page)
 {
 }
 
+/*********************************************************************************************************
+** 函数名称: cpupid_match_pid
+** 功能描述: 判断指定的任务的 pid 和指定的 cpupid 标志值的 pid 域是否相同
+** 输	 入: task - 指定的任务指针
+**         : cpupid - 指定的 cpupid 标志值
+** 输	 出: 1 - 相同
+**         : 0 - 不相同
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline bool cpupid_match_pid(struct task_struct *task, int cpupid)
 {
 	return false;
 }
 #endif /* CONFIG_NUMA_BALANCING */
 
-// 获取 page 所在 zone 的数据结构
+/*********************************************************************************************************
+** 函数名称: page_zone
+** 功能描述: 获取指定的 page 所在的 zone
+** 输	 入: page - 指定的 page指针
+** 输	 出: struct zone * - 所在的 zone 指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct zone *page_zone(const struct page *page)
 {
 	return &NODE_DATA(page_to_nid(page))->node_zones[page_zonenum(page)];
 }
 
 #ifdef SECTION_IN_PAGE_FLAGS
+/*********************************************************************************************************
+** 函数名称: set_page_section
+** 功能描述: 设置指定的 page 的 SECTIONS 标志为指定的值
+** 输	 入: page - 指定的 page指针
+**         : section - 指定的 SECTIONS 标志值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void set_page_section(struct page *page, unsigned long section)
 {
 	page->flags &= ~(SECTIONS_MASK << SECTIONS_PGSHIFT);
 	page->flags |= (section & SECTIONS_MASK) << SECTIONS_PGSHIFT;
 }
 
+/*********************************************************************************************************
+** 函数名称: page_to_section
+** 功能描述: 获取指定的 page 的 SECTIONS 标志值
+** 输	 入: page - 指定的 page指针
+** 输	 出: unsigned long - 获取的 SECTIONS 标志值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline unsigned long page_to_section(const struct page *page)
 {
 	return (page->flags >> SECTIONS_PGSHIFT) & SECTIONS_MASK;
 }
 #endif
 
+/*********************************************************************************************************
+** 函数名称: set_page_zone
+** 功能描述: 设置指定的 page 的 ZONES 标志为指定的值
+** 输	 入: page - 指定的 page 指针
+**         : zone - 指定的 ZONES 标志值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void set_page_zone(struct page *page, enum zone_type zone)
 {
 	page->flags &= ~(ZONES_MASK << ZONES_PGSHIFT);
 	page->flags |= (zone & ZONES_MASK) << ZONES_PGSHIFT;
 }
 
+/*********************************************************************************************************
+** 函数名称: set_page_node
+** 功能描述: 设置指定的 page 的 NODES 标志为指定的值
+** 输	 入: page - 指定的 page 指针
+**         : node - 指定的 NODES 标志值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void set_page_node(struct page *page, unsigned long node)
 {
 	page->flags &= ~(NODES_MASK << NODES_PGSHIFT);
@@ -1002,10 +1202,28 @@ static __always_inline void *lowmem_page_address(const struct page *page)
 #endif
 
 #if defined(WANT_PAGE_VIRTUAL)
+/*********************************************************************************************************
+** 函数名称: page_address
+** 功能描述: 获取指定的 page 的虚拟地址值
+** 输	 入: page - 指定的 page 指针
+** 输	 出: void * - 虚拟地址值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void *page_address(const struct page *page)
 {
 	return page->virtual;
 }
+
+/*********************************************************************************************************
+** 函数名称: set_page_address
+** 功能描述: 设置指定的 page 的虚拟地址为指定的值
+** 输	 入: page - 指定的 page 指针
+**         : address - 指定的虚拟地址值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void set_page_address(struct page *page, void *address)
 {
 	page->virtual = address;

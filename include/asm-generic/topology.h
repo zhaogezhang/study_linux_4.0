@@ -55,9 +55,19 @@
 #ifndef parent_node
 #define parent_node(node)	((void)(node),0)
 #endif
+
+/*********************************************************************************************************
+** 函数名称: cpumask_of_node
+** 功能描述: 获取指定的 node 节点上处于 online 状态的 cpu 掩码值
+** 输	 入: node - 指定的 node id 值
+** 输	 出: ret - online 状态的 cpu 掩码值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #ifndef cpumask_of_node
 #define cpumask_of_node(node)	((void)node, cpu_online_mask)
 #endif
+
 #ifndef pcibus_to_node
 #define pcibus_to_node(bus)	((void)(bus), -1)
 #endif

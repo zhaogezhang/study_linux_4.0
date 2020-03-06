@@ -421,6 +421,7 @@ struct zone {
 	long lowmem_reserve[MAX_NR_ZONES];
 
 #ifdef CONFIG_NUMA
+    /* 表示当前 zone 所属 node 的 id 值 */
 	int node;
 #endif
 

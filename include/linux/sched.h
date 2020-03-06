@@ -1366,6 +1366,8 @@ struct task_struct {
 
 	unsigned int policy;
 	int nr_cpus_allowed;
+
+	/* 表示为当前任务分配的 cpu 掩码值 */
 	cpumask_t cpus_allowed;
 
 #ifdef CONFIG_PREEMPT_RCU
@@ -1666,7 +1668,11 @@ struct task_struct {
 #endif
 #ifdef CONFIG_NUMA_BALANCING
 	int numa_scan_seq;
+
+    /* 表示当前任务对 numa 内存的扫描周期，在扫描过程中，会执行内存页面迁移操作 */
 	unsigned int numa_scan_period;
+	
+    /* 表示当前任务对 numa 内存的最大扫描周期，在扫描过程中，会执行内存页面迁移操作 */
 	unsigned int numa_scan_period_max;
 
 	/* 表示当前任务在运行时优先选择的 node id 值 */
@@ -1679,23 +1685,43 @@ struct task_struct {
 	struct callback_head numa_work;
 
 	struct list_head numa_entry;
+
+	/* 表示当前任务所属 numa_group 指针 */
 	struct numa_group *numa_group;
 
 	/*
 	 * numa_faults is an array split into four regions:
 	 * faults_memory, faults_cpu, faults_memory_buffer, faults_cpu_buffer
 	 * in this precise order.
-	 *
+	 * 
 	 * faults_memory: Exponential decaying average of faults on a per-node
 	 * basis. Scheduling placement decisions are made based on these
 	 * counts. The values remain static for the duration of a PTE scan.
+	 *
 	 * faults_cpu: Track the nodes the process was running on when a NUMA
 	 * hinting fault was incurred.
+	 *
 	 * faults_memory_buffer and faults_cpu_buffer: Record faults per node
 	 * during the current scan window. When the scan completes, the counts
 	 * in faults_memory and faults_cpu decay and these values are copied.
+	 *
+	 *
+	 * numa_faults 是按照指定顺序划分成四个区域的数组指针，划分顺序分别是
+	 * faults_memory, faults_cpu, faults_memory_buffer, faults_cpu_buffer
+	 * 
+	 * faults_memory：每个节点上内存访问故障的指数衰减平均值。调度放置决策是
+	 *                基于这些计数计算得出的。在 PTE 扫描期间，这些值保持不变。
+	 *
+	 * faults_cpu：在提示发生 NUMA faults 时记录进程所在节点的 id 值
+	 * 
+	 * faults_memory_buffer 和 faults_cpu_buffer：在当前扫描窗口中记录每个节点
+	 * 的错误。当扫描完成时，faults_memory和faults_cpu中的计数会衰减，并复制这些值。
 	 */
+
+	/* 按照指定顺序划分成四个 faults 区域的数组指针，存储了发生过 numa 缺页中断的物理内存页个数 */
 	unsigned long *numa_faults;
+
+	/* 表示在 task_struct.numa_faults 数组中所有成员的总和 */
 	unsigned long total_numa_faults;
 
 	/*
@@ -1704,8 +1730,13 @@ struct task_struct {
 	 * period is adapted based on the locality of the faults with different
 	 * weights depending on whether they were shared or private faults
 	 */
+	/* remote - numa_faults_locality[0]
+	   local - numa_faults_locality[1]
+	   failed to migrate - numa_faults_locality[2] 
+	   这个数组的数据在每一个 numa 内存扫描周期执行完之后都会清零，见函数 update_task_scan_period */
 	unsigned long numa_faults_locality[3];
 
+    /* 表示 numa_faults_locality 数组所有成员的总和 */
 	unsigned long numa_pages_migrated;
 #endif /* CONFIG_NUMA_BALANCING */
 
@@ -1788,11 +1819,26 @@ struct task_struct {
 };
 
 /* Future-safe accessor for struct task_struct's cpus_allowed. */
+/*********************************************************************************************************
+** 函数名称: tsk_cpus_allowed
+** 功能描述: 获取指定的任务允许运行的 cpu 掩码值
+** 输	 入: tsk - 指定的任务指针
+** 输	 出: tsk)->cpus_allowed - 允许运行的 cpu 掩码值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define tsk_cpus_allowed(tsk) (&(tsk)->cpus_allowed)
 
+/* TNF = task numa flags */
+
 #define TNF_MIGRATED	0x01
+
+/* 表示指定的物理内存页面是只读页面 */
 #define TNF_NO_GROUP	0x02
+
+/* 表示指定的物理内存页面是共享内存页面 */
 #define TNF_SHARED	0x04
+
 #define TNF_FAULT_LOCAL	0x08
 #define TNF_MIGRATE_FAIL 0x10
 
@@ -2512,6 +2558,15 @@ extern struct task_struct *idle_task(int cpu);
  *
  * Return: 1 if @p is an idle task. 0 otherwise.
  */
+/*********************************************************************************************************
+** 函数名称: is_idle_task
+** 功能描述: 判断指定的进程是否是 idle 进程
+** 输	 入: p - 指定的进程指针
+** 输	 出: 1 - 是 idle 进程
+**         : 0 - 不是 idle 进程
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline bool is_idle_task(const struct task_struct *p)
 {
 	return p->pid == 0;

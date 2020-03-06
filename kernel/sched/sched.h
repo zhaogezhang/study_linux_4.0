@@ -401,8 +401,13 @@ struct cfs_rq {
 	 * Where f(tg) is the recursive weight fraction assigned to
 	 * this group.
 	 */
+	/* 表示当前 cfs 运行队列中所有调度实例对系统的负载贡献值，这些调度实例是按照树形结构组织的 */
 	unsigned long h_load;
+
+	/* 上次更新当前任务组的 h_load 数据时的系统时间 */
 	u64 last_h_load_update;
+
+    /* 表是下一个需要更新的调度实例指针 */
 	struct sched_entity *h_load_next;
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 #endif /* CONFIG_SMP */
@@ -807,7 +812,7 @@ static inline void rq_clock_skip_update(struct rq *rq, bool skip)
 
 #ifdef CONFIG_NUMA
 enum numa_topology_type {
-	NUMA_DIRECT,        /* 表示所有的 numa 节点时直接相连在一起的，他们之间的距离相等 */
+	NUMA_DIRECT,        /* 表示所有的 numa 节点是直接连接在一起的，所以他们之间的距离相等 */
 	NUMA_GLUELESS_MESH,
 	NUMA_BACKPLANE,
 };
@@ -819,7 +824,7 @@ extern bool find_numa_distance(int distance);
 #ifdef CONFIG_NUMA_BALANCING
 /* The regions in numa_faults array from task_struct */
 enum numa_faults_stats {
-	NUMA_MEM = 0,
+	NUMA_MEM = 0,  /* 表示在 numa 节点上对内存访问的分数信息 */
 	NUMA_CPU,
 	NUMA_MEMBUF,
 	NUMA_CPUBUF
