@@ -115,6 +115,14 @@ DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
 static void update_rq_clock_task(struct rq *rq, s64 delta);
 
+/*********************************************************************************************************
+** 函数名称: update_rq_clock
+** 功能描述: 更新指定的 cpu 运行队列的时钟相关信息
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void update_rq_clock(struct rq *rq)
 {
 	s64 delta;
@@ -852,6 +860,15 @@ void deactivate_task(struct rq *rq, struct task_struct *p, int flags)
 	dequeue_task(rq, p, flags);
 }
 
+/*********************************************************************************************************
+** 函数名称: update_rq_clock_task
+** 功能描述: 更新指定的 cpu 运行队列的任务时钟信息
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : delta - 指定的时钟增量值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void update_rq_clock_task(struct rq *rq, s64 delta)
 {
 /*
@@ -4944,6 +4961,15 @@ int migrate_task_to(struct task_struct *p, int target_cpu)
  * Requeue a task on a given node and accurately track the number of NUMA
  * tasks on the runqueues
  */
+/*********************************************************************************************************
+** 函数名称: sched_setnuma
+** 功能描述: 把指定的任务重新添加到指定的 preferred node 的运行队列中
+** 输	 入: p - 指定的任务指针
+**         : nid - 指定 preferred node id
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void sched_setnuma(struct task_struct *p, int nid)
 {
 	struct rq *rq;

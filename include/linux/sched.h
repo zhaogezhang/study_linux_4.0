@@ -1336,13 +1336,17 @@ struct task_struct {
 
 #ifdef CONFIG_SMP
 	struct llist_node wake_entry;
+
+	/* 表示当前任务正在哪个 cpu 上运行 */
 	int on_cpu;
+	
 	struct task_struct *last_wakee;
 	unsigned long wakee_flips;
 	unsigned long wakee_flip_decay_ts;
 
 	int wake_cpu;
 #endif
+    /* 表示当前任务的 on_run_queue 状态，例如 TASK_ON_RQ_QUEUED */
 	int on_rq;
 
 	int prio, static_prio, normal_prio;
@@ -1568,7 +1572,7 @@ struct task_struct {
      * mempolicy */
 	spinlock_t alloc_lock;
 
-	/* Protection of the PI data structures: */
+	/* Protection of the PI(Priority Inheritance) data structures: */
 	raw_spinlock_t pi_lock;
 
 #ifdef CONFIG_RT_MUTEXES
@@ -1680,8 +1684,15 @@ struct task_struct {
 
 	unsigned long numa_migrate_retry;
 	u64 node_stamp;			/* migration stamp  */
+
+	/* 表示当前任务最后一次执行 task_numa_placement 函数时的运行队列时钟值
+	   详情见 numa_get_avg_runtime 函数 */
 	u64 last_task_numa_placement;
+
+	/* 表示当前任务最后一次执行 task_numa_placement 函数时的总计运行的 cpu 物理
+	   运行时间，详情见 numa_get_avg_runtime 函数 */
 	u64 last_sum_exec_runtime;
+	
 	struct callback_head numa_work;
 
 	struct list_head numa_entry;
@@ -1712,13 +1723,55 @@ struct task_struct {
 	 * faults_memory：每个节点上内存访问故障的指数衰减平均值。调度放置决策是
 	 *                基于这些计数计算得出的。在 PTE 扫描期间，这些值保持不变。
 	 *
-	 * faults_cpu：在提示发生 NUMA faults 时记录进程所在节点的 id 值
+	 * faults_cpu：在提示发生 NUMA faults 时记录进程所在的 node id 值
 	 * 
 	 * faults_memory_buffer 和 faults_cpu_buffer：在当前扫描窗口中记录每个节点
-	 * 的错误。当扫描完成时，faults_memory和faults_cpu中的计数会衰减，并复制这些值。
+	 * 的错误。当扫描完成时，faults_memory 和 faults_cpu 中的计数会衰减，并复制
+	 * 这些值。在每个扫描窗口中会清零重新开始计数。
+	 * 
+	 * numa_faults 的物理布局如下：
+	 * 
+	 * --------------------------------------
+	 * |             |           |  share   |
+	 * |             |   node 0  |  private |
+	 * |             |----------------------|
+	 * |             |    ...    |  share   |
+	 * |  NUMA_MEM   |   node i  |  private |
+	 * |             |----------------------|
+	 * |             |           |  share   |
+	 * |             |   node n  |  private |
+	 * |-------------|----------------------|
+	 * |             |           |  share   |
+	 * |             |   node 0  |  private |
+	 * |             |----------------------|
+	 * |             |    ...    |  share   |
+	 * |  NUMA_CPU   |   node i  |  private |
+	 * |             |----------------------|
+	 * |             |           |  share   |
+	 * |             |   node n  |  private |
+	 * |-------------|----------------------|
+	 * |             |           |  share   |
+	 * |             |   node 0  |  private |
+	 * |             |----------------------|
+	 * |             |    ...    |  share   |
+	 * | NUMA_MEMBUF |   node i  |  private |
+	 * |             |----------------------|
+	 * |             |           |  share   |
+	 * |             |   node n  |  private |
+	 * |-------------|----------------------|
+	 * |             |           |  share   |
+	 * |             |   node 0  |  private |
+	 * |             |----------------------|
+	 * |             |    ...    |  share   |
+	 * | NUMA_CPUBUF |   node i  |  private |
+	 * |             |----------------------|
+	 * |             |           |  share   |
+	 * |             |   node n  |  private |
+	 * |-------------|----------------------| 
 	 */
 
-	/* 按照指定顺序划分成四个 faults 区域的数组指针，存储了发生过 numa 缺页中断的物理内存页个数 */
+	/* 按照指定顺序划分成四个 faults 区域的数组指针，存储了发生过 numa_pte faults 的物理内存页个数 
+	   触发 numa_pte faults 的函数是 task_numa_work */
 	unsigned long *numa_faults;
 
 	/* 表示在 task_struct.numa_faults 数组中所有成员的总和 */
@@ -1730,13 +1783,14 @@ struct task_struct {
 	 * period is adapted based on the locality of the faults with different
 	 * weights depending on whether they were shared or private faults
 	 */
-	/* remote - numa_faults_locality[0]
-	   local - numa_faults_locality[1]
-	   failed to migrate - numa_faults_locality[2] 
-	   这个数组的数据在每一个 numa 内存扫描周期执行完之后都会清零，见函数 update_task_scan_period */
+	/* 用来统计当前任务在指定的扫描周期内发生过的 numa_pte faults 次数，并根据类型
+	   分别存储在不同的位置，具体如下：
+	   remote numa_pte faults - numa_faults_locality[0]
+	   local numa_pte - numa_faults_locality[1]
+	   failed to migrate - numa_faults_locality[2]
+	   这个数组的数据在每一个 numa 内存扫描周期执行完之后都会清零，详情见 update_task_scan_period */
 	unsigned long numa_faults_locality[3];
 
-    /* 表示 numa_faults_locality 数组所有成员的总和 */
 	unsigned long numa_pages_migrated;
 #endif /* CONFIG_NUMA_BALANCING */
 
@@ -3140,9 +3194,15 @@ static inline int signal_pending_state(long state, struct task_struct *p)
  */
 extern int _cond_resched(void);
 
-// 在安全的地方检查进程 TIF_NEED_RESCHED 标志决定是否需要执行进程调度操作
-// 一般会在执行比较耗时的操作之前调用，为了避免进程长时间得不到调度
-// 返回值表示是否执行了调度操作
+/*********************************************************************************************************
+** 函数名称: cond_resched
+** 功能描述: 在安全的地方检查进程 TIF_NEED_RESCHED 标志决定是否需要执行进程调度操作，一般会在执行
+**         : 比较耗时的操作之前调用，为了避免进程长时间得不到调度
+** 输	 入: ret - 表示是否需要执行调度操作
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define cond_resched() ({			\
 	___might_sleep(__FILE__, __LINE__, 0);	\
 	_cond_resched();			\

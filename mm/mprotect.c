@@ -238,6 +238,19 @@ static unsigned long change_protection_range(struct vm_area_struct *vma,
 	return pages;
 }
 
+/*********************************************************************************************************
+** 函数名称: change_protection
+** 功能描述: 把指定的 vma 结构中指定的虚拟地址范围属性标志调整为指定的新的属性值
+** 输	 入: vma - 指定的 vma 结构指针
+**         : start - 起始虚拟地址
+**         : end - 结束虚拟地址
+**         : newprot - 新的属性值
+**         : dirty_accountable - 
+**         : prot_numa - 是否是 numa_pte 属性的修改操作
+** 输	 出: pages - 成功修改属性的物理内存页数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 unsigned long change_protection(struct vm_area_struct *vma, unsigned long start,
 		       unsigned long end, pgprot_t newprot,
 		       int dirty_accountable, int prot_numa)

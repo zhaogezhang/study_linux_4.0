@@ -385,7 +385,10 @@ struct cfs_rq {
 	 * This allows for the description of both thread and group usage (in
 	 * the FAIR_GROUP_SCHED case).
 	 */
+	/* runnable_load_avg - 表示当前 cfs 运行队列可获取的平均负载值
+	   blocked_load_avg  - 表示当前 cfs 运行队列中被阻塞的平均负载值 */
 	unsigned long runnable_load_avg, blocked_load_avg;
+
 	atomic64_t decay_counter;
 	u64 last_decay;
 	atomic_long_t removed_load;
@@ -393,6 +396,8 @@ struct cfs_rq {
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* Required to track per-cpu representation of a task_group */
 	u32 tg_runnable_contrib;
+
+    /* */
 	unsigned long tg_load_contrib;
 
 	/*
@@ -631,9 +636,10 @@ struct rq {
 
 	unsigned int clock_skip_update;
 
-	/* 用来记录当前运行队列的基准时钟信息 */
+	/* 用来记录当前运行队列的基准时钟信息，在 update_rq_clock 函数中更新 */
 	u64 clock;
 
+    /* 表示当前 cpu 运行队列中的调度实例在任务上下文中消耗的时间，在 update_rq_clock_task 函数中更新 */
 	u64 clock_task;
 
 	atomic_t nr_iowait;
@@ -666,8 +672,11 @@ struct rq {
 #endif
 
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
+    /* 表示当前 cpu 运行队列中的任务在中断上下文中消耗的时间，在 update_rq_clock_task 函数中更新 */
 	u64 prev_irq_time;
 #endif
+
+/* 下面两个是和虚拟化相关的时间统计信息，在 update_rq_clock_task 函数中更新 */
 #ifdef CONFIG_PARAVIRT
 	u64 prev_steal_time;
 #endif
@@ -789,7 +798,10 @@ static inline u64 rq_clock_task(struct rq *rq)
 	return rq->clock_task;
 }
 
+/* RQCF - run queue clock flags */
 #define RQCF_REQ_SKIP	0x01
+
+/* 表示在调用 update_rq_clock 函数的时候，不执行运行队列的时钟信息更新操作 */
 #define RQCF_ACT_SKIP	0x02
 
 /*********************************************************************************************************
@@ -824,7 +836,7 @@ extern bool find_numa_distance(int distance);
 #ifdef CONFIG_NUMA_BALANCING
 /* The regions in numa_faults array from task_struct */
 enum numa_faults_stats {
-	NUMA_MEM = 0,  /* 表示在 numa 节点上对内存访问的分数信息 */
+	NUMA_MEM = 0,
 	NUMA_CPU,
 	NUMA_MEMBUF,
 	NUMA_CPUBUF
@@ -1117,11 +1129,31 @@ static inline u64 global_rt_runtime(void)
 	return (u64)sysctl_sched_rt_runtime * NSEC_PER_USEC;
 }
 
+/*********************************************************************************************************
+** 函数名称: task_current
+** 功能描述: 判断指定的任务是否是指定的 cpu 运行队列当前正在运行的任务
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : p - 指定的任务指针
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int task_current(struct rq *rq, struct task_struct *p)
 {
 	return rq->curr == p;
 }
 
+/*********************************************************************************************************
+** 函数名称: task_running
+** 功能描述: 判断指定的任务是否正在运行
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : p - 指定的任务指针
+** 输	 出: i - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int task_running(struct rq *rq, struct task_struct *p)
 {
 #ifdef CONFIG_SMP
@@ -1131,11 +1163,29 @@ static inline int task_running(struct rq *rq, struct task_struct *p)
 #endif
 }
 
+/*********************************************************************************************************
+** 函数名称: task_on_rq_queued
+** 功能描述: 判断指定的任务是否处于 TASK_ON_RQ_QUEUED 状态
+** 输	 入: p - 指定的任务指针
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int task_on_rq_queued(struct task_struct *p)
 {
 	return p->on_rq == TASK_ON_RQ_QUEUED;
 }
 
+/*********************************************************************************************************
+** 函数名称: task_on_rq_migrating
+** 功能描述: 判断指定的任务是否处于 TASK_ON_RQ_MIGRATING 状态
+** 输	 入: p - 指定的任务指针
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int task_on_rq_migrating(struct task_struct *p)
 {
 	return p->on_rq == TASK_ON_RQ_MIGRATING;
@@ -1534,6 +1584,15 @@ static inline struct rq *__task_rq_lock(struct task_struct *p)
 /*
  * task_rq_lock - lock p->pi_lock and lock the rq @p resides on.
  */
+/*********************************************************************************************************
+** 函数名称: task_rq_lock
+** 功能描述: 获取指定任务以及所属 cpu 运行队列的锁并返回运行队列指针
+** 输	 入: p - 指定的任务指针
+** 输	 出: flags - 存储中断标志信息
+**         : rq - 获取到的 cpu 运行队列指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct rq *task_rq_lock(struct task_struct *p, unsigned long *flags)
 	__acquires(p->pi_lock)
 	__acquires(rq->lock)
@@ -1570,12 +1629,30 @@ static inline struct rq *task_rq_lock(struct task_struct *p, unsigned long *flag
 	}
 }
 
+/*********************************************************************************************************
+** 函数名称: __task_rq_unlock
+** 功能描述: 释放指定的 cpu 运行队列指锁
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void __task_rq_unlock(struct rq *rq)
 	__releases(rq->lock)
 {
 	raw_spin_unlock(&rq->lock);
 }
 
+/*********************************************************************************************************
+** 函数名称: task_rq_unlock
+** 功能描述: 释放指定任务以及所属 cpu 运行队列指锁
+** 输	 入: rq - 所属 cpu 运行队列指针
+**         : p - 指定的任务指针
+**         : flags - 存储中断标志信息
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void
 task_rq_unlock(struct rq *rq, struct task_struct *p, unsigned long *flags)
 	__releases(rq->lock)
@@ -1807,6 +1884,14 @@ static inline void irq_time_write_end(void)
 	__this_cpu_inc(irq_time_seq.sequence);
 }
 
+/*********************************************************************************************************
+** 函数名称: irq_time_read
+** 功能描述: 获取指定的 cpu 的在中断上下文执行时间统计变量值
+** 输	 入: cpu - 定的 cpu id
+** 输	 出: irq_time - 中断上下文执行的时间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline u64 irq_time_read(int cpu)
 {
 	u64 irq_time;
@@ -1829,6 +1914,14 @@ static inline void irq_time_write_end(void)
 {
 }
 
+/*********************************************************************************************************
+** 函数名称: irq_time_read
+** 功能描述: 获取指定的 cpu 的在中断上下文执行时间统计变量值
+** 输	 入: cpu - 定的 cpu id
+** 输	 出: irq_time - 中断上下文执行的时间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline u64 irq_time_read(int cpu)
 {
 	return per_cpu(cpu_softirq_time, cpu) + per_cpu(cpu_hardirq_time, cpu);

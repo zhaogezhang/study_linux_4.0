@@ -121,6 +121,17 @@ unsigned long __xchg(unsigned long x, volatile void *ptr, int size)
 #define cmpxchg64_local(ptr, o, n) __cmpxchg64_local_generic((ptr), (o), (n))
 #endif
 
+/*********************************************************************************************************
+** 函数名称: cmpxchg
+** 功能描述: 将 o 和 ptr 指向的内容比较，如果相等，则将 n 写入到 ptr 中，返回 o，如果不相等，则返回
+**         : ptr 指向的内容
+** 输	 入: ptr - 指定的变量指针 
+**         : o - 指定的旧值
+**         : n - 指定的新值
+** 输	 出: ret - 指定的旧值或者 ptr 指向的内容
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define cmpxchg(ptr, o, n)	cmpxchg_local((ptr), (o), (n))
 #define cmpxchg64(ptr, o, n)	cmpxchg64_local((ptr), (o), (n))
 

@@ -176,6 +176,15 @@ extern int mpol_parse_str(char *str, struct mempolicy **mpol);
 extern void mpol_to_str(char *buffer, int maxlen, struct mempolicy *pol);
 
 /* Check if a vma is migratable */
+/*********************************************************************************************************
+** 函数名称: vma_migratable
+** 功能描述: 判断指定的 vma 是否可以迁移到其他位置
+** 输	 入: vma - 指定的 vma 结构指针
+** 输	 出: 1 - 可以迁移
+**         : 0 - 不可以迁移
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int vma_migratable(struct vm_area_struct *vma)
 {
 	if (vma->vm_flags & (VM_IO | VM_PFNMAP))

@@ -565,12 +565,15 @@ struct mm_struct {
 	 * pte_numa. NUMA hinting faults will gather statistics and migrate
 	 * pages to new nodes if necessary.
 	 */
+	/* 表示当前进程下一个执行 numa 扫描的时间 */
 	unsigned long numa_next_scan;
 
 	/* Restart point for scanning and setting pte_numa */
+	/* 表示当前进程下一次执行 numa 扫描时的虚拟地址起始偏移量 */
 	unsigned long numa_scan_offset;
 
 	/* numa_scan_seq prevents two threads setting pte_numa */
+	/* 当前进程使用的 numa 扫描序列券 ，只有匹配的时候才可以执行 numa 扫描操作 */
 	int numa_scan_seq;
 #endif
 #if defined(CONFIG_NUMA_BALANCING) || defined(CONFIG_COMPACTION)

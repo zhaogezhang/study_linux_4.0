@@ -210,6 +210,17 @@ static inline unsigned long __cmpxchg_mb(volatile void *ptr, unsigned long old,
 	return ret;
 }
 
+/*********************************************************************************************************
+** 函数名称: cmpxchg
+** 功能描述: 将 o 和 ptr 指向的内容比较，如果相等，则将 n 写入到 ptr 中，返回 o，如果不相等，则返回
+**         : ptr 指向的内容
+** 输	 入: ptr - 指定的变量指针 
+**         : o - 指定的旧值
+**         : n - 指定的新值
+** 输	 出: ret - 指定的旧值或者 ptr 指向的内容
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define cmpxchg(ptr, o, n) \
 ({ \
 	__typeof__(*(ptr)) __ret; \
@@ -228,8 +239,6 @@ static inline unsigned long __cmpxchg_mb(volatile void *ptr, unsigned long old,
 	__ret; \
 })
 
-// 如果 ptr 变量和 o 变量相等，则把 n 变量值赋给 ptr 并返回 1
-// 否则 ptr 的值不变并且返回 0
 #define cmpxchg_double(ptr1, ptr2, o1, o2, n1, n2) \
 ({\
 	int __ret;\

@@ -566,6 +566,17 @@ unlock:
  * an architecture makes a different choice, it will need further
  * changes to the core.
  */
+/*********************************************************************************************************
+** 函数名称: change_prot_numa
+** 功能描述: 把指定的 vma 结构中指定的虚拟地址范围属性标志为 PROT_NONE，这样在访问这段虚拟地址空间的
+**         : 时候就可以触发 numa_pte faults 了
+** 输	 入: vma - 指定的 vma 结构指针
+**         : addr - 起始虚拟地址
+**         : end - 结束虚拟地址
+** 输	 出: nr_updated - 成功修改属性的物理内存页数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 unsigned long change_prot_numa(struct vm_area_struct *vma,
 			unsigned long addr, unsigned long end)
 {
@@ -578,6 +589,17 @@ unsigned long change_prot_numa(struct vm_area_struct *vma,
 	return nr_updated;
 }
 #else
+/*********************************************************************************************************
+** 函数名称: change_prot_numa
+** 功能描述: 把指定的 vma 结构中指定的虚拟地址范围属性标志为 PROT_NONE，这样在访问这段虚拟地址空间的
+**         : 时候就可以触发 numa_pte faults 了
+** 输	 入: vma - 指定的 vma 结构指针
+**         : addr - 起始虚拟地址
+**         : end - 结束虚拟地址
+** 输	 出: nr_updated - 成功修改属性的物理内存页数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static unsigned long change_prot_numa(struct vm_area_struct *vma,
 			unsigned long addr, unsigned long end)
 {
