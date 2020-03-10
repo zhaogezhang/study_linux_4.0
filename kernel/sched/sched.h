@@ -207,16 +207,31 @@ struct rt_rq;
 
 extern struct list_head task_groups;
 
+/* 带宽控制基本工作原理：
+   通过设置两个变量 quota 和 period，period 是指一段周期时间，quota 是指在 period 周期
+   时间内，一个组可以使用的 cpu 时间限额。当一个组的进程运行时间超过 quota 后，就会被
+   限制运行，这个动作被称作 throttle。直到下一个 period 周期开始，这个组会被重新调度
+   这个过程称作 unthrottle */
 struct cfs_bandwidth {
 #ifdef CONFIG_CFS_BANDWIDTH
 	raw_spinlock_t lock;
+
+    /* 表示当前调度实例在带宽控制时使用的统计周期 */
 	ktime_t period;
+	
+    /* quota - 表示在指定的周期内为当前调度实例分配的时间额度
+       runtime - 表示在指定的周期内当前调度实例剩余的可运行时间额度 */
 	u64 quota, runtime;
+	
 	s64 hierarchical_quota;
+
+	/* 表示当前带宽控制统计周期下一次超时的运行队列时钟，单位是 ns */
 	u64 runtime_expires;
 
 	int idle, timer_active;
 	struct hrtimer period_timer, slack_timer;
+
+    /* 把所有已经 throttle cfs 运行队列通过链表连接在一起，在 unthrottle 的时候使用 */
 	struct list_head throttled_cfs_rq;
 
 	/* statistics */
@@ -226,7 +241,12 @@ struct cfs_bandwidth {
 };
 
 /* task group related information */
-/* 表示组调度中的任务组结构，调度器通过树形结构把所有任务组链接起来 */
+/* 1. 设计调度组的原因？
+      因为当前系统支持多用户功能，为了在多个用户之间均匀分配系统 cpu 资源
+      我们把一个用户的所有进程放到同一个调度组内，然后以调度组为资源分配
+      单位，并且给调度组分配不同的权重信息，这样就可以在多个用户之间灵活
+      分配系统资源了 
+   2. 表示组调度中的任务组结构，调度器通过树形结构把所有任务组链接起来 */
 struct task_group {
 	struct cgroup_subsys_state css;
 
@@ -238,11 +258,15 @@ struct task_group {
 	/* runqueue "owned" by this group on each cpu */
     /* 这是一个二维数组指针，表示的是当前任务组在每一个 cpu 上拥有的 cfs 运行队列指针 */
 	struct cfs_rq **cfs_rq;
-	
+
+	/* 表示当前任务组由其父节点看到的权重值，在计算这个任务组树的总权重时使用 */
 	unsigned long shares;
 
 #ifdef	CONFIG_SMP
+	/* 表示当前任务组在过去“时间段”内经过衰减后的负载贡献值 */
 	atomic_long_t load_avg;
+
+    /* 表示当前任务组在指定的“统计周期”内没经过衰减的负载贡献值 */
 	atomic_t runnable_avg;
 #endif
 #endif
@@ -270,6 +294,7 @@ struct task_group {
 	struct autogroup *autogroup;
 #endif
 
+    /* 表示当前任务组的带宽控制数据结构 */
 	struct cfs_bandwidth cfs_bandwidth;
 };
 
@@ -354,7 +379,7 @@ struct cfs_rq {
 
 	u64 exec_clock;
 
-	/* 记录了当前 cfs 运行队列的调度实例中虚拟运行时间最小的值 */
+	/* 记录了当前 cfs 运行队列的调度实例中虚拟运行时间最小的值，即红黑树上最左边位置的调度实例 */
 	u64 min_vruntime;
 	
 #ifndef CONFIG_64BIT
@@ -371,7 +396,10 @@ struct cfs_rq {
 	 * 'curr' points to currently running entity on this cfs_rq.
 	 * It is set to NULL otherwise (i.e when none are currently running).
 	 */
-	/* curr - 指向了当前 cfs 运行队列中正在运行的调度实例指针 */
+	/* curr - 指向了当前 cfs 运行队列中正在运行的调度实例指针
+	   next - 
+	   last - 
+	   skip - 指向了当前 cfs 运行队列中调度时需要跳过的调度实例指针 */
 	struct sched_entity *curr, *next, *last, *skip;
 
 #ifdef	CONFIG_SCHED_DEBUG
@@ -385,19 +413,31 @@ struct cfs_rq {
 	 * This allows for the description of both thread and group usage (in
 	 * the FAIR_GROUP_SCHED case).
 	 */
-	/* runnable_load_avg - 表示当前 cfs 运行队列可获取的平均负载值
-	   blocked_load_avg  - 表示当前 cfs 运行队列中被阻塞的平均负载值 */
+	/* runnable_load_avg - 表示当前 cfs 运行队列在指定的“时间段”内经过衰减后的已经运行的平均负载贡献值
+	   blocked_load_avg  - 表示当前 cfs 运行队列在指定的“时间段”内经过衰减后的被阻塞掉的平均负载贡献值
+	   详情见函数 update_entity_load_avg */
 	unsigned long runnable_load_avg, blocked_load_avg;
 
+    /* 表示当前 cfs 运行队列对属于它的所有任务执行的负载贡献衰减阶数 */
 	atomic64_t decay_counter;
+
+	/* 表是当前 cfs 运行队列上一次对负载执行衰减操作时的运行队列时钟，单位是 ms */
 	u64 last_decay;
+
+	/* 表示需要从当前 cfs 运行队列的 blocked_load_avg 中移除的负载贡献值
+	   详情见函数 update_cfs_rq_blocked_load */
 	atomic_long_t removed_load;
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* Required to track per-cpu representation of a task_group */
+    /* 表示当前 cfs 运行队列所属任务组在指定的“统计周期”内没经过衰减的负载贡献值 
+
+                                     sched_avg->runnable_avg_sum << NICE_0_SHIFT
+       cfs_rq->tg_runnable_contrib = -------------------------------------------
+	                                     sched_avg->runnable_avg_period + 1   */
 	u32 tg_runnable_contrib;
 
-    /* */
+	/* 表示当前 cfs 运行队列所属任务组在过去“时间段”内经过衰减后的负载贡献值 */
 	unsigned long tg_load_contrib;
 
 	/*
@@ -406,7 +446,8 @@ struct cfs_rq {
 	 * Where f(tg) is the recursive weight fraction assigned to
 	 * this group.
 	 */
-	/* 表示当前 cfs 运行队列中所有调度实例对系统的负载贡献值，这些调度实例是按照树形结构组织的 */
+	/* 表示当前 cfs 运行队列中所有调度实例在过去“时间段”内经过衰减后对系统的
+	   负载贡献值，这些调度实例是按照树形结构组织的 */
 	unsigned long h_load;
 
 	/* 上次更新当前任务组的 h_load 数据时的系统时间 */
@@ -589,7 +630,7 @@ struct rq {
     /* 表示当前 cpu 运行队列中包含的已经分配了 preferred_node 的调度实例数 */
 	unsigned int nr_numa_running;
 
-    /* 表示当前 cpu 运行队列中包含的 preferred_node == rq.node_id 的调度实例数 */
+    /* 表示当前 cpu 运行队列中包含的 preferred_node == task_node 的调度实例数 */
 	unsigned int nr_preferred_running;
 #endif
 	#define CPU_LOAD_IDX_MAX 5
@@ -636,10 +677,10 @@ struct rq {
 
 	unsigned int clock_skip_update;
 
-	/* 用来记录当前运行队列的基准时钟信息，在 update_rq_clock 函数中更新 */
+	/* 用来记录当前运行队列的基准时钟信息，在 update_rq_clock 函数中更新，单位是 ns */
 	u64 clock;
 
-    /* 表示当前 cpu 运行队列中的调度实例在任务上下文中消耗的时间，在 update_rq_clock_task 函数中更新 */
+    /* 表示当前 cpu 运行队列中的调度实例在任务上下文中消耗的时间，在 update_rq_clock_task 函数中更新，单位是 ns */
 	u64 clock_task;
 
 	atomic_t nr_iowait;
@@ -660,6 +701,7 @@ struct rq {
 	int cpu;
 	int online;
 
+    /* 把属于当前 cpu 运行队列的所有任务通过链表链接起来 */
 	struct list_head cfs_tasks;
 
 	u64 rt_avg;
@@ -772,7 +814,7 @@ static inline u64 __rq_clock_broken(struct rq *rq)
 
 /*********************************************************************************************************
 ** 函数名称: rq_clock
-** 功能描述: 获取指定的 cpu 运行队列的基准时钟信息
+** 功能描述: 获取指定的 cpu 运行队列的基准时钟信息，单位是 ns
 ** 输	 入: rq - 指定的 cpu 运行队列指针
 ** 输	 出: 
 ** 全局变量: 
@@ -786,7 +828,7 @@ static inline u64 rq_clock(struct rq *rq)
 
 /*********************************************************************************************************
 ** 函数名称: rq_clock_task
-** 功能描述: 获取指定的 cpu 运行队列的任务时钟信息
+** 功能描述: 获取指定的 cpu 运行队列的任务时钟信息，单位是 ns
 ** 输	 入: rq - 指定的 cpu 运行队列指针
 ** 输	 出: 
 ** 全局变量: 
@@ -1298,7 +1340,7 @@ static const u32 prio_to_wmult[40] = {
  /*  15 */ 119304647, 148102320, 186737708, 238609294, 286331153,
 };
 
-#define ENQUEUE_WAKEUP		1
+#define ENQUEUE_WAKEUP		1   /* 表示在把指定的调度实例添加到运行队列中后要及时唤醒并运行这个调度实例 */
 #define ENQUEUE_HEAD		2
 #ifdef CONFIG_SMP
 #define ENQUEUE_WAKING		4	/* sched_class::task_waking was called */

@@ -553,6 +553,14 @@ static bool set_nr_if_polling(struct task_struct *p)
  * might also involve a cross-CPU call to trigger the scheduler on
  * the target CPU.
  */
+/*********************************************************************************************************
+** 函数名称: resched_curr
+** 功能描述: 触发指定的 cpu 运行队列执行一次新的任务调度操作
+** 输	 入: rq- 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void resched_curr(struct rq *rq)
 {
 	struct task_struct *curr = rq->curr;

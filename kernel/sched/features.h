@@ -3,12 +3,17 @@
  * them to run sooner, but does not allow tons of sleepers to
  * rip the spread apart.
  */
+/* 表示在把指定的调度实例添加到当前 cpu 正在运行的任务的左侧（在 cfs 红黑树上
+   的位置）时，需要把虚拟时间的反向补偿值减半，这样可以保证新的调度实例及时得
+   到调度并且不会对之前的任务的虚拟时间分配逻辑造成太大的影响，详情见 place_entity 函数 */
 SCHED_FEAT(GENTLE_FAIR_SLEEPERS, true)
 
 /*
  * Place new tasks ahead so that they do not starve already running
  * tasks
  */
+/* 表示把指定的调度实例添加到当前 cpu 正在运行任务的右侧（在 cfs 红黑树上
+   的位置），这样就不会马上抢占当前正在运行的调度实例了，详情见 place_entity 函数 */
 SCHED_FEAT(START_DEBIT, true)
 
 /*

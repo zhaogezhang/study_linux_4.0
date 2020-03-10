@@ -1126,12 +1126,12 @@ struct load_weight {
    PELT 把时间分成了 1024us 的序列，在每个 1024us 的周期中，一个调度实体（进程或者进程组）对系统
    负载的贡献可以根据该实体处于 runnable 状态（正在 cpu 上运行或者在队列中等待 cpu 调度运行）的
    时间进行计算。对于过去的负载，我们在计算的时候需要乘一个衰减因子。如果定义 Li 表示在周期 Pi
-   中该调度实体的对系统负载贡献，那么一个调度实体对系统负荷的总贡献可以表示为：
+   中该调度实体的对系统负载贡献，那么一个调度实体对系统负荷的总贡献（load_avg）可以表示为：
    L = L0 + L1*y + L2*y^2 + L3*y^3 + ...
 
    通过这个公式来看，由于我们是累加各个周期中的负载贡献值，所以一个实体在一个计算周期内的负载可能
-   会超过 1024us。使用这样序列的让计算非常简单，我们不需要使用数组来记录过去的负荷贡献，只要把上
-   次计算得到的总贡献值乘以 y 再加上新的 L0 负荷值就得到了新的贡献值了。内核中通过这种公式计算出
+   会超过 1024us。使用这样序列让计算非常简单，我们不需要使用数组来记录过去的负荷贡献，只要把上次
+   计算得到的总贡献值乘以 y 再加上新的 L0 负荷值就得到了新的贡献值了。内核中通过这种公式计算出
    runnable_avg_sum 和 runnable_avg_period，然后两者 runnable_avg_sum / runnable_avg_period 可以
    作为对系统平均负载贡献的描述。*/
 struct sched_avg {
@@ -1140,12 +1140,32 @@ struct sched_avg {
 	 * above by 1024/(1-y).  Thus we only need a u32 to store them for all
 	 * choices of y < 1-2^(-32)*1024.
 	 */
+	/*
+	   [<- 1024us ->|<- 1024us ->|<- 1024us ->| ...
+            p0            p1           p2
+          (now)       (~1ms ago)  (~2ms ago)
+
+       上面的 P0、P1、P2...Pn 表示的是 runnable contrib，即在指定的“统计周期”内
+       没经过衰减的负载贡献值
+
+	   load_avg = u_0` + y*(u_0 + u_1*y + u_2*y^2 + ... )
+	    		= u_0 + u_1*y + u_2*y^2 + ... [re-labeling u_i --> u_{i+1}]
+
+       上面的 load_avg 表示的是 load contrib，即在指定的“时间段”内经过衰减后的负载贡献值 */
+
+	/* runnable_avg_sum - 表示上一次计算 entity_runnable_avg 在时不足一个统计周期（1024ns）
+	   且没有计算负载贡献时的 sum 部分，的详情见 __update_entity_runnable_avg 函数
+	   runnable_avg_period - 表示上一次计算 entity_runnable_avg 时不足一个统计周期（1024ns）
+	   且没有计算负载贡献的 period 余数部分，的详情见 __update_entity_runnable_avg 函数 */
 	u32 runnable_avg_sum, runnable_avg_period;
-	
+
+	/* 表示上一次更新当前调度实例负载贡献值时的调度系统时间，单位是 ns */
 	u64 last_runnable_update;
+
+    /* 表示当前调度实例需要对其负载贡献指定的衰减阶数 */
 	s64 decay_count;
 
-	/* 表示当前调度实例对整个系统的平均负载贡献值 */
+	/* 表示当前调度实例过去“时间段”内经过衰减后的负载贡献值 */
 	unsigned long load_avg_contrib;
 };
 
@@ -1156,15 +1176,15 @@ struct sched_statistics {
 	u64			wait_count;                    /* 记录当前调度实例加入运行队列后等待运行的次数 */
 	u64			wait_sum;                      /* 统计当前调度实例加入运行队列到实际运行的所有等待时间 */
 	
-	u64			iowait_count;
-	u64			iowait_sum;
+	u64			iowait_count;                  /* 表示当前调度实例的 sched_statistics.iowait_sum 字段中统计的次数 */
+ 	u64			iowait_sum;                    /* 表示当前调度实例在等待 IO 事件上一共消耗的 cpu 物理时间 */
 
-	u64			sleep_start;
-	u64			sleep_max;
-	s64			sum_sleep_runtime;
+	u64			sleep_start;                   /* 表示当前调度实例上次开始睡眠时的调度队列时钟，task->state == TASK_INTERRUPTIBLE */
+	u64			sleep_max;                     /* 表示当前调度实例睡眠时间最长的一次所睡眠的时间大小 */
+	s64			sum_sleep_runtime;             /* 表示当前调度实例一共睡眠的 cpu 物理时间 */
 
-	u64			block_start;
-	u64			block_max;
+	u64			block_start;                   /* 表示当前调度实例被阻塞时的调度队列时钟，task->state == TASK_UNINTERRUPTIBLE */
+	u64			block_max;                     /* 表示当前调度实例被阻塞时间最长的一次所阻塞的时间大小 */
 	u64			exec_max;
 	u64			slice_max;
 
@@ -1195,13 +1215,13 @@ struct sched_entity {
     /* 通过这个红黑树节点把当前调度实例添加到调度器的红黑树上 */	
 	struct rb_node		run_node;
 
-    /* 通过链表的方式把属于同一个任务组中的所有调度实例链接起来 */
+    /* 通过链表的方式把属于同一个 cpu 运行队列的所有调度实例链接起来 */
 	struct list_head	group_node;
 
 	/* 表示当前调度实例是否已经在所属的运行队列上 */
 	unsigned int		on_rq;
 
-    /* 表示当前调度实例本次调度开始运行时的运行队列时钟值 */
+    /* 表示当前调度实例本次调度开始运行（或者上一次更新运行时统计信息）时的运行队列时钟值 */
 	u64			exec_start;
 
 	/* 表示当前调度实例总计运行的 cpu 物理运行时间 */
@@ -1209,7 +1229,8 @@ struct sched_entity {
 
 	/* 表示当前调度实例总计运行的虚拟时间 */
 	u64			vruntime;
-	
+
+	/* 表示当前调度实例上一次调度结束时总计运行的 cpu 物理运行时间*/
 	u64			prev_sum_exec_runtime;
 
 	u64			nr_migrations;
@@ -1223,21 +1244,23 @@ struct sched_entity {
     /* 表示当前调度任务组实例在任务组树形结构中的深度 */
 	int			depth;
 
-	/* 指向当前调度任务组实例的父节点指针 */
+	/* 指向当前调度任务组实例的父任务组节点实例指针，详情见 init_tg_cfs_entry 函数 */
 	struct sched_entity	*parent;
 	
 	/* rq on which this entity is (to be) queued: */
-	/* 指向当前调度任务组实例所在的 cfs 运行队列指针 */
+	/* 指向当前调度任务组实例所在的 cfs 运行队列指针，当前任务组相当于这个 cfs 运行队列上的一个
+	   调度实例，即当前任务组相当于这个 cfs 运行队列红黑树上的一个节点 */
 	struct cfs_rq		*cfs_rq;
 	
 	/* rq "owned" by this entity/group: */
-	/* 如果当前调度实例代表的是一个任务组，则指向当前任务组拥有的运行队列
-	   如果当前调度实例代表的是一个线程，则指向 NULL */
+	/* 如果当前调度实例代表的是一个任务组，则指向当前任务组拥有的 cfs 运行队列，这个 cfs 运行队
+	   列上包含了当前任务组拥有的所有调度实例，如果当前调度实例代表的是一个线程，则指向 NULL */
 	struct cfs_rq		*my_q;
 #endif
 
 #ifdef CONFIG_SMP
 	/* Per-entity load-tracking */
+    /* 用来存储当前调度实例的系统负载贡献数据信息 */
 	struct sched_avg	avg;
 #endif
 };
@@ -1352,7 +1375,10 @@ struct task_struct {
 	int prio, static_prio, normal_prio;
 	unsigned int rt_priority;
 	const struct sched_class *sched_class;
+
+	/* 表示和当前任务对应的调度实例结构 */
 	struct sched_entity se;
+
 	struct sched_rt_entity rt;
 #ifdef CONFIG_CGROUP_SCHED
 	struct task_group *sched_task_group;
@@ -1424,8 +1450,9 @@ struct task_struct {
 	/* Used for emulating ABI behavior of previous Linux versions */
 	unsigned int personality;
 
-	unsigned in_execve:1;	/* Tell the LSMs that the process is doing an
-				 * execve */
+	unsigned in_execve:1;	/* Tell the LSMs that the process is doing an execve */
+
+	/* 表示当前任务正在等待 IO 事件 */
 	unsigned in_iowait:1;
 
 	/* Revert to default priority/policy when forking */
@@ -1697,7 +1724,17 @@ struct task_struct {
 
 	struct list_head numa_entry;
 
-	/* 表示当前任务所属 numa_group 指针 */
+	/* 表示当前任务所属 numa_group 指针，当前系统会把访问共享内存的多个任务放到同一个
+	   numa 组内，并且把之前基于单独任务的 muna_pte faults 统计信息上升到基于 numa 组
+	   的 numa_pte faults 统计
+	   
+	   那么我们是怎么在发生的 numa_pte faults 中判断是否有多个进程访问同一个物理内存页
+	   呢？我们通过在 struct page.flags 中添加了 cpupid 标志位，表示上一次访问这个物理
+	   内存页的 cpu 和 pid 信息，我们通过比较当前进程的 cpupid 和 上次记录的 cpupid 就
+	   可以判断这个物理内存页是否被多个进程同时访问
+	   
+	   因为在 struct page.flags 中记录的 cpupid 的 pid 域只有 8 bits，所以这 8 bits 只
+	   代表了真实进程 pid 的低八位，所以可能会导致歧义发生，但是为了节省内存这是不可避免的 */
 	struct numa_group *numa_group;
 
 	/*
@@ -1770,7 +1807,9 @@ struct task_struct {
 	 * |-------------|----------------------| 
 	 */
 
-	/* 按照指定顺序划分成四个 faults 区域的数组指针，存储了发生过 numa_pte faults 的物理内存页个数 
+	/* 按照指定顺序划分成四个 faults 区域的数组指针，存储了当前任务在指定周期内在不同 node 节点上
+	   发生过 numa_pte faults 的物理内存页个数，我们通过这些数据可以定位在整个统计周期内当前任务
+	   访问内存的布局图，这样我们就可以尝试把当前任务迁移到访问内存最多的 node 节点处来提高性能
 	   触发 numa_pte faults 的函数是 task_numa_work */
 	unsigned long *numa_faults;
 
