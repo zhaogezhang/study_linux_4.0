@@ -952,25 +952,39 @@ extern int sched_domain_level_max;
 
 struct sched_group;
 
+/* 每个调度域就是具有相同属性的一组 cpu 的集合，一般按照层级从上到下
+   可以划分为三层，如下：
+                    DIE (SOC 层级)
+
+                    MC  (多核层级)
+
+                    SMT (超线程层级) */
 struct sched_domain {
 	/* These fields must be setup */
 	struct sched_domain *parent;	/* top domain must be null terminated */
 	struct sched_domain *child;	/* bottom domain must be null terminated */
+
+	/* 表示当前调度域中包含的调度组，通过单向链表连接在一起，最后一个调度组的
+	   next 成员指向 sched_domain.groups，即这是一个环形单向链表 */
 	struct sched_group *groups;	/* the balancing groups of the domain */
+	
 	unsigned long min_interval;	/* Minimum balance interval ms */
 	unsigned long max_interval;	/* Maximum balance interval ms */
 	unsigned int busy_factor;	/* less balancing by factor if busy */
 	unsigned int imbalance_pct;	/* No balance until over watermark */
 	unsigned int cache_nice_tries;	/* Leave cache hot tasks for # tries */
+
+	/* 对应着 struct rq 结构体的 cpu_load 数组的索引值 */
 	unsigned int busy_idx;
 	unsigned int idle_idx;
 	unsigned int newidle_idx;
 	unsigned int wake_idx;
 	unsigned int forkexec_idx;
+	
 	unsigned int smt_gain;
 
-	int nohz_idle;			/* NOHZ IDLE status */
-	int flags;			/* See SD_* */
+	int nohz_idle;		/* NOHZ IDLE status */
+	int flags;			/* See SD_*，例如 SD_LOAD_BALANCE */
 	int level;
 
 	/* Runtime fields. */
@@ -1021,7 +1035,9 @@ struct sched_domain {
 		struct rcu_head rcu;	/* used during destruction */
 	};
 
+    /* 表示当前调度域的 struct sched_domain.span 数组中有效的 bit 位的位数 */
 	unsigned int span_weight;
+	
 	/*
 	 * Span of all CPUs in this domain.
 	 *
@@ -1029,9 +1045,18 @@ struct sched_domain {
 	 * by attaching extra space to the end of the structure,
 	 * depending on how many CPUs the kernel has booted up with)
 	 */
+    /* 表示当前调度域内包含的 cpu 的掩码值 */
 	unsigned long span[0];
 };
 
+/*********************************************************************************************************
+** 函数名称: sched_domain_span
+** 功能描述: 获取指定的调度域内包含的 cpu 的掩码值
+** 输	 入: sd - 指定的调度域指针
+** 输	 出: struct cpumask * - cpu 掩码值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct cpumask *sched_domain_span(struct sched_domain *sd)
 {
 	return to_cpumask(sd->span);
@@ -1089,6 +1114,16 @@ partition_sched_domains(int ndoms_new, cpumask_var_t doms_new[],
 {
 }
 
+/*********************************************************************************************************
+** 函数名称: cpus_share_cache
+** 功能描述: 判断指定的 cpu 是否 cache 亲和性
+** 输	 入: this_cpu - 指定的当前 cpu id
+**         : that_cpu - 指定的目标 cpu id
+** 输	 出: 1 - 共享
+**         : 0 - 不共享
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline bool cpus_share_cache(int this_cpu, int that_cpu)
 {
 	return true;
@@ -1362,9 +1397,17 @@ struct task_struct {
 
 	/* 表示当前任务正在哪个 cpu 上运行 */
 	int on_cpu;
+
+    /* wakee - 表示将被唤醒的任务 
+	   waker - 表示执行唤醒其他任务函数的任务 */
 	
+	/* last_wakee - 表示当前任务在唤醒其他任务时，最后一次唤醒的任务指针，详情见 record_wakee 函数 */
 	struct task_struct *last_wakee;
+
+	/* wakee_flips - 表示当前任务在指定的时间内唤醒了多少个其他任务，详情见 record_wakee 函数 */
 	unsigned long wakee_flips;
+
+	/* wakee_flip_decay_ts - 表示当前任务对唤醒其他任务计数值的衰减时间，详情见 record_wakee 函数 */
 	unsigned long wakee_flip_decay_ts;
 
 	int wake_cpu;

@@ -90,6 +90,15 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
 
+/*********************************************************************************************************
+** 函数名称: start_bandwidth_timer
+** 功能描述: 使指定的带宽控制高精度定时器按照指定的超时周期启动
+** 输	 入: period_timer - 指定的带宽控制高精度定时器指针
+**         : period - 指定的超时周期
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void start_bandwidth_timer(struct hrtimer *period_timer, ktime_t period)
 {
 	unsigned long delta;
@@ -386,6 +395,15 @@ static void __hrtick_start(void *arg)
  *
  * called with rq->lock held and irqs disabled
  */
+/*********************************************************************************************************
+** 函数名称: hrtick_start
+** 功能描述: 启动指定的 cpu 运行队列的任务调度高精度定时器
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : delay - 指定的延迟时间，单位 ns
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void hrtick_start(struct rq *rq, u64 delay)
 {
 	struct hrtimer *timer = &rq->hrtick_timer;
@@ -741,8 +759,55 @@ void sched_avg_update(struct rq *rq)
  * Iterate task_group tree rooted at *from, calling @down when first entering a
  * node and @up when leaving it for the final time.
  *
+ * 递归调用以 from 为根的 task_group 树，第一次进入节点时调用 down，最后一次离开节点时调用 up
+ *
  * Caller must hold rcu_lock or sufficient equivalent.
  */
+/* 树的遍历函数推演执行过程如下：
+   O0
+   ↓
+   O1 - O2 - O10 - O11
+        ↓
+        O3 - O6
+        |    ↓
+        ↓    O7 - O8 - O9
+        O4 - O5
+   遍历顺序为<node有children的话, 递归找到该node级联的所有child node的最左侧的node开始遍历>
+   1. O0 -> down(from = O0)
+   2. O1 -> down(O0的children, O1临时变为parent)
+   3. O1 -> up(因为O1没有children), parent回退指向O0, child指向O1, 然后goto up:继续执行O1所在的siblings
+   4. O2 -> down(O2临时变为parent)
+   5. O3 -> down(O2的children, O3临时变为parent)
+   6. O4 -> down(O3的children, O4临时变为parent)
+   7. O4 -> up(因为O4没有children), parent回退指向O3, child指向O4, 然后goto up:继续执行O4所在的siblings
+   8. O5 -> down(O4的siblings, O5临时变为parent)
+   9. O5 -> up(因为O5没有children), parent回退指向O3, child指向O5, 然后goto up:继续执行O5所在的siblings
+  10. O3 -> up(因为O3->children已经到达结尾O5), parent回退指向O2, child指向O3, 然后goto up:继续执行O3所在的siblings
+  11. O6 -> down(O3的siblings, O6临时变为parent)
+  12. O7 -> down(O6的children, O7临时变为parent)
+  13. O7 -> up(因为O7没有children), parent回退指向O6, child指向O7, 然后goto up:继续执行O7所在的siblings
+  14. O8 -> down(O7的siblings, O8临时变为parent)
+  15. O8 -> up(因为O8没有children), parent回退指向O6, child指向O8, 然后goto up:继续执行O8所在的siblings
+  16. O9 -> down(O8的siblings, O9临时变为parent)
+  17. O9 -> up(因为O9没有children), parent回退指向O6, child指向O9, 然后goto up:继续执行O9所在的siblings
+  18. O6 -> up(因为O6->children已经到达结尾O9), parent回退指向O2, child指向O6, 然后goto up:继续执行O6所在的siblings
+  19. O2 -> up(因为O2->children已经到达结尾O6), parent回退指向O0, child指向O2, 然后goto up:继续执行O2所在的siblings
+  20. O10-> down(O2的siblings, O10临时变为parent)
+  21. O10-> up(因为O10没有children), parent回退指向O0, child指向O10, 然后goto up:继续执行O10所在的siblings
+  22. O11-> down(O10的siblings, O11临时变为parent)
+  21. O11-> up(因为O11没有children), parent回退指向O0, child指向O11, 然后goto up:继续执行O11所在的siblings
+  22. O0 -> up(因为O0->children已经到达结尾O11), parent == from, 然后goto out;所以树的遍历至此结束 */
+/*********************************************************************************************************
+** 函数名称: walk_tg_tree_from
+** 功能描述: 从指定的树的根节点开始遍历树，并在每个节点上都执行一次指定的 down 和 up 操作
+** 输	 入: from - 指定的树的根节点指针
+**         : down - 指定的 down 函数指针
+**         : up - 指定的 up 函数指针
+**         : data - 为 down 和 up 指定的函数参数
+** 输	 出: ret - down 或 up 操作结果
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int walk_tg_tree_from(struct task_group *from,
 			     tg_visitor down, tg_visitor up, void *data)
 {
@@ -1679,6 +1744,16 @@ out:
 	rcu_read_unlock();
 }
 
+/*********************************************************************************************************
+** 函数名称: cpus_share_cache
+** 功能描述: 判断指定的 cpu 是否 cache 亲和性
+** 输	 入: this_cpu - 指定的当前 cpu id
+**         : that_cpu - 指定的目标 cpu id
+** 输	 出: 1 - 共享
+**         : 0 - 不共享
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 bool cpus_share_cache(int this_cpu, int that_cpu)
 {
 	return per_cpu(sd_llc_id, this_cpu) == per_cpu(sd_llc_id, that_cpu);

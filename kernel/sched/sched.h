@@ -216,26 +216,40 @@ struct cfs_bandwidth {
 #ifdef CONFIG_CFS_BANDWIDTH
 	raw_spinlock_t lock;
 
-    /* 表示当前调度实例在带宽控制时使用的统计周期 */
+    /* 表示当前带宽控制池所属任务组在带宽控制时使用的统计周期 */
 	ktime_t period;
 	
-    /* quota - 表示在指定的周期内为当前调度实例分配的时间额度
-       runtime - 表示在指定的周期内当前调度实例剩余的可运行时间额度 */
+    /* quota - 表示在指定的周期内为当前带宽控制池分配的时间额度，RUNTIME_INF 不表示不限制带宽
+       runtime - 表示在指定的周期内当前带宽控制池剩余的可运行时间额度 */
 	u64 quota, runtime;
 	
 	s64 hierarchical_quota;
 
-	/* 表示当前带宽控制统计周期下一次超时的运行队列时钟，单位是 ns */
+	/* 表示当前带宽控制池所属任务组当前统计周期的到期时间的运行队列时钟，单位是 ns
+	   详情见 __refill_cfs_bandwidth_runtime 函数 */
 	u64 runtime_expires;
 
+    /* idle - 表示当前带宽控制池的 throttled_cfs_rq 链表是否为空，详情见 do_sched_cfs_period_timer 函数
+	   timer_active - 表示当前带宽控制池所属任务组使用的高精度定时器是否处于激活状态
+	   详情见 __start_cfs_bandwidth 函数 */
 	int idle, timer_active;
+
+	/* period_timer - 表示当前带宽控制池所属任务组使用的周期超时高精度定时器
+	   slack_timer - 表示当前带宽控制池的 slack 定时器，实现了尝试把已经分配给 cfs 运行队列的运行
+	   时间拿回到当前带宽控制池中并分配给其他 cfs 运行队列的功能，详情见 __return_cfs_rq_runtime 和
+	   do_sched_cfs_slack_timer 函数 */
 	struct hrtimer period_timer, slack_timer;
 
-    /* 把所有已经 throttle cfs 运行队列通过链表连接在一起，在 unthrottle 的时候使用 */
+    /* 把所有已经 throttle cfs 运行队列通过链表连接在一起，在 unthrottle 的时候使用
+       详情见 distribute_cfs_runtime 和 unthrottle_cfs_rq 函数 */
 	struct list_head throttled_cfs_rq;
 
 	/* statistics */
+	/* nr_periods - 表示当前带宽控制池已经运行的统计周期个数，详情见 do_sched_cfs_period_timer 函数
+	   nr_throttled - 表示当前带宽控制池处于 throttled 状态共经历的周期数，详情见 do_sched_cfs_period_timer 函数 */
 	int nr_periods, nr_throttled;
+
+	/* 表示当前带宽控制池所属任务组在 throttled 状态下一共经历的时间，详情见 unthrottle_cfs_rq 函数 */
 	u64 throttled_time;
 #endif
 };
@@ -281,13 +295,13 @@ struct task_group {
 	struct rcu_head rcu;
 	struct list_head list;
 
-    /* 指向当前任务组的父节点指针 */
+    /* 指向当前任务组的父任务组节点指针 */
 	struct task_group *parent;
 
-    /* 通过链表的方式把当前任务组的所有兄弟节点链接起来 */
+    /* 通过链表的方式把当前任务组的所有兄弟任务组节点链接起来 */
 	struct list_head siblings;
 	
-    /* 通过链表的方式把当前任务组的所有子节点链接起来 */
+    /* 通过链表的方式把当前任务组的所有子任务组节点链接起来 */
 	struct list_head children;
 
 #ifdef CONFIG_SCHED_AUTOGROUP
@@ -374,7 +388,8 @@ struct cfs_rq {
        的时候，这个运行队列拥有的调度负载权重信息 */
 	struct load_weight load;
 
-	/* nr_running - 表示当前 cfs 运行队列上包含的调度实例个数 */
+	/* nr_running - 表示当前 cfs 运行队列上包含的调度实例个数
+	   h_nr_running -  表示当前 cfs 运行队列上以及其所有子节点上一共包含的调度实例个数 */
 	unsigned int nr_running, h_nr_running;
 
 	u64 exec_clock;
@@ -383,6 +398,7 @@ struct cfs_rq {
 	u64 min_vruntime;
 	
 #ifndef CONFIG_64BIT
+    /* 表示当前 cfs 运行队列的 min_vruntime 字段值的一份拷贝 */
 	u64 min_vruntime_copy;
 #endif
 
@@ -424,8 +440,8 @@ struct cfs_rq {
 	/* 表是当前 cfs 运行队列上一次对负载执行衰减操作时的运行队列时钟，单位是 ms */
 	u64 last_decay;
 
-	/* 表示需要从当前 cfs 运行队列的 blocked_load_avg 中移除的负载贡献值
-	   详情见函数 update_cfs_rq_blocked_load */
+	/* 表示从当前 cfs 运行队列中迁移到其他运行队列中的任务的负载贡献值总和
+	   详情见 migrate_task_rq_fair 函数 */
 	atomic_long_t removed_load;
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -480,13 +496,28 @@ struct cfs_rq {
 	struct task_group *tg;	/* group that "owns" this runqueue */
 
 #ifdef CONFIG_CFS_BANDWIDTH
+    /* 表示是否使能当前 cfs 运行队列的带宽控制功能，详情见 update_runtime_enabled 函数 */
 	int runtime_enabled;
+
+    /* 表示当前 cfs 运行队列带宽控制的当前统计周期的到期时间 */
 	u64 runtime_expires;
+
+	/* 表示当前 cfs 运行队列还剩余的可运行时间 */
 	s64 runtime_remaining;
 
+    /* throttled_clock - 表是当前 cfs 运行队列上一次执行 throttled 操作时所属 cpu 运行队列的时钟值
+	   throttled_clock_task - 表示当前 cfs 运行队列第一次执行 throttled 操作时的所属 cpu 运行队列的任务时钟值 */
 	u64 throttled_clock, throttled_clock_task;
+
+	/* 表示当前 cfs 运行队列在 throttled 状态下一共经历的时间长度，详情见 tg_unthrottle_up 函数 */
 	u64 throttled_clock_task_time;
+
+	/* throttled - 表示当前 cfs 运行队列是否 throttled
+	   throttle_count - 表示当前 cfs 运行队列执行 throttled 操作的次数，在 hierarchy throttled 时会累加 */
 	int throttled, throttle_count;
+
+	/* 在对当前 cfs 运行队列执行 throttled 操作时把当前队列添加到所属任务组的带宽控制结构的链表中
+	   在 unthrottled 的时候使用，详情见 unthrottle_cfs_rq 函数 */
 	struct list_head throttled_list;
 #endif /* CONFIG_CFS_BANDWIDTH */
 #endif /* CONFIG_FAIR_GROUP_SCHED */
@@ -633,8 +664,10 @@ struct rq {
     /* 表示当前 cpu 运行队列中包含的 preferred_node == task_node 的调度实例数 */
 	unsigned int nr_preferred_running;
 #endif
+    /* 记录当前 cpu 运行队列中的负载信息，详情见 struct sched_domain 结构体 */
 	#define CPU_LOAD_IDX_MAX 5
 	unsigned long cpu_load[CPU_LOAD_IDX_MAX];
+	
 	unsigned long last_load_update_tick;
 #ifdef CONFIG_NO_HZ_COMMON
 	u64 nohz_stamp;
@@ -671,6 +704,9 @@ struct rq {
 	 */
 	unsigned long nr_uninterruptible;
 
+    /* curr - 表示当前 cpu 运行队列正在运行的任务指针 
+	   idle - 表示当前 cpu 运行队列的 idle 任务指针
+	   stop - */
 	struct task_struct *curr, *idle, *stop;
 	unsigned long next_balance;
 	struct mm_struct *prev_mm;
@@ -735,6 +771,7 @@ struct rq {
 	int hrtick_csd_pending;
 	struct call_single_data hrtick_csd;
 #endif
+    /* 表示当前 cpu 运行队列在任务调度时使用的高精度定时器 */
 	struct hrtimer hrtick_timer;
 #endif
 
@@ -903,10 +940,26 @@ extern void sched_ttwu_pending(void);
  * The domain tree of any CPU may only be accessed from within
  * preempt-disabled sections.
  */
+/*********************************************************************************************************
+** 函数名称: for_each_domain
+** 功能描述: 从指定的 cpu 的调度域开始到所属调度域树根节点遍历路径中每一个调度域
+** 输	 入: cpu - 指定的 cpu id
+** 输	 出: __sd - 遍历过程中使用的临时操作变量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define for_each_domain(cpu, __sd) \
 	for (__sd = rcu_dereference_check_sched_domain(cpu_rq(cpu)->sd); \
 			__sd; __sd = __sd->parent)
 
+/*********************************************************************************************************
+** 函数名称: for_each_lower_domain
+** 功能描述: 从指定的调度域开始遍历所有子节点
+** 输	 入: sd - 指定的调度域指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define for_each_lower_domain(sd) for (; sd; sd = sd->child)
 
 /**
@@ -981,9 +1034,18 @@ struct sched_group {
 	 * by attaching extra space to the end of the structure,
 	 * depending on how many CPUs the kernel has booted up with)
 	 */
+	/* 表示当前调度组内包含的 cpu 位图 */
 	unsigned long cpumask[0];
 };
 
+/*********************************************************************************************************
+** 函数名称: sched_group_cpus
+** 功能描述: 获取指定的调度组内包含的 cpu 位图变量值
+** 输	 入: sg - 指定的调度组指针
+** 输	 出: struct cpumask - cpu 位图变量值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct cpumask *sched_group_cpus(struct sched_group *sg)
 {
 	return to_cpumask(sg->cpumask);
@@ -1496,6 +1558,15 @@ extern void update_idle_cpu_load(struct rq *this_rq);
 
 extern void init_task_runnable_average(struct task_struct *p);
 
+/*********************************************************************************************************
+** 函数名称: add_nr_running
+** 功能描述: 把指定的 cpu 运行队列的 rq->nr_running 增加指定的增量值
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : count - 指定的增量值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void add_nr_running(struct rq *rq, unsigned count)
 {
 	unsigned prev_nr = rq->nr_running;
@@ -1524,6 +1595,15 @@ static inline void add_nr_running(struct rq *rq, unsigned count)
 	}
 }
 
+/*********************************************************************************************************
+** 函数名称: sub_nr_running
+** 功能描述: 把指定的 cpu 运行队列的调度实例统计变量减去指定的值
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : count - 指定的减量
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void sub_nr_running(struct rq *rq, unsigned count)
 {
 	rq->nr_running -= count;
@@ -1559,6 +1639,15 @@ static inline u64 sched_avg_period(void)
  *  - enabled by features
  *  - hrtimer is actually high res
  */
+/*********************************************************************************************************
+** 函数名称: hrtick_enabled
+** 功能描述: 判断指定的 cpu 运行队列的任务调度高精度定时器是否已经使能
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 1 - 已经使能
+**         : 0 - 没使能
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int hrtick_enabled(struct rq *rq)
 {
 	if (!sched_feat(HRTICK))
@@ -1572,6 +1661,15 @@ void hrtick_start(struct rq *rq, u64 delay);
 
 #else
 
+/*********************************************************************************************************
+** 函数名称: hrtick_enabled
+** 功能描述: 判断指定的 cpu 运行队列的任务调度高精度定时器是否已经使能
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 1 - 已经使能
+**         : 0 - 没使能
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int hrtick_enabled(struct rq *rq)
 {
 	return 0;

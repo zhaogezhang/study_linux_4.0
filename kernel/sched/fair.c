@@ -485,7 +485,7 @@ static inline void list_del_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 /* Iterate thr' all leaf cfs_rq's on a runqueue */
 /*********************************************************************************************************
 ** 函数名称: for_each_leaf_cfs_rq
-** 功能描述: 遍历指定的 cpu 运行队列的
+** 功能描述: 遍历指定的 cpu 运行队列的所有任务组的 cfs 运行队列
 ** 输	 入: rq - 指定的 cpu 运行队列指针
 **         : cfs_rq - 遍历时使用的临时变量指针
 ** 输	 出: 
@@ -696,7 +696,7 @@ static inline void list_del_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 
 /*********************************************************************************************************
 ** 函数名称: for_each_leaf_cfs_rq
-** 功能描述: 遍历指定的 cpu 运行队列的
+** 功能描述: 遍历指定的 cpu 运行队列的所有任务组的 cfs 运行队列
 ** 输	 入: rq - 指定的 cpu 运行队列指针
 **         : cfs_rq - 遍历时使用的临时变量指针
 ** 输	 出: 
@@ -3671,7 +3671,8 @@ static __always_inline int __update_entity_runnable_avg(u64 now,
 /* Synchronize an entity's decay with its parenting cfs_rq.*/
 /*********************************************************************************************************
 ** 函数名称: __synchronize_entity_decay
-** 功能描述: 把指定的调度实例的负载贡献衰减阶数同步到所属 cfs 运行队列中
+** 功能描述: 把指定的调度实例的负载贡献衰减阶数同步到所属 cfs 运行队列中，同步后的调度实例的负载贡献
+**         : 就是对其所在 cfs 运行队列的无需衰减的负载贡献值
 ** 输	 入: se - 指定的调度实例指针
 ** 输	 出: decays - 同步后 cfs 运行队列的衰减阶数
 ** 全局变量: 
@@ -3687,6 +3688,7 @@ static inline u64 __synchronize_entity_decay(struct sched_entity *se)
 	if (!decays)
 		return 0;
 
+    /* 同步更新调度实例对其所在 cfs 运行队列的负载贡献值 */
 	se->avg.load_avg_contrib = decay_load(se->avg.load_avg_contrib, decays);
 
 	return decays;
@@ -4772,7 +4774,7 @@ static void put_prev_entity(struct cfs_rq *cfs_rq, struct sched_entity *prev)
 
 /*********************************************************************************************************
 ** 函数名称: entity_tick
-** 功能描述: 用来处理当前正在运行的调度实例的周期性事物
+** 功能描述: 对当前正在运行的调度实例执行周期性操作，用来更新调度实例运行时统计信息
 ** 输	 入: cfs_rq- 指定的调度实例所属 cfs 运行队列指针
 **         : curr - 指定的当前正在运行的调度实例指针
 **         : queued - 
@@ -4874,7 +4876,7 @@ void cfs_bandwidth_usage_dec(void) {}
  */
 /*********************************************************************************************************
 ** 函数名称: default_cfs_period
-** 功能描述: 获取当前 cfs 调度器使用的默认组带宽控制周期
+** 功能描述: 获取当前 cfs 调度器使用的默认组带宽控制周期，0.1s
 ** 输	 入: 
 ** 输	 出: u64 - 组带宽控制周期时间，单位 ns
 ** 全局变量: 
@@ -4887,7 +4889,7 @@ static inline u64 default_cfs_period(void)
 
 /*********************************************************************************************************
 ** 函数名称: sched_cfs_bandwidth_slice
-** 功能描述: 获取当前 cfs 调度器使用的默认带宽控制 slice 值
+** 功能描述: 获取当前 cfs 调度器使用的默认带宽控制 slice 值，即每次 cfs 运行队列可申请到的运行时间片
 ** 输	 入: 
 ** 输	 出: u64 - 带宽控制 slice 值，单位 ns
 ** 全局变量: 
@@ -4907,7 +4909,7 @@ static inline u64 sched_cfs_bandwidth_slice(void)
  */
 /*********************************************************************************************************
 ** 函数名称: __refill_cfs_bandwidth_runtime
-** 功能描述: 重新填充指定的带宽控制数据结构到设定的默认状态
+** 功能描述: 重新填充指定的带宽控制池到设定的默认状态
 ** 输	 入: cfs_b - 指定的带宽控制数据结构指针
 ** 输	 出: 
 ** 全局变量: 
@@ -4927,9 +4929,9 @@ void __refill_cfs_bandwidth_runtime(struct cfs_bandwidth *cfs_b)
 
 /*********************************************************************************************************
 ** 函数名称: tg_cfs_bandwidth
-** 功能描述: 获取指定的任务组的带宽控制数据结构指针
+** 功能描述: 获取指定的任务组的带宽控制池指针
 ** 输	 入: tg - 指定的任务组结构指针
-** 输	 出: &tg->cfs_bandwidth - 带宽控制数据结构指针
+** 输	 出: &tg->cfs_bandwidth - 带宽控制池指针
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -4956,6 +4958,15 @@ static inline u64 cfs_rq_clock_task(struct cfs_rq *cfs_rq)
 }
 
 /* returns 0 on failure to allocate runtime */
+/*********************************************************************************************************
+** 函数名称: assign_cfs_rq_runtime
+** 功能描述: 尝试为指定的 cfs 运行队列从其所属任务组的带宽控制池中分配可运行时间片
+** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
+** 输	 出: 1 - 分配成功
+**         : 0 - 分配失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int assign_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 {
 	struct task_group *tg = cfs_rq->tg;
@@ -4980,6 +4991,8 @@ static int assign_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 			__start_cfs_bandwidth(cfs_b, false);
 		}
 
+        /* 如果指定的 cfs 运行队列所属任务组的带宽控制池中还有剩余可运行时间，则分配给
+		   指定的 cfs 运行队列 */
 		if (cfs_b->runtime > 0) {
 			amount = min(cfs_b->runtime, min_amount);
 			cfs_b->runtime -= amount;
@@ -5005,11 +5018,20 @@ static int assign_cfs_rq_runtime(struct cfs_rq *cfs_rq)
  * Note: This depends on the synchronization provided by sched_clock and the
  * fact that rq->clock snapshots this value.
  */
+/*********************************************************************************************************
+** 函数名称: expire_cfs_rq_runtime
+** 功能描述: 用来处理指定的 cfs 运行对列的 cfs_rq->runtime_expires 统计周期到期时间变量值
+** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void expire_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 {
 	struct cfs_bandwidth *cfs_b = tg_cfs_bandwidth(cfs_rq->tg);
 
 	/* if the deadline is ahead of our clock, nothing to do */
+	/* 如果当前 cfs 运行队列的带宽控制周期还没到期，则直接返回 */
 	if (likely((s64)(rq_clock(rq_of(cfs_rq)) - cfs_rq->runtime_expires) < 0))
 		return;
 
@@ -5036,6 +5058,15 @@ static void expire_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 	}
 }
 
+/*********************************************************************************************************
+** 函数名称: __account_cfs_rq_runtime
+** 功能描述: 用来处理指定的 cfs 运行队列消耗的指定的运行时间
+** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
+**         : delta_exec - 指定的运行时间
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void __account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
 {
 	/* dock delta_exec before expiring quota (as it could span periods) */
@@ -5049,10 +5080,21 @@ static void __account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
 	 * if we're unable to extend our runtime we resched so that the active
 	 * hierarchy can be throttled
 	 */
+	/* 如果当前 cfs 运行队列可运行时间已用尽并且无法从带宽控制池中获取新的运行时间，则尝试
+	   执行一次调度，唤醒其他可运行的任务 */
 	if (!assign_cfs_rq_runtime(cfs_rq) && likely(cfs_rq->curr))
 		resched_curr(rq_of(cfs_rq));
 }
 
+/*********************************************************************************************************
+** 函数名称: account_cfs_rq_runtime
+** 功能描述: 用来处理指定的 cfs 运行队列消耗的指定的运行时间
+** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
+**         : delta_exec - 指定的运行时间
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static __always_inline
 void account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
 {
@@ -5062,11 +5104,29 @@ void account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
 	__account_cfs_rq_runtime(cfs_rq, delta_exec);
 }
 
+/*********************************************************************************************************
+** 函数名称: cfs_rq_throttled
+** 功能描述: 判断指定的 cfs 运行队列是否处于 throttled 状态
+** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int cfs_rq_throttled(struct cfs_rq *cfs_rq)
 {
 	return cfs_bandwidth_used() && cfs_rq->throttled;
 }
 
+/*********************************************************************************************************
+** 函数名称: cfs_rq_throttled
+** 功能描述: 判断指定的 cfs 运行队列是否发生了 hierarchy throttled
+** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 /* check whether cfs_rq, or any parent, is throttled */
 static inline int throttled_hierarchy(struct cfs_rq *cfs_rq)
 {
@@ -5078,6 +5138,18 @@ static inline int throttled_hierarchy(struct cfs_rq *cfs_rq)
  * dest_cpu are members of a throttled hierarchy when performing group
  * load-balance operations.
  */
+/*********************************************************************************************************
+** 函数名称: throttled_lb_pair
+** 功能描述: 判断指定的任务组在指定的源 cpu 和目的 cpu 上的 cfs 运行队列是否处于 hierarchy throttled 状态
+**         : 这个函数在任务组负载均衡时使用，用来判断是否可以进行任务组迁移
+** 输	 入: tg - 指定的任务组结构指针
+**         : src_cpu - 指定的源 cpu
+**         : dest_cpu - 指定的目的 cpu
+** 输	 出: 1 - 是 hierarchy throttled 状态
+**         : 0 - 不是 hierarchy throttled 状态
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int throttled_lb_pair(struct task_group *tg,
 				    int src_cpu, int dest_cpu)
 {
@@ -5091,6 +5163,16 @@ static inline int throttled_lb_pair(struct task_group *tg,
 }
 
 /* updated child weight may affect parent so we have to do this bottom up */
+/*********************************************************************************************************
+** 函数名称: tg_unthrottle_up
+** 功能描述: 在对指定的任务组树形结构遍历时执行的 up 操作，详情见 walk_tg_tree_from 函数
+** 输	 入: tg - 指定的任务组指针
+**         : data - 指定的 cpu 运行队列指针
+** 输	 出: 0 - 执行成功
+**         : other - 执行失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int tg_unthrottle_up(struct task_group *tg, void *data)
 {
 	struct rq *rq = data;
@@ -5108,6 +5190,16 @@ static int tg_unthrottle_up(struct task_group *tg, void *data)
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: tg_throttle_down
+** 功能描述: 在对指定的任务组树形结构遍历时执行的 down 操作，详情见 walk_tg_tree_from 函数
+** 输	 入: tg - 指定的任务组指针
+**         : data - 指定的 cpu 运行队列指针
+** 输	 出: 0 - 执行成功
+**         : other - 执行失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int tg_throttle_down(struct task_group *tg, void *data)
 {
 	struct rq *rq = data;
@@ -5121,6 +5213,14 @@ static int tg_throttle_down(struct task_group *tg, void *data)
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: throttle_cfs_rq
+** 功能描述: 对指定的 cfs 运行队列执行 throttle 操作
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void throttle_cfs_rq(struct cfs_rq *cfs_rq)
 {
 	struct rq *rq = rq_of(cfs_rq);
@@ -5136,6 +5236,8 @@ static void throttle_cfs_rq(struct cfs_rq *cfs_rq)
 	rcu_read_unlock();
 
 	task_delta = cfs_rq->h_nr_running;
+
+	/* 把执行 throttle 操作的 cfs 运行队列所属任务组从运行队列中移除并更新相关统计变量信息 */
 	for_each_sched_entity(se) {
 		struct cfs_rq *qcfs_rq = cfs_rq_of(se);
 		/* throttled entity or throttle-on-deactivate */
@@ -5150,6 +5252,8 @@ static void throttle_cfs_rq(struct cfs_rq *cfs_rq)
 			dequeue = 0;
 	}
 
+    /* 如果遍历到任务组树的根节点位置，则需要同步更新所属 cpu 运行队列的调度实例统计变量值
+	   因为任务组树根节点是挂接在 cpu 运行队列上的 */
 	if (!se)
 		sub_nr_running(rq, task_delta);
 
@@ -5166,6 +5270,14 @@ static void throttle_cfs_rq(struct cfs_rq *cfs_rq)
 	raw_spin_unlock(&cfs_b->lock);
 }
 
+/*********************************************************************************************************
+** 函数名称: unthrottle_cfs_rq
+** 功能描述: 对指定的 cfs 运行队列执行 unthrottle 操作
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void unthrottle_cfs_rq(struct cfs_rq *cfs_rq)
 {
 	struct rq *rq = rq_of(cfs_rq);
@@ -5209,10 +5321,22 @@ void unthrottle_cfs_rq(struct cfs_rq *cfs_rq)
 		add_nr_running(rq, task_delta);
 
 	/* determine whether we need to wake up potentially idle cpu */
+	/* 如果当前 cpu 上运行的是 idle 进程并且当前 cpu 运行队列包含其他的任务则尝试执行它们 */
 	if (rq->curr == rq->idle && rq->cfs.nr_running)
 		resched_curr(rq);
 }
 
+/*********************************************************************************************************
+** 函数名称: distribute_cfs_runtime
+** 功能描述: 把指定的可分配运行时间分配给指定的 cfs 带宽控制池中处于 throttled 状态的 cfs 运行队列
+**         : 并对这些 cfs 运行队列执行 unthrottled 操作
+** 输	 入: cfs_b - 指定的带宽控制池指针
+**         : remaining - 指定的一共可分配运行时间
+**         : expires - 
+** 输	 出: u64 - 表示本次分配出去的可运行时间长度
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static u64 distribute_cfs_runtime(struct cfs_bandwidth *cfs_b,
 		u64 remaining, u64 expires)
 {
@@ -5229,7 +5353,9 @@ static u64 distribute_cfs_runtime(struct cfs_bandwidth *cfs_b,
 		if (!cfs_rq_throttled(cfs_rq))
 			goto next;
 
+        /* 表示当前 cfs 运行队列需要获取的可运行时间 */
 		runtime = -cfs_rq->runtime_remaining + 1;
+		
 		if (runtime > remaining)
 			runtime = remaining;
 		remaining -= runtime;
@@ -5244,6 +5370,7 @@ static u64 distribute_cfs_runtime(struct cfs_bandwidth *cfs_b,
 next:
 		raw_spin_unlock(&rq->lock);
 
+        /* 如果指定的可分配运行时间已经全部分配完毕，则直接退出返回 */
 		if (!remaining)
 			break;
 	}
@@ -5258,6 +5385,17 @@ next:
  * period the timer is deactivated until scheduling resumes; cfs_b->idle is
  * used to track this state.
  */
+/*********************************************************************************************************
+** 函数名称: do_sched_cfs_period_timer
+** 功能描述: cfs 带宽控制周期超时处理函数，用来为指定的带宽控制池分配指定份额的时间并尝试唤醒所有
+**         : 处于 throttled 状态的 cfs 运行队列 
+** 输	 入: cfs_b - 指定的带宽控制池指针
+**         : overrun - 从上一次到现在流逝的统计周期个数
+** 输	 出: 0 - cfs_b->timer 处于 active 状态
+**         : 1 - cfs_b->timer 处于 deactive 状态
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int do_sched_cfs_period_timer(struct cfs_bandwidth *cfs_b, int overrun)
 {
 	u64 runtime, runtime_expires;
@@ -5284,6 +5422,7 @@ static int do_sched_cfs_period_timer(struct cfs_bandwidth *cfs_b, int overrun)
 	 */
 	cfs_b->timer_active = 1;
 
+    /* 重新为指定的 cfs 带宽控制池分配时间份额 */
 	__refill_cfs_bandwidth_runtime(cfs_b);
 
 	if (!throttled) {
@@ -5304,6 +5443,7 @@ static int do_sched_cfs_period_timer(struct cfs_bandwidth *cfs_b, int overrun)
 	 * in us over-using our runtime if it is all used during this loop, but
 	 * only by limited amounts in that extreme case.
 	 */
+	/* 尝试从当前 cfs 带宽控制池中分配时间给所有处于 throttled 状态的 cfs 运行队列 */
 	while (throttled && cfs_b->runtime > 0) {
 		runtime = cfs_b->runtime;
 		raw_spin_unlock(&cfs_b->lock);
@@ -5346,6 +5486,16 @@ static const u64 cfs_bandwidth_slack_period = 5 * NSEC_PER_MSEC;
  * hrtimer base being cleared by __hrtimer_start_range_ns. In the case of
  * migrate_hrtimers, base is never cleared, so we are fine.
  */
+/*********************************************************************************************************
+** 函数名称: runtime_refresh_within
+** 功能描述: 判断指定的 cfs 带宽控制池当前带宽控制统计周期是否即将结束，进入下一个统计周期
+** 输	 入: cfs_b - 指定的带宽控制池指针
+**         : min_expire - 指定的剩余时间判断阈值，如果剩余时间小于这个值，即判为即将结束
+** 输	 出: 1 - 即将结束
+**         : 0 - 没即将结束
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int runtime_refresh_within(struct cfs_bandwidth *cfs_b, u64 min_expire)
 {
 	struct hrtimer *refresh_timer = &cfs_b->period_timer;
@@ -5363,6 +5513,14 @@ static int runtime_refresh_within(struct cfs_bandwidth *cfs_b, u64 min_expire)
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: start_cfs_slack_bandwidth
+** 功能描述: 启动指定的带宽控制池的 slack 定时器
+** 输	 入: cfs_b - 指定的带宽控制池指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void start_cfs_slack_bandwidth(struct cfs_bandwidth *cfs_b)
 {
 	u64 min_left = cfs_bandwidth_slack_period + min_bandwidth_expiration;
@@ -5376,6 +5534,15 @@ static void start_cfs_slack_bandwidth(struct cfs_bandwidth *cfs_b)
 }
 
 /* we know any runtime found here is valid as update_curr() precedes return */
+/*********************************************************************************************************
+** 函数名称: __return_cfs_rq_runtime
+** 功能描述: 尝试从指定的 cfs 运行队列中拿出多余的可运行时间放到所属任务组的带宽控制池中并启动指定的
+**         : 带宽控制池的 slack 定时器
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void __return_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 {
 	struct cfs_bandwidth *cfs_b = tg_cfs_bandwidth(cfs_rq->tg);
@@ -5400,6 +5567,15 @@ static void __return_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 	cfs_rq->runtime_remaining -= slack_runtime;
 }
 
+/*********************************************************************************************************
+** 函数名称: return_cfs_rq_runtime
+** 功能描述: 尝试从指定的 cfs 运行队列中拿出多余的可运行时间放到所属任务组的带宽控制池中并启动指定的
+**         : 带宽控制池的 slack 定时器
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static __always_inline void return_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 {
 	if (!cfs_bandwidth_used())
@@ -5415,6 +5591,15 @@ static __always_inline void return_cfs_rq_runtime(struct cfs_rq *cfs_rq)
  * This is done with a timer (instead of inline with bandwidth return) since
  * it's necessary to juggle rq->locks to unthrottle their respective cfs_rqs.
  */
+/*********************************************************************************************************
+** 函数名称: do_sched_cfs_slack_timer
+** 功能描述: 尝试把指定的带宽控制池中剩余可运行时间分配给处于 throttled 状态的 cfs 运行队列
+**         : 并对这些 cfs 运行队列执行 unthrottled 操作
+** 输	 入: cfs_b - 指定的带宽控制池指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void do_sched_cfs_slack_timer(struct cfs_bandwidth *cfs_b)
 {
 	u64 runtime = 0, slice = sched_cfs_bandwidth_slice();
@@ -5449,6 +5634,15 @@ static void do_sched_cfs_slack_timer(struct cfs_bandwidth *cfs_b)
  * expired/exceeded, otherwise it may be allowed to steal additional ticks of
  * runtime as update_curr() throttling can not not trigger until it's on-rq.
  */
+/*********************************************************************************************************
+** 函数名称: check_enqueue_throttle
+** 功能描述: 在向指定的 cfs 运行队列中添加新的调度实例时用来判断指定的 cfs 运行队列是否需要进入
+**         : throttle 状态并执行相应的操作
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void check_enqueue_throttle(struct cfs_rq *cfs_rq)
 {
 	if (!cfs_bandwidth_used())
@@ -5464,11 +5658,22 @@ static void check_enqueue_throttle(struct cfs_rq *cfs_rq)
 
 	/* update runtime allocation */
 	account_cfs_rq_runtime(cfs_rq, 0);
+
+	/* 如果指定的 cfs 运行队列已经没有可运行时间了，则对其执行 throttle 操作 */
 	if (cfs_rq->runtime_remaining <= 0)
 		throttle_cfs_rq(cfs_rq);
 }
 
 /* conditionally throttle active cfs_rq's from put_prev_entity() */
+/*********************************************************************************************************
+** 函数名称: check_cfs_rq_runtime
+** 功能描述: 尝试根据指定的 cfs 运行队列的 runtime_remaining 对其执行 throttle 操作
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: true - 执行了 throttle 操作
+**         : false - 没执行 throttle 操作
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static bool check_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 {
 	if (!cfs_bandwidth_used())
@@ -5488,6 +5693,15 @@ static bool check_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 	return true;
 }
 
+/*********************************************************************************************************
+** 函数名称: do_sched_cfs_slack_timer
+** 功能描述: 尝试把指定的带宽控制池中剩余可运行时间分配给处于 throttled 状态的 cfs 运行队列
+**         : 并对这些 cfs 运行队列执行 unthrottled 操作
+** 输	 入: timer - 指定的带宽控制池的 slack 高精定时器指针
+** 输	 出: HRTIMER_NORESTART - 不需要重新启动高精定时器
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static enum hrtimer_restart sched_cfs_slack_timer(struct hrtimer *timer)
 {
 	struct cfs_bandwidth *cfs_b =
@@ -5497,6 +5711,16 @@ static enum hrtimer_restart sched_cfs_slack_timer(struct hrtimer *timer)
 	return HRTIMER_NORESTART;
 }
 
+/*********************************************************************************************************
+** 函数名称: sched_cfs_period_timer
+** 功能描述: cfs 带宽控制周期超时处理函数，用来为指定的带宽控制池分配指定份额的时间并尝试唤醒所有
+**         : 处于 throttled 状态的 cfs 运行队列 
+** 输	 入: timer - 指定的带宽控制池的 period 高精定时器指针
+** 输	 出: HRTIMER_NORESTART - 不需要重新启动高精定时器
+**         : HRTIMER_RESTART - 需要重新启动高精定时器
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static enum hrtimer_restart sched_cfs_period_timer(struct hrtimer *timer)
 {
 	struct cfs_bandwidth *cfs_b =
@@ -5520,6 +5744,14 @@ static enum hrtimer_restart sched_cfs_period_timer(struct hrtimer *timer)
 	return idle ? HRTIMER_NORESTART : HRTIMER_RESTART;
 }
 
+/*********************************************************************************************************
+** 函数名称: init_cfs_bandwidth
+** 功能描述: 初始化指定的 cfs 带宽控制结构
+** 输	 入: cfs_b - 指定的 cfs 带宽控制结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void init_cfs_bandwidth(struct cfs_bandwidth *cfs_b)
 {
 	raw_spin_lock_init(&cfs_b->lock);
@@ -5534,6 +5766,14 @@ void init_cfs_bandwidth(struct cfs_bandwidth *cfs_b)
 	cfs_b->slack_timer.function = sched_cfs_slack_timer;
 }
 
+/*********************************************************************************************************
+** 函数名称: init_cfs_rq_runtime
+** 功能描述: 初始化指定的 cfs 运行队列中和带宽控制运行时时间相关的成员
+** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void init_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 {
 	cfs_rq->runtime_enabled = 0;
@@ -5541,6 +5781,15 @@ static void init_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 }
 
 /* requires cfs_b->lock, may release to reprogram timer */
+/*********************************************************************************************************
+** 函数名称: __start_cfs_bandwidth
+** 功能描述: 根据函数指定的参数启动指定的 cfs 带宽控制的高精度定时器
+** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
+**         : force - 是否直接强制启动
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void __start_cfs_bandwidth(struct cfs_bandwidth *cfs_b, bool force)
 {
 	/*
@@ -5549,6 +5798,8 @@ void __start_cfs_bandwidth(struct cfs_bandwidth *cfs_b, bool force)
 	 * (timer_active==0 becomes visible before the hrtimer call-back
 	 * terminates).  In either case we ensure that it's re-programmed
 	 */
+	/* 如果指定的 cfs 带宽控制的高精度定时器正在执行超时处理回调函数并且当前
+	   没指定强制启动定时器，则等待高精度定时器超时处理回调函数执行完成 */
 	while (unlikely(hrtimer_active(&cfs_b->period_timer)) &&
 	       hrtimer_try_to_cancel(&cfs_b->period_timer) < 0) {
 		/* bounce the lock to allow do_sched_cfs_period_timer to run */
@@ -5564,6 +5815,14 @@ void __start_cfs_bandwidth(struct cfs_bandwidth *cfs_b, bool force)
 	start_bandwidth_timer(&cfs_b->period_timer, cfs_b->period);
 }
 
+/*********************************************************************************************************
+** 函数名称: destroy_cfs_bandwidth
+** 功能描述: 尝试销毁指定的 cfs 带宽控制结构
+** 输	 入: cfs_b- 指定的 cfs 带宽控制结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void destroy_cfs_bandwidth(struct cfs_bandwidth *cfs_b)
 {
 	/* init_cfs_bandwidth() was not called */
@@ -5574,6 +5833,14 @@ static void destroy_cfs_bandwidth(struct cfs_bandwidth *cfs_b)
 	hrtimer_cancel(&cfs_b->slack_timer);
 }
 
+/*********************************************************************************************************
+** 函数名称: update_runtime_enabled
+** 功能描述: 根据指定的 cpu 运行队列上的任务组的带宽控制状态更新对应的 cfs_rq->runtime_enabled 成员值
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void __maybe_unused update_runtime_enabled(struct rq *rq)
 {
 	struct cfs_rq *cfs_rq;
@@ -5587,6 +5854,14 @@ static void __maybe_unused update_runtime_enabled(struct rq *rq)
 	}
 }
 
+/*********************************************************************************************************
+** 函数名称: unthrottle_offline_cfs_rqs
+** 功能描述: 对转换到 offline 状态的 cpu 运行队列中处于 throttled 状态的 cfs 运行队列执行 unthrottle 操作
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void __maybe_unused unthrottle_offline_cfs_rqs(struct rq *rq)
 {
 	struct cfs_rq *cfs_rq;
@@ -5625,39 +5900,159 @@ static inline u64 cfs_rq_clock_task(struct cfs_rq *cfs_rq)
 	return rq_clock_task(rq_of(cfs_rq));
 }
 
+/*********************************************************************************************************
+** 函数名称: account_cfs_rq_runtime
+** 功能描述: 用来处理指定的 cfs 运行队列消耗的指定的运行时间
+** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
+**         : delta_exec - 指定的运行时间
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec) {}
+
+/*********************************************************************************************************
+** 函数名称: check_cfs_rq_runtime
+** 功能描述: 尝试根据指定的 cfs 运行队列的 runtime_remaining 对其执行 throttle 操作
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: true - 执行了 throttle 操作
+**         : false - 没执行 throttle 操作
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static bool check_cfs_rq_runtime(struct cfs_rq *cfs_rq) { return false; }
+
+/*********************************************************************************************************
+** 函数名称: check_enqueue_throttle
+** 功能描述: 在向指定的 cfs 运行队列中添加新的调度实例时用来判断指定的 cfs 运行队列是否需要进入
+**         : throttle 状态并执行相应的操作
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void check_enqueue_throttle(struct cfs_rq *cfs_rq) {}
+
+/*********************************************************************************************************
+** 函数名称: return_cfs_rq_runtime
+** 功能描述: 尝试从指定的 cfs 运行队列中拿出多余的可运行时间放到所属任务组的带宽控制池中并启动指定的
+**         : 带宽控制池的 slack 定时器
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static __always_inline void return_cfs_rq_runtime(struct cfs_rq *cfs_rq) {}
 
+/*********************************************************************************************************
+** 函数名称: cfs_rq_throttled
+** 功能描述: 判断指定的 cfs 运行队列是否已经 throttled 了
+** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int cfs_rq_throttled(struct cfs_rq *cfs_rq)
 {
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: cfs_rq_throttled
+** 功能描述: 判断指定的 cfs 运行队列是否发生了 hierarchy throttled
+** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int throttled_hierarchy(struct cfs_rq *cfs_rq)
 {
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: throttled_lb_pair
+** 功能描述: 判断指定的任务组在指定的源 cpu 和目的 cpu 上的 cfs 运行队列是否处于 hierarchy throttled 状态
+**         : 这个函数在任务组负载均衡时使用，用来判断是否可以进行任务组迁移
+** 输	 入: tg - 指定的任务组结构指针
+**         : src_cpu - 指定的源 cpu
+**         : dest_cpu - 指定的目的 cpu
+** 输	 出: 1 - 是 hierarchy throttled 状态
+**         : 0 - 不是 hierarchy throttled 状态
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int throttled_lb_pair(struct task_group *tg,
 				    int src_cpu, int dest_cpu)
 {
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: init_cfs_bandwidth
+** 功能描述: 初始化指定的 cfs 带宽控制结构
+** 输	 入: cfs_b - 指定的 cfs 带宽控制结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void init_cfs_bandwidth(struct cfs_bandwidth *cfs_b) {}
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
+/*********************************************************************************************************
+** 函数名称: init_cfs_rq_runtime
+** 功能描述: 初始化指定的 cfs 运行队列中和带宽控制运行时时间相关的成员
+** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void init_cfs_rq_runtime(struct cfs_rq *cfs_rq) {}
 #endif
 
+/*********************************************************************************************************
+** 函数名称: tg_cfs_bandwidth
+** 功能描述: 获取指定的任务组的带宽控制池指针
+** 输	 入: tg - 指定的任务组结构指针
+** 输	 出: &tg->cfs_bandwidth - 带宽控制池指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct cfs_bandwidth *tg_cfs_bandwidth(struct task_group *tg)
 {
 	return NULL;
 }
+
+/*********************************************************************************************************
+** 函数名称: destroy_cfs_bandwidth
+** 功能描述: 尝试销毁指定的 cfs 带宽控制结构
+** 输	 入: cfs_b- 指定的 cfs 带宽控制结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void destroy_cfs_bandwidth(struct cfs_bandwidth *cfs_b) {}
+
+/*********************************************************************************************************
+** 函数名称: update_runtime_enabled
+** 功能描述: 根据指定的 cpu 运行队列上的任务组的带宽控制状态更新对应的 cfs_rq->runtime_enabled 成员值
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void update_runtime_enabled(struct rq *rq) {}
+
+/*********************************************************************************************************
+** 函数名称: unthrottle_offline_cfs_rqs
+** 功能描述: 对转换到 offline 状态的 cpu 运行队列中处于 throttled 状态的 cfs 运行队列执行 unthrottle 操作
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void unthrottle_offline_cfs_rqs(struct rq *rq) {}
 
 #endif /* CONFIG_CFS_BANDWIDTH */
@@ -5667,6 +6062,16 @@ static inline void unthrottle_offline_cfs_rqs(struct rq *rq) {}
  */
 
 #ifdef CONFIG_SCHED_HRTICK
+/*********************************************************************************************************
+** 函数名称: hrtick_start_fair
+** 功能描述: 在指定的 cpu 运行队列上为指定的任务启动高精度定时器，这个定时器会在指定的任务分配的时间
+**         : 份额用尽时到期并执行超时处理函数
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : p - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void hrtick_start_fair(struct rq *rq, struct task_struct *p)
 {
 	struct sched_entity *se = &p->se;
@@ -5693,6 +6098,15 @@ static void hrtick_start_fair(struct rq *rq, struct task_struct *p)
  * current task is from our class and nr_running is low enough
  * to matter.
  */
+/*********************************************************************************************************
+** 函数名称: hrtick_update
+** 功能描述: 尝试为指定的 cpu 运行队列当前正在运行的任务启动高精度定时器，这个定时器会在当前运行的任务
+**         : 分配的时间份额用尽时到期并执行超时处理函数
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void hrtick_update(struct rq *rq)
 {
 	struct task_struct *curr = rq->curr;
@@ -5704,11 +6118,31 @@ static void hrtick_update(struct rq *rq)
 		hrtick_start_fair(rq, curr);
 }
 #else /* !CONFIG_SCHED_HRTICK */
+
+/*********************************************************************************************************
+** 函数名称: hrtick_start_fair
+** 功能描述: 在指定的 cpu 运行队列上为指定的任务启动高精度定时器，这个定时器会在指定的任务分配的时间
+**         : 份额用尽时到期并执行超时处理函数
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : p - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void
 hrtick_start_fair(struct rq *rq, struct task_struct *p)
 {
 }
 
+/*********************************************************************************************************
+** 函数名称: hrtick_update
+** 功能描述: 尝试为指定的 cpu 运行队列当前正在运行的任务启动高精度定时器，这个定时器会在当前运行的任务
+**         : 分配的时间份额用尽时到期并执行超时处理函数
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void hrtick_update(struct rq *rq)
 {
 }
@@ -5719,6 +6153,16 @@ static inline void hrtick_update(struct rq *rq)
  * increased. Here we update the fair scheduling stats and
  * then put the task into the rbtree:
  */
+/*********************************************************************************************************
+** 函数名称: enqueue_task_fair
+** 功能描述: 向指定的 cpu 运行队列的 cfs 运行队列中添加指定的新的任务并更新相关统计变量值
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : p - 指定的任务指针
+**         : flags - 指定的 ENQUEUE flags，例如 ENQUEUE_WAKEUP
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void
 enqueue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 {
@@ -5769,6 +6213,16 @@ static void set_next_buddy(struct sched_entity *se);
  * decreased. We remove the task from the rbtree and
  * update the fair scheduling stats:
  */
+/*********************************************************************************************************
+** 函数名称: enqueue_task_fair
+** 功能描述: 从指定的 cpu 运行队列的 cfs 运行队列中移除指定的任务并更新相关统计变量值
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : p - 指定的任务指针
+**         : flags - 指定的 DEQUEUE flags，例如 DEQUEUE_SLEEP
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 {
 	struct cfs_rq *cfs_rq;
@@ -5845,6 +6299,15 @@ static unsigned long weighted_cpuload(const int cpu)
  * We want to under-estimate the load of migration sources, to
  * balance conservatively.
  */
+/*********************************************************************************************************
+** 函数名称: source_load
+** 功能描述: 获取指定的 cpu 运行队列中指定的 cpu_load 类型的源负载信息
+** 输	 入: cpu - 指定的 cpu id 值
+**         : type - 指定的 cpu_load 类型
+** 输	 出: unsigned long - 源负载信息
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static unsigned long source_load(int cpu, int type)
 {
 	struct rq *rq = cpu_rq(cpu);
@@ -5860,6 +6323,15 @@ static unsigned long source_load(int cpu, int type)
  * Return a high guess at the load of a migration-target cpu weighted
  * according to the scheduling class and "nice" value.
  */
+/*********************************************************************************************************
+** 函数名称: source_load
+** 功能描述: 获取指定的 cpu 运行队列中指定的 cpu_load 类型的目的负载信息
+** 输	 入: cpu - 指定的 cpu id 值
+**         : type - 指定的 cpu_load 类型
+** 输	 出: unsigned long - 目的负载信息
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static unsigned long target_load(int cpu, int type)
 {
 	struct rq *rq = cpu_rq(cpu);
@@ -5884,6 +6356,14 @@ static unsigned long capacity_of(int cpu)
 	return cpu_rq(cpu)->cpu_capacity;
 }
 
+/*********************************************************************************************************
+** 函数名称: cpu_avg_load_per_task
+** 功能描述: 获取指定的 cpu 上 cfs 运行队列的运行负载平均到每个任务上是多少
+** 输	 入: cpu - 指定的 cpu id 值
+** 输	 出: unsigned long - 平均到每个任务的负载值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static unsigned long cpu_avg_load_per_task(int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);
@@ -5896,6 +6376,14 @@ static unsigned long cpu_avg_load_per_task(int cpu)
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: record_wakee
+** 功能描述: 在当前任务执行唤醒其他任务操作时记录相关数据
+** 输	 入: p - 指定的被唤醒任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void record_wakee(struct task_struct *p)
 {
 	/*
@@ -5914,6 +6402,14 @@ static void record_wakee(struct task_struct *p)
 	}
 }
 
+/*********************************************************************************************************
+** 函数名称: task_waking_fair
+** 功能描述: 用来唤醒指定的任务并记录相关数据
+** 输	 入: p - 指定的被唤醒任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void task_waking_fair(struct task_struct *p)
 {
 	struct sched_entity *se = &p->se;
@@ -5987,6 +6483,17 @@ static void task_waking_fair(struct task_struct *p)
  * times the weight of the group. The effect on CPU 1 would be -4/56 (4/8 -
  * 4/7) times the weight of the group.
  */
+/*********************************************************************************************************
+** 函数名称: effective_load
+** 功能描述: 在向指定的任务组中添加新的任务时用来计算所属任务组树根节点的权重信息变化量
+** 输	 入: tg - 指定的任务组指针
+**         : cpu - 指定的 cpu id
+**         : wl - 指定的任务组的 cfs 运行队列权重信息变化量
+**         : wg - 指定的任务组权重信息变化量
+** 输	 出: wl - 任务组树根节点的权重信息变化量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static long effective_load(struct task_group *tg, int cpu, long wl, long wg)
 {
 	struct sched_entity *se = tg->se[cpu];
@@ -5999,19 +6506,14 @@ static long effective_load(struct task_group *tg, int cpu, long wl, long wg)
 
 		tg = se->my_q->tg;
 
-		/*
-		 * W = @wg + \Sum rw_j
-		 */
+		/* W = @wg + \Sum rw_j，表示指定的任务组总的权重信息 */
 		W = wg + calc_tg_weight(tg, se->my_q);
 
-		/*
-		 * w = rw_i + @wl
-		 */
+		/* w = rw_i + @wl，表示指定的任务组上的 cfs 运行队列总的权重信息 */
 		w = se->my_q->load.weight + wl;
 
-		/*
-		 * wl = S * s'_i; see (2)
-		 */
+		/* wl = S * s'_i; see (2) 
+		   wl = S * ((rw_i + @wl) / (@wg + \Sum rw_j)) */
 		if (W > 0 && w < W)
 			wl = (w * (long)tg->shares) / W;
 		else
@@ -6025,9 +6527,8 @@ static long effective_load(struct task_group *tg, int cpu, long wl, long wg)
 		if (wl < MIN_SHARES)
 			wl = MIN_SHARES;
 
-		/*
-		 * wl = dw_i = S * (s'_i - s_i); see (3)
-		 */
+		/* wl = dw_i = S * (s'_i - s_i); see (3)
+		   wl = S * ((rw_i + @wl) / (@wg + \Sum rw_j)) - S * rw_i / \Sum rw_j */
 		wl -= se->load.weight;
 
 		/*
@@ -6044,6 +6545,17 @@ static long effective_load(struct task_group *tg, int cpu, long wl, long wg)
 }
 #else
 
+/*********************************************************************************************************
+** 函数名称: effective_load
+** 功能描述: 在向指定的任务组中添加新的任务时用来计算所属任务组树根节点的权重信息变化量
+** 输	 入: tg - 指定的任务组指针
+**         : cpu - 指定的 cpu id
+**         : wl - 指定的任务组的 cfs 运行队列权重信息变化量
+**         : wg - 指定的任务组权重信息变化量
+** 输	 出: wl - 任务组树根节点的权重信息变化量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static long effective_load(struct task_group *tg, int cpu, long wl, long wg)
 {
 	return wl;
@@ -6051,8 +6563,18 @@ static long effective_load(struct task_group *tg, int cpu, long wl, long wg)
 
 #endif
 
+/*********************************************************************************************************
+** 函数名称: wake_wide
+** 功能描述: 判断当前正在执行的任务是否在短时间内唤醒了多个其他任务
+** 输	 入: p - 指定的被唤醒任务指针
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int wake_wide(struct task_struct *p)
 {
+    /* 详情见 update_top_cache_domain 函数 */
 	int factor = this_cpu_read(sd_llc_size);
 
 	/*
@@ -6073,6 +6595,17 @@ static int wake_wide(struct task_struct *p)
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: wake_affine
+** 功能描述: 用来判断指定的被唤醒任务是否可以在当前执行唤醒操作的 cpu 上运行
+** 输	 入: sd - 指定的 affine 调度域指针
+**         : p - 指定的被唤醒任务指针
+**         : sync - 是否设置了 WF_SYNC
+** 输	 出: 1 - 被唤醒任务可以在当前 cpu 上运行
+**         : 0 - 被唤醒任务不可以在当前 cpu 上运行
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int wake_affine(struct sched_domain *sd, struct task_struct *p, int sync)
 {
 	s64 this_load, load;
@@ -6133,6 +6666,8 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p, int sync)
 		prev_eff_load *= load + effective_load(tg, prev_cpu, 0, weight);
 	}
 
+    /* 如果当前 cpu 负载比 prev cpu 的负载低了指定的阈值范围，则表示被唤醒的任务可以
+       在当前执行唤醒操作的 cpu 上运行 */
 	balanced = this_eff_load <= prev_eff_load;
 
 	schedstat_inc(p, se.statistics.nr_wakeups_affine_attempts);
@@ -6150,6 +6685,18 @@ static int wake_affine(struct sched_domain *sd, struct task_struct *p, int sync)
  * find_idlest_group finds and returns the least busy CPU group within the
  * domain.
  */
+/*********************************************************************************************************
+** 函数名称: find_idlest_group
+** 功能描述: 为指定的任务在指定的调度域中找到一个负载最低的调度组
+** 输	 入: sd - 指定的调度域指针
+**         : p - 指定的任务指针
+**         : this_cpu - 当前正在执行的 cpu id
+**         : sd_flag - 指定的调度域 flags，例如 SD_BALANCE_WAKE
+** 输	 出: idlest - 调度组指针
+**         : NULL - 没找到匹配的调度组
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static struct sched_group *
 find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 		  int this_cpu, int sd_flag)
@@ -6207,6 +6754,17 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 /*
  * find_idlest_cpu - find the idlest cpu among the cpus in group.
  */
+/*********************************************************************************************************
+** 函数名称: find_idlest_cpu
+** 功能描述: 为指定的任务在指定的调度组中找到一个负载最低的 cpu
+** 输	 入: group - 指定的调度组指针
+**         : p - 指定的任务指针
+**         : this_cpu - 当前正在执行的 cpu id
+** 输	 出: idlest - 调度组指针
+**         : NULL - 没找到匹配的调度组
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int
 find_idlest_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
 {
@@ -6256,6 +6814,15 @@ find_idlest_cpu(struct sched_group *group, struct task_struct *p, int this_cpu)
 /*
  * Try and locate an idle CPU in the sched_domain.
  */
+/*********************************************************************************************************
+** 函数名称: select_idle_sibling
+** 功能描述: 尝试为指定的任务在指定的 cpu 所属调度域中查找一个空闲 cpu
+** 输	 入: p - 指定的任务指针
+**         : target - 指定的 cpu id
+** 输	 出: target - 空闲的 cpu id
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int select_idle_sibling(struct task_struct *p, int target)
 {
 	struct sched_domain *sd;
@@ -6278,10 +6845,12 @@ static int select_idle_sibling(struct task_struct *p, int target)
 	for_each_lower_domain(sd) {
 		sg = sd->groups;
 		do {
+			/* 如果指定的任务不能在当前遍历到的调度组上运行，则直接遍历下一个调度组 */
 			if (!cpumask_intersects(sched_group_cpus(sg),
 						tsk_cpus_allowed(p)))
 				goto next;
 
+            /* 通过 (i == target || !idle_cpu(i)) 条件可以逐渐缩小目的范围 */
 			for_each_cpu(i, sched_group_cpus(sg)) {
 				if (i == target || !idle_cpu(i))
 					goto next;
@@ -6310,6 +6879,17 @@ done:
  *
  * preempt must be disabled.
  */
+/*********************************************************************************************************
+** 函数名称: select_task_rq_fair
+** 功能描述: 根据函数指定的参数为指定的被唤醒的任务选择本次运行目标 cpu 
+** 输	 入: p - 指定的任务指针
+**         : prev_cpu - 上次运行所在 cpu id
+**         : sd_flag - 指定的调度域 flags，例如 SD_BALANCE_WAKE
+**         : wake_flags - 指定的唤醒 flags，例如 WF_SYNC
+** 输	 出: new_cpu - 本次运行所选择的 cpu id
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int
 select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_flags)
 {
@@ -6323,6 +6903,8 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		want_affine = cpumask_test_cpu(cpu, tsk_cpus_allowed(p));
 
 	rcu_read_lock();
+
+	/* 尝试为指定的任务找到一个亲和性调度域并记录最靠近根节点的同属性调度域指针 */
 	for_each_domain(cpu, tmp) {
 		if (!(tmp->flags & SD_LOAD_BALANCE))
 			continue;
@@ -6341,6 +6923,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 			sd = tmp;
 	}
 
+    /* 如果满足唤醒亲和性条件，则设置 prev_cpu = cpu */
 	if (affine_sd && cpu != prev_cpu && wake_affine(affine_sd, p, sync))
 		prev_cpu = cpu;
 
@@ -6353,17 +6936,20 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 		struct sched_group *group;
 		int weight;
 
+        /* 跳过没有相同标志位的调度域 */
 		if (!(sd->flags & sd_flag)) {
 			sd = sd->child;
 			continue;
 		}
-
+       
+        /* 跳过没有空闲调度组的调度域 */
 		group = find_idlest_group(sd, p, cpu, sd_flag);
 		if (!group) {
 			sd = sd->child;
 			continue;
 		}
 
+        /* 跳过没有空闲 cpu 的调度域或者空闲 cpu 等于当前正在运行的 cpu 的调度域 */
 		new_cpu = find_idlest_cpu(group, p, cpu);
 		if (new_cpu == -1 || new_cpu == cpu) {
 			/* Now try balancing at a lower domain level of cpu */
@@ -6395,6 +6981,15 @@ unlock:
  * previous cpu.  However, the caller only guarantees p->pi_lock is held; no
  * other assumptions, including the state of rq->lock, should be made.
  */
+/*********************************************************************************************************
+** 函数名称: migrate_task_rq_fair
+** 功能描述: 在任务迁移前调用，用来同步更新任务对其所在 cfs 运行队列的无需衰减的负载贡献值
+** 输	 入: p - 指定的迁移任务指针
+**         : next_cpu - 指定的迁移目的 cpu id
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void
 migrate_task_rq_fair(struct task_struct *p, int next_cpu)
 {
@@ -6464,7 +7059,7 @@ wakeup_gran(struct sched_entity *curr, struct sched_entity *se)
  */
 /*********************************************************************************************************
 ** 函数名称: wakeup_preempt_entity
-** 功能描述: 判断指定的 se 调度实例是否可以抢占指定的 curr 调度实例
+** 功能描述: 判断被唤醒的指定的 se 调度实例是否可以抢占指定的 curr 调度实例
 ** 输	 入: curr - 当前 cpu 正在运行的调度实例指针
 **         : se - 指定的调度实例指针
 ** 输	 出: 1 - 可以抢占
@@ -9319,6 +9914,15 @@ void trigger_load_balance(struct rq *rq)
 #endif
 }
 
+/*********************************************************************************************************
+** 函数名称: rq_offline_fair
+** 功能描述: 根据转换到 online 状态的 cpu 运行队列上的任务组的带宽控制状态更新对应的 cfs_rq->runtime_enabled
+**         : 成员值以及系统中与其相关的调度控制参数
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void rq_online_fair(struct rq *rq)
 {
 	update_sysctl();
@@ -9326,6 +9930,15 @@ static void rq_online_fair(struct rq *rq)
 	update_runtime_enabled(rq);
 }
 
+/*********************************************************************************************************
+** 函数名称: rq_offline_fair
+** 功能描述: 对转换到 offline 状态的 cpu 运行队列中处于 throttled 状态的 cfs 运行队列执行 unthrottle
+**         : 操作并更新系统中与其相关的调度控制参数
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void rq_offline_fair(struct rq *rq)
 {
 	update_sysctl();
