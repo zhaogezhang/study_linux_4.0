@@ -4620,7 +4620,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 
 /*********************************************************************************************************
 ** 函数名称: set_next_entity
-** 功能描述: 
+** 功能描述: 把指定的调度实例设置为指定的 cfs 运行队列的 current 并更新相关统调度计值
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
 **         : se - 指定的调度实例指针
 ** 输	 出: 
@@ -4741,9 +4741,10 @@ static bool check_cfs_rq_runtime(struct cfs_rq *cfs_rq);
 
 /*********************************************************************************************************
 ** 函数名称: put_prev_entity
-** 功能描述: 
+** 功能描述: 把指定的当前正在运行的调度实例按照虚拟运行时间添加到所属 cfs 运行队列的红黑树上并更新
+**         : 相关调度统计值
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
-**         : prev - 
+**         : prev - 指定的当前正在运行的调度实例指针
 ** 输	 出: 
 ** 全局变量: 
 ** 调用模块: 
@@ -7084,6 +7085,14 @@ wakeup_preempt_entity(struct sched_entity *curr, struct sched_entity *se)
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: set_last_buddy
+** 功能描述: 把指定的调度实例到所属任务组树根节点路径成员的 struct cfs_rq.last 设置为指定的调度实例
+** 输	 入: se - 指定的调度实例指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void set_last_buddy(struct sched_entity *se)
 {
 	if (entity_is_task(se) && unlikely(task_of(se)->policy == SCHED_IDLE))
@@ -7093,6 +7102,14 @@ static void set_last_buddy(struct sched_entity *se)
 		cfs_rq_of(se)->last = se;
 }
 
+/*********************************************************************************************************
+** 函数名称: set_next_buddy
+** 功能描述: 把指定的调度实例到所属任务组树根节点路径成员的 struct cfs_rq.next 设置为指定的调度实例
+** 输	 入: se - 指定的调度实例指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void set_next_buddy(struct sched_entity *se)
 {
 	if (entity_is_task(se) && unlikely(task_of(se)->policy == SCHED_IDLE))
@@ -7102,6 +7119,14 @@ static void set_next_buddy(struct sched_entity *se)
 		cfs_rq_of(se)->next = se;
 }
 
+/*********************************************************************************************************
+** 函数名称: set_skip_buddy
+** 功能描述: 把指定的调度实例到所属任务组树根节点路径成员的 struct cfs_rq.skip 设置为指定的调度实例
+** 输	 入: se - 指定的调度实例指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void set_skip_buddy(struct sched_entity *se)
 {
 	for_each_sched_entity(se)
@@ -7111,6 +7136,17 @@ static void set_skip_buddy(struct sched_entity *se)
 /*
  * Preempt the current task with a newly woken task if needed:
  */
+/*********************************************************************************************************
+** 函数名称: check_preempt_wakeup
+** 功能描述: 判断在指定的 cpu 运行队列中被唤醒的指定任务是否可以抢占当前正在执行的任务，如果可以
+**         : 则执行任务抢占操作
+** 输	 入: rq - 指定的 cpu 运行队列
+**         : p - 指定的被唤醒任务指针
+**         : wake_flags - 指定的唤醒 flags，例如 WF_FORK
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void check_preempt_wakeup(struct rq *rq, struct task_struct *p, int wake_flags)
 {
 	struct task_struct *curr = rq->curr;
@@ -7194,6 +7230,16 @@ preempt:
 		set_last_buddy(se);
 }
 
+/*********************************************************************************************************
+** 函数名称: pick_next_task_fair
+** 功能描述: 把指定的当前正在运行的调度实例放到所属 cfs 运行队列中并选择一个新的调度实例并设置为 current
+** 输	 入: rq - 指定的 cpu 运行队列
+**         : prev - 指定的当前正在运行的调度实例指针
+** 输	 出: p - 新的 current 任务指针
+**         : NULL - 执行失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static struct task_struct *
 pick_next_task_fair(struct rq *rq, struct task_struct *prev)
 {
@@ -7240,10 +7286,12 @@ again:
 		if (unlikely(check_cfs_rq_runtime(cfs_rq)))
 			goto simple;
 
+        /* 如果当前选择的调度实例是任务组，则递归向下选择，直到选择的调度实例为任务 */
 		se = pick_next_entity(cfs_rq, curr);
 		cfs_rq = group_cfs_rq(se);
 	} while (cfs_rq);
 
+    /* p 表示当前选择的，待运行的任务指针 */
 	p = task_of(se);
 
 	/*
@@ -7254,6 +7302,8 @@ again:
 	if (prev != p) {
 		struct sched_entity *pse = &prev->se;
 
+        /* 如果任务切换前后，两个任务在任务组中的深度不同，则需要先把他们在
+	       任务组树上的深度调整一致 */
 		while (!(cfs_rq = is_same_group(se, pse))) {
 			int se_depth = se->depth;
 			int pse_depth = pse->depth;
@@ -7268,6 +7318,8 @@ again:
 			}
 		}
 
+        /* 在任务切换前后，两个任务在任务组中的深度调整为一致的情况下，把之前的 current
+		   放到 cfs 运行队列的红黑树上，把待运行的任务从红黑树上取下并设置为 current */
 		put_prev_entity(cfs_rq, pse);
 		set_next_entity(cfs_rq, se);
 	}
@@ -7285,6 +7337,7 @@ simple:
 
 	put_prev_task(rq, prev);
 
+	/* 如果指定的调度实例是任务组，则递归向下选择，直到选择的调度实例为任务 */
 	do {
 		se = pick_next_entity(cfs_rq, NULL);
 		set_next_entity(cfs_rq, se);
@@ -7317,11 +7370,23 @@ idle:
 /*
  * Account for a descheduled task:
  */
+/*********************************************************************************************************
+** 函数名称: put_prev_task_fair
+** 功能描述: 把指定的当前正在运行的调度实例按照虚拟运行时间添加到所属 cfs 运行队列的红黑树上并更新
+**         : 相关调度统计值
+** 输	 入: rq - 指定的 cpu 运行队列
+**         : prev - 指定的当前正在运行的调度实例指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void put_prev_task_fair(struct rq *rq, struct task_struct *prev)
 {
 	struct sched_entity *se = &prev->se;
 	struct cfs_rq *cfs_rq;
 
+    /* 如果指定的调度实例是任务组，则需要处理指定的任务组到树根节点路径
+       上的所有任务组调度实例 */
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
 		put_prev_entity(cfs_rq, se);
@@ -7333,6 +7398,15 @@ static void put_prev_task_fair(struct rq *rq, struct task_struct *prev)
  *
  * The magic of dealing with the ->skip buddy is in pick_next_entity.
  */
+/*********************************************************************************************************
+** 函数名称: yield_task_fair
+** 功能描述: 尝试把指定的 cpu 运行队列当前正在运行的 cfs 调度实例设置为所属 cfs 运行队列的 skip 成员
+**         : cfs 运行队列的 skip 成员在 pick_next_entity 函数中会用到
+** 输	 入: rq - 指定的 cpu 运行队列
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void yield_task_fair(struct rq *rq)
 {
 	struct task_struct *curr = rq->curr;
@@ -7364,6 +7438,17 @@ static void yield_task_fair(struct rq *rq)
 	set_skip_buddy(se);
 }
 
+/*********************************************************************************************************
+** 函数名称: yield_to_task_fair
+** 功能描述: 把指定的任务设置为指定的 cpu 运行队列的 cfs 运行队列的 next 成员，并把当前正在运行的 cfs 
+**         : 调度实例设置为 cfs 运行队列的 skip 成员
+** 输	 入: rq - 指定的 cpu 运行队列
+**         : p - 指定的待运行的任务指针
+**         : preempt - 未使用
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static bool yield_to_task_fair(struct rq *rq, struct task_struct *p, bool preempt)
 {
 	struct sched_entity *se = &p->se;

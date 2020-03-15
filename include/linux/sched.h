@@ -1437,7 +1437,9 @@ struct task_struct {
 	unsigned int btrace_seq;
 #endif
 
+    /* 表示当前任务使用的调度策略，例如 SCHED_FIFO */
 	unsigned int policy;
+
 	int nr_cpus_allowed;
 
 	/* 表示为当前任务分配的 cpu 掩码值 */

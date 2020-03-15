@@ -39,6 +39,7 @@ SCHED_FEAT(CACHE_HOT_BUDDY, true)
 /*
  * Allow wakeup-time preemption of the current task:
  */
+/* 表示允许被唤醒的新任务在被唤醒时抢占当前正在执行的任务，即抢占式唤醒 */
 SCHED_FEAT(WAKEUP_PREEMPTION, true)
 
 /*

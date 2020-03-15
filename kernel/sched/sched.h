@@ -412,9 +412,9 @@ struct cfs_rq {
 	 * 'curr' points to currently running entity on this cfs_rq.
 	 * It is set to NULL otherwise (i.e when none are currently running).
 	 */
-	/* curr - 指向了当前 cfs 运行队列中正在运行的调度实例指针
-	   next - 
-	   last - 
+	/* curr - 指向了当前 cfs 运行队列中正在运行的调度实例指针，这个调度实例不在 cfs 运行队列的红黑树上
+	   next - 详情见 features.h 文件
+	   last - 详情见 features.h 文件
 	   skip - 指向了当前 cfs 运行队列中调度时需要跳过的调度实例指针 */
 	struct sched_entity *curr, *next, *last, *skip;
 
@@ -1477,6 +1477,15 @@ struct sched_class {
 #endif
 };
 
+/*********************************************************************************************************
+** 函数名称: put_prev_entity
+** 功能描述: 把指定的当前正在运行的调度实例放回到所属 cpu 运行队列的上并更新相关调度统计值
+** 输	 入: rq- 指定的 cpu 运行队列指针
+**         : prev - 指定的当前正在运行的调度实例指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void put_prev_task(struct rq *rq, struct task_struct *prev)
 {
 	prev->sched_class->put_prev_task(rq, prev);
