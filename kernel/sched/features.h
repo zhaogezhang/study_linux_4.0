@@ -34,6 +34,7 @@ SCHED_FEAT(LAST_BUDDY, true)
  * Consider buddies to be cache hot, decreases the likelyness of a
  * cache buddy being migrated away, increases cache locality.
  */
+/* 认为伙伴是缓存热点，减少了伙伴迁移的可能性，增加了缓存局部访问命中率 */
 SCHED_FEAT(CACHE_HOT_BUDDY, true)
 
 /*
@@ -79,6 +80,8 @@ SCHED_FEAT(NUMA,	false)
  * higher number of hinting faults are recorded during active load
  * balancing.
  */
+/* 表示在 numa node 节点间进行任务迁移时，会把任务尽量迁移到之前发生了
+   很多次 hinting faults 的 node 节点上，这样可以尽量减少缺页中断次数 */
 SCHED_FEAT(NUMA_FAVOUR_HIGHER, true)
 
 /*

@@ -17,8 +17,12 @@ struct rq;
 struct cpuidle_state;
 
 /* task_struct::on_rq states: */
+/* 表示当前调度实例在所属运行队列上，详情见 attach_task 函数 */
 #define TASK_ON_RQ_QUEUED	1
-#define TASK_ON_RQ_MIGRATING	2
+
+/* 表示当前调度实例正在执行任务迁移且在所属负载均衡环境的链表上
+   详情见 detach_task 和 detach_tasks 函数 */
+#define TASK_ON_RQ_MIGRATING	2  
 
 extern __read_mostly int scheduler_running;
 
@@ -266,7 +270,7 @@ struct task_group {
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* schedulable entities of this group on each cpu */
-    /* 这是一个二维数组指针，表示的是当前任务组在每一个 cpu 上拥有的可调度实例链表指针 */
+    /* 这是一个二维数组指针，表示的是当前任务组在每一个 cpu 上的任务组实例结构指针 */
 	struct sched_entity **se;
 
 	/* runqueue "owned" by this group on each cpu */
@@ -277,10 +281,18 @@ struct task_group {
 	unsigned long shares;
 
 #ifdef	CONFIG_SMP
-	/* 表示当前任务组在过去“时间段”内经过衰减后的负载贡献值 */
+	/* 表示当前任务组在过去“时间段”内经过衰减后的负载贡献值
+	   这个负载贡献统计值的更新可能具有延迟性，详情见 __update_cfs_rq_tg_load_contrib 函数 */
 	atomic_long_t load_avg;
 
     /* 表示当前任务组在指定的“统计周期”内没经过衰减的负载贡献值 */
+	/*									   sa->runnable_avg_sum << NICE_0_SHIFT
+	 tg->runnable_avg = tg->runnable_avg + ------------------------------------ - cfs_rq->tg_runnable_contrib
+											   sa->runnable_avg_period + 1 
+									
+										   sa->runnable_avg_sum_new << NICE_0_SHIFT   sa->runnable_avg_sum_old << NICE_0_SHIFT
+					  = tg->runnable_avg + ---------------------------------------- - ----------------------------------------						  
+											   sa->runnable_avg_period_new + 1			  sa->runnable_avg_period_old + 1	*/
 	atomic_t runnable_avg;
 #endif
 #endif
@@ -389,7 +401,7 @@ struct cfs_rq {
 	struct load_weight load;
 
 	/* nr_running - 表示当前 cfs 运行队列上包含的调度实例个数
-	   h_nr_running -  表示当前 cfs 运行队列上以及其所有子节点上一共包含的调度实例个数 */
+	   h_nr_running -  表示当前 cfs 运行队列以及所有子节点（任务组）上一共包含的调度实例个数 */
 	unsigned int nr_running, h_nr_running;
 
 	u64 exec_clock;
@@ -429,15 +441,27 @@ struct cfs_rq {
 	 * This allows for the description of both thread and group usage (in
 	 * the FAIR_GROUP_SCHED case).
 	 */
-	/* runnable_load_avg - 表示当前 cfs 运行队列在指定的“时间段”内经过衰减后的已经运行的平均负载贡献值
-	   blocked_load_avg  - 表示当前 cfs 运行队列在指定的“时间段”内经过衰减后的被阻塞掉的平均负载贡献值
-	   详情见函数 update_entity_load_avg */
+	/* runnable_load_avg - 表示当前 cfs 运行队列上所有调度实例在指定的“时间段”内
+	   经过衰减后的处于可运行状态（运行态）时间的平均负载贡献值，计算公式如下：
+	                       se->avg.runnable_avg_sum * se->load.weight
+	   runnable_load_avg = ------------------------------------------
+	                            se->avg.runnable_avg_period + 1 
+	   详情见 update_entity_load_avg 函数
+	   
+	   blocked_load_avg  - 表示当前 cfs 运行队列上所有调度实例在指定的“时间段”内
+	   经过衰减后的处于被阻塞状态（睡眠态）时间的平均负载贡献值，计算公式如下：
+	                      se->avg.runnable_avg_sum * se->load.weight
+	   blocked_load_avg = ------------------------------------------
+	                           se->avg.runnable_avg_period + 1 
+	   详情见 update_entity_load_avg 函数以及 subtract_blocked_load_contrib 函数 */
 	unsigned long runnable_load_avg, blocked_load_avg;
 
-    /* 表示当前 cfs 运行队列对属于它的所有任务执行的负载贡献衰减阶数 */
+    /* 表示当前 cfs 运行队列对属于它的所有任务执行的负载贡献衰减阶数
+       详情见 update_cfs_rq_blocked_load 函数 */
 	atomic64_t decay_counter;
 
-	/* 表是当前 cfs 运行队列上一次对负载执行衰减操作时的运行队列时钟，单位是 ms */
+	/* 表是当前 cfs 运行队列上一次对负载执行衰减操作时的运行队列时钟，单位是 ms
+	   详情见 update_cfs_rq_blocked_load 函数 */
 	u64 last_decay;
 
 	/* 表示从当前 cfs 运行队列中迁移到其他运行队列中的任务的负载贡献值总和
@@ -453,23 +477,34 @@ struct cfs_rq {
 	                                     sched_avg->runnable_avg_period + 1   */
 	u32 tg_runnable_contrib;
 
-	/* 表示当前 cfs 运行队列所属任务组在过去“时间段”内经过衰减后的负载贡献值 */
+	/* 表示当前 cfs 运行队列所属任务组在过去“时间段”内经过衰减后的负载贡献值
+	   这个负载贡献统计值的更新可能具有延迟性，详情见 __update_cfs_rq_tg_load_contrib 函数 */
 	unsigned long tg_load_contrib;
 
 	/*
-	 *   h_load = weight * f(tg)
+	 * h_load = weight * f(tg)
 	 *
-	 * Where f(tg) is the recursive weight fraction assigned to
-	 * this group.
+	 * Where f(tg) is the recursive weight fraction assigned to this group.
 	 */
-	/* 表示当前 cfs 运行队列中所有调度实例在过去“时间段”内经过衰减后对系统的
-	   负载贡献值，这些调度实例是按照树形结构组织的 */
+    /* h_load 表示当前 cfs 运行队列所属任务组的负载贡献统计值对其父任务组节点的负载贡献量
+       计算公式如下：
+                              parent_cfs_rq->h_load * child_se->avg.load_avg_contrib
+	   child_cfs_rq->h_load = ------------------------------------------------------
+		                              parent_cfs_rq->runnable_load_avg + 1
+		                              
+	   当 parent_cfs_rq 为任务组树形结构的根节点时，parent_cfs_rq->h_load = 1，所以有如下公式：
+	   
+	                             child_se->avg.load_avg_contrib
+	   child_cfs_rq->h_load = ------------------------------------
+		                      parent_cfs_rq->runnable_load_avg + 1
+		                      
+	   详情见 update_cfs_rq_h_load 函数 */
 	unsigned long h_load;
 
-	/* 上次更新当前任务组的 h_load 数据时的系统时间 */
+	/* 上次更新当前任务组的 h_load 数据时的系统时间，详情见 update_cfs_rq_h_load 函数 */
 	u64 last_h_load_update;
 
-    /* 表是下一个需要更新的调度实例指针 */
+    /* 表是下一个需要更新负载贡献值的调度实例指针，详情见 update_cfs_rq_h_load 函数 */
 	struct sched_entity *h_load_next;
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 #endif /* CONFIG_SMP */
@@ -664,7 +699,29 @@ struct rq {
     /* 表示当前 cpu 运行队列中包含的 preferred_node == task_node 的调度实例数 */
 	unsigned int nr_preferred_running;
 #endif
-    /* 记录当前 cpu 运行队列中的负载信息，详情见 struct sched_domain 结构体 */
+    /* 在计算当前 cpu 运行队列的负载贡献时，如果只看某一时刻的负载值，是无法准确体会
+       当前 cpu 运行队列的负载情况的，必须将一段时间内的负载值综合起来看才行。于是
+       cpu 运行队列中维护了一个保存负载值的数组，他们分别表示在不同统计方式下，当前
+       cpu 运行队列的负载贡献情况，详情见 __update_cpu_load 函数，这个数组在 smp 负载
+       均衡时会使用到，用来计算是否需要执行负载均衡任务迁移操作，如果希望进行任务迁移
+       那么应该选择较小的 i 值，因为此时的 cpu_load[i] 抖动比较大，容易发现不均衡。反
+       之，如果希望保持稳定，那么应该选择较大的 i 值
+
+       那么，什么时候倾向于进行迁移、什么时候又倾向于保持稳定呢？这要从两个维度来看：
+       
+       第一个维度，是当前 CPU 的状态。这里会考虑三种 CPU 状态：
+       1、CPU 刚进入 IDLE（比如说 CPU 上唯一的 TASK_RUNNING 状态的进程睡眠去了），这时
+          候是很渴望马上弄一个进程过来运行的，应该选择较小的 i 值
+       2、CPU 处于 IDLE，这时候还是很渴望弄一个进程过来运行的，但是可能已经尝试过几次
+          都无果了，故选择略大一点的 i 值
+       3、CPU 非 IDLE，有进程正在运行，这时候就不太希望进程迁移了，会选择较大的 i 值
+
+       第二个维度，是 CPU 的亲缘性。离得越近的 CPU，进程迁移所造成的缓存失效的影响越小
+       应该选择较小的 i 值。比如两个 CPU 是同一物理 CPU 的同一核心通过 SMT（超线程技术）
+       虚拟出来的，那么它们的缓存大部分是共享的。进程在它们之间迁移代价较小。反之则应该
+       选择较大的 i 值，linux 是通过调度域来管理 CPU 的亲缘性的，通过调度域的描述，内核
+       就可以知道 CPU 与 CPU 的亲缘关系。对于关系远的 CPU，尽量少在它们之间迁移进程，而
+       对于关系近的 CPU，则可以容忍较多一些的进程迁移 */
 	#define CPU_LOAD_IDX_MAX 5
 	unsigned long cpu_load[CPU_LOAD_IDX_MAX];
 	
@@ -723,8 +780,12 @@ struct rq {
 
 #ifdef CONFIG_SMP
 	struct root_domain *rd;
+
+    /* 表示当前 cpu 运行队列所属调度域指针 */
 	struct sched_domain *sd;
 
+	/* 表示当前 cpu 运行队列在减去实时调度实例运行的时间后，给 cfs 调度实例
+	   剩余的负载能力运行时间，详情见 update_cpu_capacity 函数 */
 	unsigned long cpu_capacity;
 
 	unsigned char idle_balance;
@@ -740,8 +801,14 @@ struct rq {
     /* 把属于当前 cpu 运行队列的所有任务通过链表链接起来 */
 	struct list_head cfs_tasks;
 
+    /* 表示当前 cpu 运行队列内实时调度实例在过去一段“时间内”经过减半衰减的运行时间统计信息
+	   详情见 sched_rt_avg_update 函数和 sched_avg_update 函数 */
 	u64 rt_avg;
+
+	/* 表示当前 cpu 运行队列一共运行了的时间统计值，更新粒度为 sched_avg_period
+	   详情见 sched_avg_update 函数 */
 	u64 age_stamp;
+
 	u64 idle_stamp;
 	u64 avg_idle;
 
@@ -838,7 +905,7 @@ DECLARE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
 /*********************************************************************************************************
 ** 函数名称: __rq_clock_broken
-** 功能描述: 更新指定的 cpu 运行队列的时钟信息
+** 功能描述: 获取指定的 cpu 运行队列的时钟信息
 ** 输	 入: rq - 指定的 cpu 运行队列指针
 ** 输	 出: 
 ** 全局变量: 
@@ -1009,8 +1076,15 @@ struct sched_group_capacity {
 	 * CPU capacity of this group, SCHED_LOAD_SCALE being max capacity
 	 * for a single CPU.
 	 */
+	/* capacity - 表示当前调度组的 cpu 在减去实时调度实例运行的时间后，给 cfs 调度实例剩余的负载计算能力
+	   capacity_orig - 表示当前调度组的 cpu 在一共具有的负载计算能力，详情见 update_cpu_capacity 函数 */
 	unsigned int capacity, capacity_orig;
+
+	/* 表示下一次更新当前调度组负载能力信息的 jiffies 时间点，详情见 update_group_capacity 
+	   函数和 update_sd_lb_stats 函数 */
 	unsigned long next_update;
+
+	/* 表示当前调度组是否因为 cpu 亲和力导致不能进行负载均衡任务迁移操作，详情见 load_balance 函数 */
 	int imbalance; /* XXX unrelated to capacity but shared group state */
 	/*
 	 * Number of busy cpus in this group.
@@ -1024,7 +1098,10 @@ struct sched_group {
 	struct sched_group *next;	/* Must be a circular list */
 	atomic_t ref;
 
+	/* 表示当前调度组的负载权重信息 */
 	unsigned int group_weight;
+
+	/* 表示当前调度组的负载计算能力信息 */
 	struct sched_group_capacity *sgc;
 
 	/*
@@ -1055,6 +1132,14 @@ static inline struct cpumask *sched_group_cpus(struct sched_group *sg)
  * cpumask masking which cpus in the group are allowed to iterate up the domain
  * tree.
  */
+/*********************************************************************************************************
+** 函数名称: sched_group_mask
+** 功能描述: 获取指定的调度组内包含的 cpu 的位图掩码值
+** 输	 入: group - 指定的调度组指针
+** 输	 出: cpumask - cpu 的位图掩码值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct cpumask *sched_group_mask(struct sched_group *sg)
 {
 	return to_cpumask(sg->sgc->cpumask);
@@ -1064,6 +1149,14 @@ static inline struct cpumask *sched_group_mask(struct sched_group *sg)
  * group_first_cpu - Returns the first cpu in the cpumask of a sched_group.
  * @group: The group whose first cpu is to be returned.
  */
+/*********************************************************************************************************
+** 函数名称: group_first_cpu
+** 功能描述: 获取指定的调度组内第一个 cpu 的 id 值
+** 输	 入: group - 指定的调度组指针
+** 输	 出: unsigned int - 第一个 cpu 的 id 值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline unsigned int group_first_cpu(struct sched_group *group)
 {
 	return cpumask_first(sched_group_cpus(group));
@@ -1636,6 +1729,14 @@ extern const_debug unsigned int sysctl_sched_time_avg;
 extern const_debug unsigned int sysctl_sched_nr_migrate;
 extern const_debug unsigned int sysctl_sched_migration_cost;
 
+/*********************************************************************************************************
+** 函数名称: sched_avg_period
+** 功能描述: 获取当前调度系统的平均调度统计周期，单位是 ns
+** 输	 入: 
+** 输	 出: u64 - 平均调度统计周期，单位是 ns
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline u64 sched_avg_period(void)
 {
 	return (u64)sysctl_sched_time_avg * NSEC_PER_MSEC / 2;
@@ -1687,17 +1788,64 @@ static inline int hrtick_enabled(struct rq *rq)
 #endif /* CONFIG_SCHED_HRTICK */
 
 #ifdef CONFIG_SMP
+
+/*********************************************************************************************************
+** 函数名称: sched_avg_update
+** 功能描述: 更新指定的 cpu 运行队列的运行时间统计值
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 extern void sched_avg_update(struct rq *rq);
+
+/*********************************************************************************************************
+** 函数名称: sched_rt_avg_update
+** 功能描述: 更新指定的 cpu 运行队列的实时调度实例的运行时间统计值
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : rt_delta - 实时调度实例的运行时间增量值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void sched_rt_avg_update(struct rq *rq, u64 rt_delta)
 {
 	rq->rt_avg += rt_delta;
 	sched_avg_update(rq);
 }
 #else
+
+/*********************************************************************************************************
+** 函数名称: sched_rt_avg_update
+** 功能描述: 更新指定的 cpu 运行队列的实时调度实例的运行时间统计值
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : rt_delta - 实时调度实例的运行时间增量值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void sched_rt_avg_update(struct rq *rq, u64 rt_delta) { }
+
+/*********************************************************************************************************
+** 函数名称: sched_avg_update
+** 功能描述: 更新指定的 cpu 运行队列的运行时间统计值
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void sched_avg_update(struct rq *rq) { }
 #endif
 
+/*********************************************************************************************************
+** 函数名称: start_bandwidth_timer
+** 功能描述: 使指定的带宽控制高精度定时器按照指定的超时周期启动
+** 输	 入: period_timer - 指定的带宽控制高精度定时器指针
+**         : period - 指定的超时周期
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 extern void start_bandwidth_timer(struct hrtimer *period_timer, ktime_t period);
 
 /*

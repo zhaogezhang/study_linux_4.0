@@ -471,7 +471,9 @@ static void __update_cpu_load(struct rq *this_rq, unsigned long this_load,
 	this_rq->nr_load_updates++;
 
 	/* Update our load: */
+	/* this_load 表示的是当前 cpu 运行队列的瞬时负载贡献值 */
 	this_rq->cpu_load[0] = this_load; /* Fasttrack for idx 0 */
+	
 	for (i = 1, scale = 2; i < CPU_LOAD_IDX_MAX; i++, scale += scale) {
 		unsigned long old_load, new_load;
 
@@ -488,6 +490,15 @@ static void __update_cpu_load(struct rq *this_rq, unsigned long this_load,
 		if (new_load > old_load)
 			new_load += scale - 1;
 
+        /* scale = 1 << i
+           this_rq->cpu_load[i] = (old_load * (scale - 1) + new_load) >> i
+                                = (old_load * ((1 << i) - 1) + new_load) >> i
+                                =  old_load * ((1 << i) - 1) >> i +  new_load >> i
+                                =  old_load * ((1 * 2 ^ i) - 1) / 2 ^ i + new_load / 2 ^ i
+                                               2 ^ i - 1   new_load
+                                =  old_load * ---------- + --------
+                                                 2 ^ i      2 ^ i
+            从公式可以看出，当 i 的值越大，this_rq->cpu_load[i] 的值就越平稳 */
 		this_rq->cpu_load[i] = (old_load * (scale - 1) + new_load) >> i;
 	}
 

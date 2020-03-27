@@ -887,10 +887,20 @@ static inline int sched_info_on(void)
 #endif
 }
 
+/* 表示当前系统支持的 cpu idle 状态，在 smp 负载均衡时使用 */
 enum cpu_idle_type {
-	CPU_IDLE,
+    /* 表示当前 cpu 进入 idle 状态有一段时间了，是从 CPU_NEWLY_IDLE 状态过度过来的
+       即经过一段时间的尝试仍然未能 pull 到可运行的调度实例，表示其他 cpu 可能没有
+       发生过载现象，所以我们可以降低 pull 的请求强度 */
+	CPU_IDLE,          
+
+	/* 表示当前 cpu 不是 idle 状态，即有 TASK_RUNNING 状态的调度实例，所以不太希望从
+	   其他 cpu 上 pull 调度实例 */
 	CPU_NOT_IDLE,
+
+	/* 表示当前 cpu 刚刚进入 idle 状态，这时很渴望从其他 cpu 上 pull 一个调度实例来运行 */
 	CPU_NEWLY_IDLE,
+	
 	CPU_MAX_IDLE_TYPES
 };
 
@@ -898,7 +908,9 @@ enum cpu_idle_type {
  * Increase resolution of cpu_capacity calculations
  */
 #define SCHED_CAPACITY_SHIFT	10
-#define SCHED_CAPACITY_SCALE	(1L << SCHED_CAPACITY_SHIFT)
+
+/* 定义了当前系统默认使用的 cpu 负载能力基准值，详情见 update_cpu_capacity 函数 */
+#define SCHED_CAPACITY_SCALE	(1L << SCHED_CAPACITY_SHIFT)  /* 1 << 10 */
 
 /*
  * sched-domains (multiprocessor balancing) declarations:
@@ -914,7 +926,10 @@ enum cpu_idle_type {
 #define SD_SHARE_POWERDOMAIN	0x0100	/* Domain members share power domain */
 #define SD_SHARE_PKG_RESOURCES	0x0200	/* Domain members share cpu pkg resources */
 #define SD_SERIALIZE		0x0400	/* Only a single load balancing instance */
+
+/* needs to move all the work to the lowest numbered CPUs in the group */
 #define SD_ASYM_PACKING		0x0800  /* Place busy groups earlier in the domain */
+
 #define SD_PREFER_SIBLING	0x1000	/* Prefer to place tasks in a sibling domain */
 #define SD_OVERLAP		0x2000	/* sched_domains of this level overlap */
 #define SD_NUMA			0x4000	/* cross-node balancing */
@@ -959,8 +974,11 @@ struct sched_group;
                     MC  (多核层级)
 
                     SMT (超线程层级) */
+/* 当前系统把调度域通过二维链表的方式组织成树形结构，其中纵向链表由 parent 和 child 组成
+   表示的是父子关系，横向链表由 groups 组成，表示的是兄弟关系 */
 struct sched_domain {
 	/* These fields must be setup */
+    /* 通过这两个指针构造了调度域树形结构 */
 	struct sched_domain *parent;	/* top domain must be null terminated */
 	struct sched_domain *child;	/* bottom domain must be null terminated */
 
@@ -974,14 +992,15 @@ struct sched_domain {
 	unsigned int imbalance_pct;	/* No balance until over watermark */
 	unsigned int cache_nice_tries;	/* Leave cache hot tasks for # tries */
 
-	/* 对应着 struct rq 结构体的 cpu_load 数组的索引值 */
-	unsigned int busy_idx;
-	unsigned int idle_idx;
-	unsigned int newidle_idx;
+	/* 对应着 struct rq 结构体的 cpu_load 数组的索引值，在 smp 负载均衡时使用 */
+	unsigned int busy_idx;    /* CPU_NOT_IDLE */
+	unsigned int idle_idx;    /* CPU_IDLE */
+	unsigned int newidle_idx; /* CPU_NEWLY_IDLE */
+	
 	unsigned int wake_idx;
 	unsigned int forkexec_idx;
 	
-	unsigned int smt_gain;
+	unsigned int smt_gain;  /* sd->smt_gain = 1178; ~15%，详情见 sd_init 函数 */
 
 	int nohz_idle;		/* NOHZ IDLE status */
 	int flags;			/* See SD_*，例如 SD_LOAD_BALANCE */
@@ -990,6 +1009,8 @@ struct sched_domain {
 	/* Runtime fields. */
 	unsigned long last_balance;	/* init to jiffies. units in jiffies */
 	unsigned int balance_interval;	/* initialise to 1. units in ms. */
+
+	/* */
 	unsigned int nr_balance_failed; /* initialise to 0 */
 
 	/* idle_balance() stats */
@@ -1175,32 +1196,29 @@ struct sched_avg {
 	 * above by 1024/(1-y).  Thus we only need a u32 to store them for all
 	 * choices of y < 1-2^(-32)*1024.
 	 */
-	/*
-	   [<- 1024us ->|<- 1024us ->|<- 1024us ->| ...
+
+	/* runnable_avg_sum - 表示在计算 entity_runnable_avg 时累计的处于运行状态的时间计数值（单位是 1024ns）
+	   详情见 __update_entity_runnable_avg 函数
+	   runnable_avg_period - 表示在计算 entity_runnable_avg 时累计的统计周期计数值（单位是 1024ns）
+	   详情见 __update_entity_runnable_avg 函数 */
+	u32 runnable_avg_sum, runnable_avg_period;
+
+	/* 表示上一次更新当前调度实例处于可运行状态时间的负载贡献值时的调度系统时间，单位是 ns */
+	u64 last_runnable_update;
+
+    /* 表示当前调度实例需要对其负载贡献指定的衰减阶数 */
+	s64 decay_count;
+	
+	/* [<- 1024us ->|<- 1024us ->|<- 1024us ->| ...
             p0            p1           p2
           (now)       (~1ms ago)  (~2ms ago)
 
        上面的 P0、P1、P2...Pn 表示的是 runnable contrib，即在指定的“统计周期”内
        没经过衰减的负载贡献值
 
-	   load_avg = u_0` + y*(u_0 + u_1*y + u_2*y^2 + ... )
-	    		= u_0 + u_1*y + u_2*y^2 + ... [re-labeling u_i --> u_{i+1}]
-
-       上面的 load_avg 表示的是 load contrib，即在指定的“时间段”内经过衰减后的负载贡献值 */
-
-	/* runnable_avg_sum - 表示上一次计算 entity_runnable_avg 在时不足一个统计周期（1024ns）
-	   且没有计算负载贡献时的 sum 部分，的详情见 __update_entity_runnable_avg 函数
-	   runnable_avg_period - 表示上一次计算 entity_runnable_avg 时不足一个统计周期（1024ns）
-	   且没有计算负载贡献的 period 余数部分，的详情见 __update_entity_runnable_avg 函数 */
-	u32 runnable_avg_sum, runnable_avg_period;
-
-	/* 表示上一次更新当前调度实例负载贡献值时的调度系统时间，单位是 ns */
-	u64 last_runnable_update;
-
-    /* 表示当前调度实例需要对其负载贡献指定的衰减阶数 */
-	s64 decay_count;
-
-	/* 表示当前调度实例过去“时间段”内经过衰减后的负载贡献值 */
+	   load_avg_contrib = u_0` + y*(u_0 + u_1*y + u_2*y^2 + ... )
+	    		        = u_0 + u_1*y + u_2*y^2 + ... [re-labeling u_i --> u_{i+1}] */
+    /* 表示当前调度实例过去“时间段”内经过衰减后的负载贡献值 */
 	unsigned long load_avg_contrib;
 };
 
@@ -1256,7 +1274,7 @@ struct sched_entity {
 	/* 表示当前调度实例是否已经在所属的运行队列上 */
 	unsigned int		on_rq;
 
-    /* 表示当前调度实例本次调度开始运行（或者上一次更新运行时统计信息）时的运行队列时钟值 */
+    /* 表示当前调度实例本次调度开始运行（或者上一次更新运行时统计信息）时的运行队列时钟值，单位是 ns */
 	u64			exec_start;
 
 	/* 表示当前调度实例总计运行的 cpu 物理运行时间 */
@@ -1268,6 +1286,7 @@ struct sched_entity {
 	/* 表示当前调度实例上一次调度结束时总计运行的 cpu 物理运行时间*/
 	u64			prev_sum_exec_runtime;
 
+	/* 表示当前调度实例被迁移的次数 */
 	u64			nr_migrations;
 
 #ifdef CONFIG_SCHEDSTATS
@@ -1395,7 +1414,7 @@ struct task_struct {
 #ifdef CONFIG_SMP
 	struct llist_node wake_entry;
 
-	/* 表示当前任务正在哪个 cpu 上运行 */
+	/* 表示当前任务是否正在 cpu 上运行 */
 	int on_cpu;
 
     /* wakee - 表示将被唤醒的任务 
@@ -3495,9 +3514,9 @@ static inline unsigned int task_cpu(const struct task_struct *p)
 
 /*********************************************************************************************************
 ** 函数名称: set_task_cpu
-** 功能描述: 把指定的任务从当前所在 cpu 运行队列上迁移到指定的 cpu 的运行队列上并更新相关信息
+** 功能描述: 把指定的任务从当前所在 cpu 运行队列上移除并设置新的目的 cpu 信息
 ** 输	 入: p - 指定的 task_struct 结构指针
-**         : new_cpu - 指定的新的 cpu 号
+**         : new_cpu - 指定的新的目的 cpu id
 ** 输	 出: 
 ** 全局变量: 
 ** 调用模块: 

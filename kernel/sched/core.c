@@ -299,6 +299,7 @@ late_initcall(sched_init_debug);
  * Number of tasks to iterate in a single balance run.
  * Limited because this is done with IRQs disabled.
  */
+/* 在多 CPU 情况下进行负载均衡时，一次最多移动多少个进程到另一个 CPU 上 */
 const_debug unsigned int sysctl_sched_nr_migrate = 32;
 
 /*
@@ -307,12 +308,14 @@ const_debug unsigned int sysctl_sched_nr_migrate = 32;
  *
  * default: 1s
  */
+/* 定义了计算 RT 调度实例的 cpu 负载统计周期，即每一秒为一个 RT 调度实例负载统计周期 */
 const_debug unsigned int sysctl_sched_time_avg = MSEC_PER_SEC;
 
 /*
  * period over which we measure -rt task cpu usage in us.
  * default: 1s
  */
+/* 定义了计算 RT 调度实例的 cpu 负载统计周期，即每一秒为一个 RT 调度实例负载统计周期 */
 unsigned int sysctl_sched_rt_period = 1000000;
 
 __read_mostly int scheduler_running;
@@ -735,6 +738,14 @@ bool sched_can_stop_tick(void)
 }
 #endif /* CONFIG_NO_HZ_FULL */
 
+/*********************************************************************************************************
+** 函数名称: sched_avg_update
+** 功能描述: 更新指定的 cpu 运行队列的运行时间统计值
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void sched_avg_update(struct rq *rq)
 {
 	s64 period = sched_avg_period();
@@ -747,6 +758,8 @@ void sched_avg_update(struct rq *rq)
 		 */
 		asm("" : "+rm" (rq->age_stamp));
 		rq->age_stamp += period;
+
+		/* 每个 sched_avg_period 周期对 rq->rt_avg 进行减半衰减 */
 		rq->rt_avg /= 2;
 	}
 }
@@ -899,7 +912,7 @@ static void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 
 /*********************************************************************************************************
 ** 函数名称: activate_task
-** 功能描述: 激活指定的任务
+** 功能描述: 把指定的任务添加到指定的 cpu 运行队列的 cfs 运行队列上
 ** 输	 入: rq - 指定任务所在的运行队列指针
 **         : p - 指定的任务指针
 **         : flags - 指定的标志
@@ -917,7 +930,7 @@ void activate_task(struct rq *rq, struct task_struct *p, int flags)
 
 /*********************************************************************************************************
 ** 函数名称: deactivate_task
-** 功能描述: 使指定的任务处于非激活状态
+** 功能描述: 把指定的任务从指定的 cpu 运行队列的 cfs 运行队列上移除
 ** 输	 入: rq - 指定任务所在的运行队列指针
 **         : p - 指定的任务指针
 **         : flags - 指定的标志
@@ -1129,9 +1142,9 @@ void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags)
 #ifdef CONFIG_SMP
 /*********************************************************************************************************
 ** 函数名称: set_task_cpu
-** 功能描述: 把指定的任务从当前所在 cpu 运行队列上迁移到指定的 cpu 的运行队列上并更新相关信息
+** 功能描述: 把指定的任务从当前所在 cpu 运行队列上移除并设置新的目的 cpu 信息
 ** 输	 入: p - 指定的 task_struct 结构指针
-**         : new_cpu - 指定的新的 cpu 号
+**         : new_cpu - 指定的新的目的 cpu id
 ** 输	 出: 
 ** 全局变量: 
 ** 调用模块: 
@@ -1165,8 +1178,11 @@ void set_task_cpu(struct task_struct *p, unsigned int new_cpu)
 	trace_sched_migrate_task(p, new_cpu);
 
 	if (task_cpu(p) != new_cpu) {
+		
+		/* 在任务迁移前调用，用来同步更新任务对其所在 cfs 运行队列的无需衰减的负载贡献值 */
 		if (p->sched_class->migrate_task_rq)
 			p->sched_class->migrate_task_rq(p, new_cpu);
+		
 		p->se.nr_migrations++;
 		perf_sw_event_sched(PERF_COUNT_SW_CPU_MIGRATIONS, 1, 0);
 	}
@@ -3335,6 +3351,15 @@ int task_prio(const struct task_struct *p)
  *
  * Return: 1 if the CPU is currently idle. 0 otherwise.
  */
+/*********************************************************************************************************
+** 函数名称: idle_cpu
+** 功能描述: 判断指定的 cpu 是否处于 idle 状态
+** 输	 入: cpu - 指定的 cpu id
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int idle_cpu(int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);
