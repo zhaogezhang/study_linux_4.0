@@ -14,9 +14,9 @@
  * Most arches use the __per_cpu_offset array for those offsets but
  * some arches have their own ways of determining the offset (x86_64, s390).
  */
+/* 表示不同的 cpu id 上的 per cpu 类型变量的偏移量 */
 #ifndef __per_cpu_offset
 extern unsigned long __per_cpu_offset[NR_CPUS];
-
 #define per_cpu_offset(x) (__per_cpu_offset[x])
 #endif
 
@@ -26,6 +26,7 @@ extern unsigned long __per_cpu_offset[NR_CPUS];
  * means of obtaining the offset to the per cpu variables of the
  * current processor.
  */
+/* 表示当前 cpu 的 per cpu 类型变量的偏移量 */
 #ifndef __my_cpu_offset
 #define __my_cpu_offset per_cpu_offset(raw_smp_processor_id())
 #endif
@@ -40,6 +41,14 @@ extern unsigned long __per_cpu_offset[NR_CPUS];
  * translations for raw_cpu_ptr().
  */
 #ifndef arch_raw_cpu_ptr
+/*********************************************************************************************************
+** 函数名称: arch_raw_cpu_ptr
+** 功能描述: 获取指定的 per cpu 变量在当前 cpu 上的地址
+** 输	 入: ptr - 指定的 per cpu 变量指针值
+** 输	 出: ret - 私有 per cpu 变量地址
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define arch_raw_cpu_ptr(ptr) SHIFT_PERCPU_PTR(ptr, __my_cpu_offset)
 #endif
 
@@ -49,6 +58,7 @@ extern void setup_per_cpu_areas(void);
 
 #endif	/* SMP */
 
+/* 定义 per cpu 变量段信息的起始段路径信息 */
 #ifndef PER_CPU_BASE_SECTION
 #ifdef CONFIG_SMP
 #define PER_CPU_BASE_SECTION ".data..percpu"
