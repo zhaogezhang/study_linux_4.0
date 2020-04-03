@@ -907,17 +907,24 @@ enum cpu_idle_type {
 /*
  * Increase resolution of cpu_capacity calculations
  */
+/* 在负载计算前乘以这个基准值，在负载计算后除以这个基准值，通过这样的方式
+   保证计算精度，详情见 update_cpu_capacity 函数 */
 #define SCHED_CAPACITY_SHIFT	10
 
-/* 定义了当前系统默认使用的 cpu 负载能力基准值，详情见 update_cpu_capacity 函数 */
+/* 定义了当前系统使用的 cpu capacity 基准值，用来保证在计算 cpu capacity 时的
+   计算精度，在更新 cpu capacity 时使用，详情见 update_cpu_capacity  函数 */
 #define SCHED_CAPACITY_SCALE	(1L << SCHED_CAPACITY_SHIFT)  /* 1 << 10 */
 
 /*
  * sched-domains (multiprocessor balancing) declarations:
  */
 #ifdef CONFIG_SMP
+/* 表示当前调度域是否可以执行负载均衡操作 */
 #define SD_LOAD_BALANCE		0x0001	/* Do load balancing on this domain. */
+
+/* 表示当前调度域中的 cpu 在编程 idle 状态时是否执行负载均衡操作，详情见 idle_balance 函数 */
 #define SD_BALANCE_NEWIDLE	0x0002	/* Balance when about to become idle */
+
 #define SD_BALANCE_EXEC		0x0004	/* Balance on exec */
 #define SD_BALANCE_FORK		0x0008	/* Balance on fork, clone */
 #define SD_BALANCE_WAKE		0x0010  /* Balance on wakeup */
@@ -925,13 +932,23 @@ enum cpu_idle_type {
 #define SD_SHARE_CPUCAPACITY	0x0080	/* Domain members share cpu power */
 #define SD_SHARE_POWERDOMAIN	0x0100	/* Domain members share power domain */
 #define SD_SHARE_PKG_RESOURCES	0x0200	/* Domain members share cpu pkg resources */
+
+/* 表示当前调度域中同时只能有一个 cpu 执行负载均衡操作，详情见 rebalance_domains 函数 */
 #define SD_SERIALIZE		0x0400	/* Only a single load balancing instance */
 
-/* needs to move all the work to the lowest numbered CPUs in the group */
+/* SD_ASYM_PACKING 原则是什么：
+   因为在类似 POWER7 核心中，在 cpu id 较低的 cpu 上运行 SMT 将会有更好的性能
+   （因为他们共享更少的核心运算单元），所以我们要尽量把处于运行状态的 SMT 线程
+   迁移到 cpu id 较小的 cpu 核上，而把处于 idle 状态的 SMT 线程迁移到 cpu id
+   较大的 cpu 核上，这样会是系统性能更高（这个函数运行在 idle cpu 上）*/
 #define SD_ASYM_PACKING		0x0800  /* Place busy groups earlier in the domain */
 
 #define SD_PREFER_SIBLING	0x1000	/* Prefer to place tasks in a sibling domain */
+
+/* 表当前层级的调度域之间的 cpu 有重叠部分，即同一个 cpu 可能存在多个调度域中 */
 #define SD_OVERLAP		0x2000	/* sched_domains of this level overlap */
+
+/* 表示当前调度域是否可以在 numa node 之间执行负载均衡任务迁移 */
 #define SD_NUMA			0x4000	/* cross-node balancing */
 
 #ifdef CONFIG_SCHED_SMT
@@ -967,28 +984,228 @@ extern int sched_domain_level_max;
 
 struct sched_group;
 
-/* 每个调度域就是具有相同属性的一组 cpu 的集合，一般按照层级从上到下
+/* 每个调度域就是具有相同属性和调度策略的 cpu 集合，一般按照层级从上到下
    可以划分为三层，如下：
                     DIE (SOC 层级)
 
                     MC  (多核层级)
 
-                    SMT (超线程层级) */
-/* 当前系统把调度域通过二维链表的方式组织成树形结构，其中纵向链表由 parent 和 child 组成
-   表示的是父子关系，横向链表由 groups 组成，表示的是兄弟关系 */
+                    SMT (超线程层级)
+                    
+   它们在整体上是一个树形结构，如下：
+
+                        DIE domain0
+                             |
+               /---------------------------\
+          MC domain0                   MC domain1
+              |                             |
+         /------------\               /------------\
+   SMT domain0   SMT domain1    SMT domain2   SMT domain3
+
+   domain.groups 数据结构指针关系如下（因为 sched_domain 的类型为 per_cpu，所以每个 cpu 上
+   只保存当前 cpu 到调度域树形结构根节点之间的路径信息，我们把所有 cpu 的调度域树形结构信
+   息拼接在一起，就是一颗完整的树了）：
+   
+                                         DIE domain0
+	                                 DIE domain0.groups()
+					        		          |
+			            /---------------------/
+			           |
+			           v
+        'MC domain0.groups(circular list)
+                       |                                                    
+                  MC domain0                                            
+               MC domain0.groups                                    
+                       |                                                    
+                -------/                                             
+               /                                                   
+              |          
+              v
+'SMT domain0.groups'(circular list)
+              |                        
+         SMT domain0              
+      SMT domain0.groups        
+
+                                         DIE domain0
+	                                 DIE domain0.groups
+					        		          |
+			            /---------------------/
+			           |
+			           v
+        'MC domain0.groups'(circular list)
+                       |                                                    
+                  MC domain0                                           
+               MC domain0.groups                                     
+                       |                                                    
+                       \---------------\                                            
+                                        |  
+                                        v
+                         'SMT domain1.groups'(circular list)      
+                                        |                          
+                                   SMT domain1                
+                                SMT domain1.groups        
+
+                                         DIE domain0
+	                                 DIE domain0.groups
+					        		          |
+			                                  \----------------------------\
+			                                                                | 
+			                                                                v
+                                                             'MC domain1.groups'(circular list)
+                                                                            |
+                                                                        MC domain1
+                                                                     MC domain1.groups
+                                                                            |
+                                                                     -------/
+                                                                    /
+                                                                   |
+                                                                   v
+                                                    'SMT domain2.groups'(circular list)  
+                                                                   |                          
+                                                              SMT domain2                
+                                                          SMT domain2.groups         
+
+                                         DIE domain0
+	                                 DIE domain0.groups
+					        		          |
+			                                  \----------------------------\
+			                                                                |  
+			                                                                v
+                                                              'MC domain1.groups'(circular list)
+                                                                            |
+                                                                        MC domain1
+                                                                     MC domain1.groups
+                                                                            |
+                                                                            \---------------\
+                                                                                             |   
+                                                                                             v
+                                                                              'SMT domain3.groups'(circular list)
+                                                                                             |
+                                                                                        SMT domain3
+                                                                                     SMT domain3.groups
+
+   domain.parent 数据结构指针关系如下（因为 sched_domain 的类型为 per_cpu，所以每个 cpu 上
+   只保存当前 cpu 到调度域树形结构根节点之间的路径信息，我们把所有 cpu 的调度域树形结构信
+   息拼接在一起，就是一颗完整的树了）：
+	
+			                    DIE domain0.parent = NULL
+                                            ^
+                                            |
+                       /--------------------/
+                       |                                         
+	           MC domain0.parent                         
+                       ^                                         
+                       |                                         
+            /----------/
+            |                    
+    SMT domain0.parent   
+
+			                    DIE domain0.parent = NULL
+                                            ^
+                                            |
+                       /--------------------/
+                       |                                        
+	           MC domain0.parent                       
+                       ^                                         
+                       |                                        
+                       \---------\                  
+                                 |             
+                         SMT domain1.parent
+
+			                    DIE domain0.parent = NULL
+                                            ^
+                                            |
+                                            \--------------------\
+                                                                 |
+	                                                      MC domain1.parent
+                                                                 ^
+                                                                 |
+                                                       /---------/
+                                                       |                    
+                                              SMT domain2.parent    
+
+			                    DIE domain0.parent = NULL
+                                            ^
+                                            |
+                                            \--------------------\
+                                                                 |
+	                                                     MC domain1.parent
+                                                                 ^
+                                                                 |
+                                                                 \---------\
+                                                                           |
+                                                                   SMT domain3.parent
+
+   domain.child 数据结构指针关系如下（因为 sched_domain 的类型为 per_cpu，所以每个 cpu 上
+   只保存当前 cpu 到调度域树形结构根节点之间的路径信息，我们把所有 cpu 的调度域树形结构信
+   息拼接在一起，就是一颗完整的树了）：
+
+			                    DIE domain0.child
+                                            |
+                       /--------------------/
+                       |          
+                       v
+	           MC domain0.child                         
+                       |                                         
+            /----------/
+            |    
+            v
+    SMT domain0.child = NULL   
+
+			                    DIE domain0.child
+                                            |
+                       /--------------------/
+                       |
+                       v
+	           MC domain0.child                       
+                       |                                        
+                       \---------\                  
+                                 |     
+                                 v
+                         SMT domain1.child = NULL
+
+			                    DIE domain0.child
+                                            |
+                                            \--------------------\
+                                                                 |
+                                                                 v
+	                                                      MC domain1.child
+                                                                 |
+                                                       /---------/
+                                                       |  
+                                                       v
+                                              SMT domain2.child = NULL    
+
+			                    DIE domain0.child
+                                            |
+                                            \--------------------\
+                                                                 |
+                                                                 v
+	                                                     MC domain1.child
+                                                                 |
+                                                                 \---------\
+                                                                           |
+                                                                           v
+                                                                   SMT domain3.child = NULL */
 struct sched_domain {
 	/* These fields must be setup */
-    /* 通过这两个指针构造了调度域树形结构 */
+	/* 因为 sched_domain 的类型为 per_cpu，即每个 cpu 上会维护自己的调度域树
+	   形结构信息，这些信息只保存了当前 cpu 到调度域树形结构根节点之间的路径
+	   信息，所以在当前调度域数据结构中只有一个 child 和一个 parent 指针成员
+	   我们把所有 cpu 的调度域树形结构信息拼接在一起，就是一颗完整的树了 */
 	struct sched_domain *parent;	/* top domain must be null terminated */
 	struct sched_domain *child;	/* bottom domain must be null terminated */
 
-	/* 表示当前调度域中包含的调度组，通过单向链表连接在一起，最后一个调度组的
+	/* 表示当前调度域中包含的负载均衡调度组，通过单向链表连接在一起，最后一个调度组的
 	   next 成员指向 sched_domain.groups，即这是一个环形单向链表 */
 	struct sched_group *groups;	/* the balancing groups of the domain */
 	
 	unsigned long min_interval;	/* Minimum balance interval ms */
 	unsigned long max_interval;	/* Maximum balance interval ms */
+
+	/* 如果当前 cpu 比较忙，则减少执行负载均衡的次数，详情见 get_sd_balance_interval 函数 */
 	unsigned int busy_factor;	/* less balancing by factor if busy */
+
 	unsigned int imbalance_pct;	/* No balance until over watermark */
 	unsigned int cache_nice_tries;	/* Leave cache hot tasks for # tries */
 
@@ -1002,19 +1219,29 @@ struct sched_domain {
 	
 	unsigned int smt_gain;  /* sd->smt_gain = 1178; ~15%，详情见 sd_init 函数 */
 
+    /* 表示当前调度域是否处于 nohz idle 状态，我们可以在处于这个状态的 cpu 上执行 idle 负载均衡操作 */
 	int nohz_idle;		/* NOHZ IDLE status */
+	
 	int flags;			/* See SD_*，例如 SD_LOAD_BALANCE */
 	int level;
 
 	/* Runtime fields. */
+	/* 表示当前调度域上一次执行负载均衡操作时的 jiffies 时间值，单位是 ns */
 	unsigned long last_balance;	/* init to jiffies. units in jiffies */
+
+	/* 表示当前调度域的负载均衡执行周期时间间隔，单位是 ms */
 	unsigned int balance_interval;	/* initialise to 1. units in ms. */
 
-	/* */
+    /* 表示当前调度域执行负载均衡操作连续失败的次数 */
 	unsigned int nr_balance_failed; /* initialise to 0 */
 
 	/* idle_balance() stats */
+	/* 追踪当前调度域在负载均衡操作过程中，单次消耗的最大时间，单位是 ns，详情见 idle_balance 函数 */
 	u64 max_newidle_lb_cost;
+
+    /* 表示当前调度域下一次对 max_newidle_lb_cost 衰减的 jiffies 时间，衰减公式为 
+       sd->max_newidle_lb_cost = (sd->max_newidle_lb_cost * 253) / 256; 
+	   详情见 rebalance_domains 函数 */
 	unsigned long next_decay_max_lb_cost;
 
 #ifdef CONFIG_SCHEDSTATS
@@ -1238,7 +1465,7 @@ struct sched_statistics {
 
 	u64			block_start;                   /* 表示当前调度实例被阻塞时的调度队列时钟，task->state == TASK_UNINTERRUPTIBLE */
 	u64			block_max;                     /* 表示当前调度实例被阻塞时间最长的一次所阻塞的时间大小 */
-	u64			exec_max;
+	u64			exec_max;                      /* 表示当前调度实例单次运行时间最长的时间大小 */
 	u64			slice_max;
 
 	u64			nr_migrations_cold;
@@ -3430,6 +3657,15 @@ static inline void current_clr_polling(void)
 	preempt_fold_need_resched();
 }
 
+/*********************************************************************************************************
+** 函数名称: need_resched
+** 功能描述: 判断当前 cpu 当前正在运行的线程信息中的 TIF_NEED_RESCHED 标志位是否被置位
+** 输	 入: 
+** 输	 出: 1 - 被置位
+**         : 0 - 没被置位
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static __always_inline bool need_resched(void)
 {
 	return unlikely(tif_need_resched());

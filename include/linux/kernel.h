@@ -153,6 +153,15 @@
  * to closest integer. Result is undefined for negative divisors and
  * for negative dividends if the divisor variable type is unsigned.
  */
+/*********************************************************************************************************
+** 函数名称: DIV_ROUND_CLOSEST
+** 功能描述: 把指定的两个数进行相除操作并对结果进行四舍五入
+** 输	 入: x - 指定的被除数值
+**         : divisor - 指定的除数值
+** 输	 出: return - 计算后的值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define DIV_ROUND_CLOSEST(x, divisor)(			\
 {							\
 	typeof(x) __x = x;				\

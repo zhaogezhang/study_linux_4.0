@@ -149,7 +149,10 @@ void raid6_dual_recov(int disks, size_t bytes, int faila, int failb,
 /* Some definitions to allow code to be compiled for testing in userspace */
 #ifndef __KERNEL__
 
+/* 追踪当前系统的 jiffies 变量值，其值等于系统上电后发生的 tick 中断次数，时间单位是一个 HZ 周期
+   即如果 HZ 为 100，那么一个 jiffies 就是 10ms，如果 HZ 为 1000，那么一个 jiffies 就是 1ms */
 # define jiffies	raid6_jiffies()
+
 # define printk 	printf
 # define GFP_KERNEL	0
 # define __get_free_pages(x, y)	((unsigned long)mmap(NULL, PAGE_SIZE << (y), \

@@ -634,6 +634,14 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 	set_irq_regs(old_regs);
 }
 
+/*********************************************************************************************************
+** 函数名称: smp_send_reschedule
+** 功能描述: 向指定的 cpu 上发送一个 IPI_RESCHEDULE 核间中断
+** 输	 入: 指定的 cpu id 值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void smp_send_reschedule(int cpu)
 {
 	smp_cross_call(cpumask_of(cpu), IPI_RESCHEDULE);

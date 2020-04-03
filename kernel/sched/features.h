@@ -81,7 +81,7 @@ SCHED_FEAT(NUMA,	false)
  * balancing.
  */
 /* 表示在 numa node 节点间进行任务迁移时，会把任务尽量迁移到之前发生了
-   很多次 hinting faults 的 node 节点上，这样可以尽量减少缺页中断次数 */
+   很多次 hinting faults 的 node 节点上，这样可以提高任务访问内存效率 */
 SCHED_FEAT(NUMA_FAVOUR_HIGHER, true)
 
 /*

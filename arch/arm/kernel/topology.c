@@ -42,11 +42,31 @@
  */
 static DEFINE_PER_CPU(unsigned long, cpu_scale);
 
+/*********************************************************************************************************
+** 函数名称: arch_scale_cpu_capacity
+** 功能描述: 获取指定的调度域上指定的 cpu 的负载计算能力
+** 注     释: 获取到的负载计算能力是以 SCHED_CAPACITY_SHIFT 为基准分母的，详情见 update_cpu_capacity
+** 输	 入: sd - 指定的调度域指针
+**         : cpu - 指定的 cpu id
+** 输	 出: unsigned long - 负载计算能力，单位是 DMIPS / MHZ
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 unsigned long arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 {
 	return per_cpu(cpu_scale, cpu);
 }
 
+/*********************************************************************************************************
+** 函数名称: set_capacity_scale
+** 功能描述: 设置指定的调度域上指定的 cpu 的负载计算能力
+** 注     释: 设置的负载计算能力是以 SCHED_CAPACITY_SHIFT 为基准分母的，详情见 update_cpu_capacity
+** 输	 入: cpu - 指定的 cpu id
+**         : capacity - 指定的负载计算能力，单位是 DMIPS / MHZ
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void set_capacity_scale(unsigned int cpu, unsigned long capacity)
 {
 	per_cpu(cpu_scale, cpu) = capacity;

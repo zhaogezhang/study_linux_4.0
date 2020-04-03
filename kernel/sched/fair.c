@@ -410,8 +410,8 @@ static inline struct task_struct *task_of(struct sched_entity *se)
 
 /*********************************************************************************************************
 ** 函数名称: task_cfs_rq
-** 功能描述: 获取指定线程的调度实例所在的 cfs 运行队列指针
-** 输	 入: p - 指定线程的 task_struct 结构指针
+** 功能描述: 获取指定的调度实例所在的 cfs 运行队列指针
+** 输	 入: p - 指定的调度实例指针
 ** 输	 出: p->se.cfs_rq - 获取到的 cfs 运行队列指针
 ** 全局变量: 
 ** 调用模块: 
@@ -456,9 +456,8 @@ static void update_cfs_rq_blocked_load(struct cfs_rq *cfs_rq,
 
 /*********************************************************************************************************
 ** 函数名称: list_add_leaf_cfs_rq
-** 功能描述: 把指定的任务组的 cfs 运行队列添加到其所属的 cpu 运行队列上，并且需要保证我们添加的新
-**         : 任务组在链表上的位置要在其父任务组节点的前面
-** 注     释: 这个函数是在任务组功能中调用的
+** 功能描述: 把指定的 cfs 运行队列添加到其所属的 cpu 运行队列上，并且需要保证我们添加的新 cfs 运行队列
+**         : 在链表上的位置要在其父任务组节点的前面，详情见 enqueue_entity 函数
 ** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
 ** 输	 出: 
 ** 全局变量: 
@@ -509,7 +508,7 @@ static inline void list_del_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 /* Iterate thr' all leaf cfs_rq's on a runqueue */
 /*********************************************************************************************************
 ** 函数名称: for_each_leaf_cfs_rq
-** 功能描述: 遍历指定的 cpu 运行队列的所有任务组的 cfs 运行队列
+** 功能描述: 遍历指定的 cpu 运行队列的所有的 cfs 运行队列
 ** 输	 入: rq - 指定的 cpu 运行队列指针
 **         : cfs_rq - 遍历时使用的临时变量指针
 ** 输	 出: 
@@ -649,8 +648,8 @@ static inline struct rq *rq_of(struct cfs_rq *cfs_rq)
 
 /*********************************************************************************************************
 ** 函数名称: task_cfs_rq
-** 功能描述: 获取指定线程的调度实例所在的 cfs 运行队列指针
-** 输	 入: p - 指定线程的 task_struct 结构指针
+** 功能描述: 获取指定的调度实例所在的 cfs 运行队列指针
+** 输	 入: p - 指定的调度实例指针
 ** 输	 出: p->se.cfs_rq - 获取到的 cfs 运行队列指针
 ** 全局变量: 
 ** 调用模块: 
@@ -694,8 +693,8 @@ static inline struct cfs_rq *group_cfs_rq(struct sched_entity *grp)
 
 /*********************************************************************************************************
 ** 函数名称: list_add_leaf_cfs_rq
-** 功能描述: 把指定的 cfs 运行队列添加到其所属的 cpu 运行队列上
-** 注     释: 这个函数是在任务组功能中调用的
+** 功能描述: 把指定的 cfs 运行队列添加到其所属的 cpu 运行队列上，并且需要保证我们添加的新 cfs 运行队列
+**         : 在链表上的位置要在其父任务组节点的前面，详情见 enqueue_entity 函数
 ** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
 ** 输	 出: 
 ** 全局变量: 
@@ -720,7 +719,7 @@ static inline void list_del_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 
 /*********************************************************************************************************
 ** 函数名称: for_each_leaf_cfs_rq
-** 功能描述: 遍历指定的 cpu 运行队列的所有任务组的 cfs 运行队列
+** 功能描述: 遍历指定的 cpu 运行队列的所有的 cfs 运行队列
 ** 输	 入: rq - 指定的 cpu 运行队列指针
 **         : cfs_rq - 遍历时使用的临时变量指针
 ** 输	 出: 
@@ -3725,7 +3724,7 @@ static inline u64 __synchronize_entity_decay(struct sched_entity *se)
 #ifdef CONFIG_FAIR_GROUP_SCHED
 /*********************************************************************************************************
 ** 函数名称: __update_cfs_rq_tg_load_contrib
-** 功能描述: 更新指定的 cfs 运行队列的调度任务组对系统平均负载贡献值信息
+** 功能描述: 更新指定的 cfs 运行队列的调度任务组对系统综合平均负载贡献值信息
 ** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
 **         : force_update - 是否强制更新
 ** 输	 出: 
@@ -3880,7 +3879,7 @@ static inline void update_rq_runnable_avg(struct rq *rq, int runnable)
 
 /*********************************************************************************************************
 ** 函数名称: __update_cfs_rq_tg_load_contrib
-** 功能描述: 更新指定的 cfs 运行队列的调度任务组对系统平均负载贡献值信息
+** 功能描述: 更新指定的 cfs 运行队列的调度任务组对系统综合平均负载贡献值信息
 ** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
 **         : force_update - 是否强制更新
 ** 输	 出: 
@@ -4044,7 +4043,7 @@ static inline void update_entity_load_avg(struct sched_entity *se,
  */
 /*********************************************************************************************************
 ** 函数名称: update_cfs_rq_blocked_load
-** 功能描述: 更新指定的 cfs 运行队列的 blocked_load 负载数据信息
+** 功能描述: 更新指定的 cfs 运行队列的阻塞负载贡献值以及综合平均负载贡献值信息
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
 **         : force_update - 表示是否强制更新
 ** 输	 出: 
@@ -4147,7 +4146,7 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 ** 功能描述: 从指定的 cfs 运行队列中移除指定的调度实例时用来更新负载贡献相关数据
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
 **         : se - 指定的调度实例指针
-**         : sleep - 
+**         : sleep - 是否设置 DEQUEUE_SLEEP 标志
 ** 输	 出: 
 ** 全局变量: 
 ** 调用模块: 
@@ -4249,7 +4248,7 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 ** 功能描述: 从指定的 cfs 运行队列中移除指定的调度实例时用来更新负载贡献相关数据
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
 **         : se - 指定的调度实例指针
-**         : sleep - 
+**         : sleep - 是否设置 DEQUEUE_SLEEP 标志
 ** 输	 出: 
 ** 全局变量: 
 ** 调用模块: 
@@ -4260,7 +4259,7 @@ static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 
 /*********************************************************************************************************
 ** 函数名称: update_cfs_rq_blocked_load
-** 功能描述: 更新指定的 cfs 运行队列的 blocked_load 负载数据信息
+** 功能描述: 更新指定的 cfs 运行队列的阻塞负载贡献值以及综合平均负载贡献值信息
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
 **         : force_update - 表示是否强制更新
 ** 输	 出: 
@@ -4372,7 +4371,7 @@ static void check_spread(struct cfs_rq *cfs_rq, struct sched_entity *se)
 
 /*********************************************************************************************************
 ** 函数名称: place_entity
-** 功能描述: 根据函数指定的参数把指定的调度实例放到指定的 cfs 运行队列红黑树的对应位置处
+** 功能描述: 更新指定的 cfs 运行队列中指定的调度实例的虚拟时间信息
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
 **         : se - 指定的调度实例指针
 **         : initial - 是否初始化新的调度实例的虚拟运行时间
@@ -4434,7 +4433,13 @@ enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 	/*
 	 * Update the normalized vruntime before updating min_vruntime
 	 * through calling update_curr().
-	 */
+	 */	
+    /* 因为每个 cpu 都有自己的运行队列，每个队列中的进程的 vruntime 也走得有快有慢
+       如果一个进程从 min_vruntime 更小的 cpu(A) 上迁移到 min_vruntime 更大的 cpu(B)
+       上，可能就会占便宜了，因为 cpu(B) 的运行队列中进程的 vruntime 普遍比较大，迁
+       移过来的进程就会获得更多的 cpu 时间片，为了处理不同 cpu 运行队列之间存在的虚拟
+       运行时间差异，我们在一个任务 dequeue_entity 的时候会减去这个 cpu 运行队列的 
+       min_vruntime，而在 enqueue_entity 的时候会再加上新的 cpu 运行队列的 min_vruntime */
 	if (!(flags & ENQUEUE_WAKEUP) || (flags & ENQUEUE_WAKING))
 		se->vruntime += cfs_rq->min_vruntime;
 
@@ -4593,7 +4598,13 @@ dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 	 * Normalize the entity after updating the min_vruntime because the
 	 * update can refer to the ->curr item and we need to reflect this
 	 * movement in our normalized position.
-	 */
+	 */	
+    /* 因为每个 cpu 都有自己的运行队列，每个队列中的进程的 vruntime 也走得有快有慢
+       如果一个进程从 min_vruntime 更小的 cpu(A) 上迁移到 min_vruntime 更大的 cpu(B)
+       上，可能就会占便宜了，因为 cpu(B) 的运行队列中进程的 vruntime 普遍比较大，迁
+       移过来的进程就会获得更多的 cpu 时间片，为了处理不同 cpu 运行队列之间存在的虚拟
+       运行时间差异，我们在一个任务 dequeue_entity 的时候会减去这个 cpu 运行队列的 
+       min_vruntime，而在 enqueue_entity 的时候会再加上新的 cpu 运行队列的 min_vruntime */
 	if (!(flags & DEQUEUE_SLEEP))
 		se->vruntime -= cfs_rq->min_vruntime;
 
@@ -4814,7 +4825,7 @@ static void put_prev_entity(struct cfs_rq *cfs_rq, struct sched_entity *prev)
 ** 功能描述: 对当前正在运行的调度实例执行周期性操作，用来更新调度实例运行时统计信息
 ** 输	 入: cfs_rq- 指定的调度实例所属 cfs 运行队列指针
 **         : curr - 指定的当前正在运行的调度实例指针
-**         : queued - 
+**         : queued - 当前 tick 是否为 queued ticks
 ** 输	 出: 
 ** 全局变量: 
 ** 调用模块: 
@@ -5057,7 +5068,8 @@ static int assign_cfs_rq_runtime(struct cfs_rq *cfs_rq)
  */
 /*********************************************************************************************************
 ** 函数名称: expire_cfs_rq_runtime
-** 功能描述: 用来处理指定的 cfs 运行对列的 cfs_rq->runtime_expires 统计周期到期时间变量值
+** 功能描述: 在本地 cfs 运行队列的带宽控制周期超时时调用，用来处理本地 cfs 运行队列的 runtime_expires 
+**         : 和 runtime_remaining 字段变量值
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
 ** 输	 出: 
 ** 全局变量: 
@@ -5085,7 +5097,12 @@ static void expire_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 	 * cfs_b->runtime_expires without any locks since we only care about
 	 * exact equality, so a partial write will still work.
 	 */
+    /* 如果本地带宽控制超时期限已经达到，我们需要考虑是不是因为我们本地运行队列时钟
+	   比全局运行队列时钟跑得快，而导致误判为本地运行队列统计周期已经超时
 
+	   我们可以通过检查全局运行队列超时时间和本地运行队列超时时间是否相等决定是否发
+	   生了这种情况，因为在整个地方没持有锁，所以部分写操作仍然是有效的，但是我们只
+	   关心他们的 runtime_expires 是否相等，所以不持有锁也没有什么影响 */
 	if (cfs_rq->runtime_expires != cfs_b->runtime_expires) {
 		/* extend local deadline, drift is bounded above by 2 ticks */
 		cfs_rq->runtime_expires += TICK_NSEC;
@@ -5097,7 +5114,7 @@ static void expire_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 
 /*********************************************************************************************************
 ** 函数名称: __account_cfs_rq_runtime
-** 功能描述: 用来处理指定的 cfs 运行队列消耗的指定的运行时间
+** 功能描述: 用来处理指定的 cfs 运行队列消耗的指定的运行时间，主要在带宽控制时使用
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
 **         : delta_exec - 指定的运行时间
 ** 输	 出: 
@@ -5110,6 +5127,7 @@ static void __account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
 	cfs_rq->runtime_remaining -= delta_exec;
 	expire_cfs_rq_runtime(cfs_rq);
 
+    /* 判断当前 cfs 运行队列带宽控制时间片是否已经用尽 */
 	if (likely(cfs_rq->runtime_remaining > 0))
 		return;
 
@@ -5125,7 +5143,7 @@ static void __account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
 
 /*********************************************************************************************************
 ** 函数名称: account_cfs_rq_runtime
-** 功能描述: 用来处理指定的 cfs 运行队列消耗的指定的运行时间
+** 功能描述: 用来统计指定的 cfs 运行队列消耗的指定的运行时间，主要在带宽控制时使用
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
 **         : delta_exec - 指定的运行时间
 ** 输	 出: 
@@ -5939,7 +5957,7 @@ static inline u64 cfs_rq_clock_task(struct cfs_rq *cfs_rq)
 
 /*********************************************************************************************************
 ** 函数名称: account_cfs_rq_runtime
-** 功能描述: 用来处理指定的 cfs 运行队列消耗的指定的运行时间
+** 功能描述: 用来统计指定的 cfs 运行队列消耗的指定的运行时间，主要在带宽控制时使用
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
 **         : delta_exec - 指定的运行时间
 ** 输	 出: 
@@ -6318,7 +6336,7 @@ static void dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
 /* Used instead of source_load when we know the type == 0 */
 /*********************************************************************************************************
 ** 函数名称: weighted_cpuload
-** 功能描述: 获取指定的 cpu 的 cfs 运行队列的“加权”平均负载贡献统计信息
+** 功能描述: 获取指定的 cpu 的 cfs 运行队列在过去一段时间内经过衰减的“加权”平均负载贡献统计信息
 ** 输	 入: cpu - 指定的 cpu id 值
 ** 输	 出: long - “加权”平均负载贡献统计信息
 ** 全局变量: 
@@ -6383,6 +6401,7 @@ static unsigned long target_load(int cpu, int type)
 /*********************************************************************************************************
 ** 函数名称: capacity_of
 ** 功能描述: 获取指定的 cpu 的计算能力数据信息
+** 注     释: 这个计算能力是以 SCHED_CAPACITY_SCALE 为基准归一化后的计算能力
 ** 输	 入: cpu - 指定的 cpu id 值
 ** 输	 出: long - 计算能力数据信息
 ** 全局变量: 
@@ -7622,20 +7641,42 @@ static bool yield_to_task_fair(struct rq *rq, struct task_struct *p, bool preemp
 
 static unsigned long __read_mostly max_load_balance_interval = HZ/10;
 
-/* fbq - find busiest queue */
-/* regular - xxx->sum_nr_running > xxx->nr_numa_running
+/* fbq - find busiest queue
+   xxx->sum_nr_running       - 表示当前组/运行队列中实际运行的调度实例个数
+   xxx->nr_numa_running      - 表示当前组/运行队列中分配了 preferred numa id 的调度实例个数
+   xxx->nr_preferred_running - 表示当前组/运行队列中分配的 preferred numa id 等于当前 cpu 的
+                               numa id 的调度实例个数，即运行在理想 numa node 上的调度实例个数
 
-   remote  - xxx->sum_nr_running > xxx->nr_preferred_running &&
-             xxx->sum_nr_running < xxx->nr_numa_running
-             
-   all     - xxx->sum_nr_running < xxx->nr_preferred_running */
+   当前 linux 系统将组/运行队列分成三类，分别是 regular, remote, all，他们的具体含义如下：
+   regular - xxx->sum_nr_running > xxx->nr_numa_running，表示当前组/运行队列中包含非 numa 调度实例，即未
+             分配 preferred numa id 的调度实例
+
+   remote  - xxx->sum_nr_running > xxx->nr_preferred_running && xxx->sum_nr_running < xxx->nr_numa_running
+             表示当前组/运行队列中包含没有运行在理想 numa node 上的调度实例，即 preferred numa id 不等于
+             当前 cpu 的 numa id 的调度实例，在负载均衡迁移中，可以优先迁移这种调度实例
+
+   all     - xxx->sum_nr_running < xxx->nr_preferred_running，表示没有什么区别 */
 enum fbq_type { regular, remote, all };
 
 /* LBF - load balance flags */
+/* 表示在负载均衡任务迁移过程中，因为指定的过载 cpu 运行队列上的所有任务都因为
+   cpu 亲和力原因导致不能迁移到指定的目的 cpu 上，详情见 load_balance 函数和
+   can_migrate_task 函数 */
 #define LBF_ALL_PINNED	0x01
-#define LBF_NEED_BREAK	0x02  /* 详情见 detach_tasks 函数 */
+
+/* 表示在负载均衡任务迁移过程中，因为本次迁移的任务数已经超过设定的阈值而退出
+   详情见 detach_tasks 函数 */
+#define LBF_NEED_BREAK	0x02
+
+/* 表示在负载均衡任务迁移过程中，因为需要被迁移的任务因为 cpu 亲和力不能迁移到
+   指定的目的 cpu 上，但是这个任务可以迁移到指定的目的 cpu 所属组的其它 cpu 上
+   所以，我们可以通过把这个任务迁移到这个这个任务组的其他 cpu 上调节当前存在的
+   负载失衡，详情见 can_migrate_task 函数 */
 #define LBF_DST_PINNED  0x04
-#define LBF_SOME_PINNED	0x08  /* 详情见 can_migrate_task 函数 */
+
+/* 表示在负载均衡任务迁移过程中，因为迁移任务的亲和力导致不能迁移到目的 cpu 上
+   详情见 can_migrate_task 函数 */
+#define LBF_SOME_PINNED	0x08
 
 struct lb_env {
     /* 表示当前负载均衡环境所属调度域指针 */
@@ -7651,11 +7692,18 @@ struct lb_env {
 
     /* 表示当前目的调度组包含的 cpu 掩码值，这个变量是 struct lb_env.cpus 的子集 */
 	struct cpumask  *dst_grpmask;
-	
+
+	/* 表示在负载均衡任务迁移过程中，因为需要被迁移的任务因为 cpu 亲和力不能迁移到
+	   指定的目的 cpu 上，但是这个任务可以迁移到指定的目的 cpu 所属组的其它 cpu 上
+	   所以，我们可以通过把这个任务迁移到这个这个任务组的其他 cpu 上调节当前存在的
+	   负载失衡，new_dst_cpu 表示这个任务组的其他 cpu，详情见 can_migrate_task 函数 */
 	int			new_dst_cpu;
+
+	/* 表示当前正在运行的 cpu 的 idle 类型 */
 	enum cpu_idle_type	idle;
 
-	/* 表示当前负载均衡环境一共需要平衡的负载量 */
+	/* 表示当前负载均衡环境一共需要平衡的负载量（即已经失衡的负载量）
+	   详情见 check_asym_packing 和 fix_small_imbalance 函数 */
 	long			imbalance;
 	
 	/* The set of CPUs under consideration for load-balancing */
@@ -7672,6 +7720,7 @@ struct lb_env {
 	unsigned int		loop_break;
 	unsigned int		loop_max;
 
+    /* 表示当前负载均衡环境所属组/运行队列的 fbq 类型 */
 	enum fbq_type		fbq_type;
 
 	/* 在执行负载均衡操作时，会把源 cpu 运行队列的任务放到这个链表上，详情
@@ -8041,7 +8090,7 @@ static int detach_tasks(struct lb_env *env)
 		if (env->loop > env->loop_max)
 			break;
 
-		/* take a breather every nr_migrate tasks */
+		/* take a breather every nr_migrate tasks (env->loop_break = sched_nr_migrate_break) */
 		if (env->loop > env->loop_break) {
 			env->loop_break += sched_nr_migrate_break;
 			env->flags |= LBF_NEED_BREAK;
@@ -8175,7 +8224,7 @@ static void attach_tasks(struct lb_env *env)
  */
 /*********************************************************************************************************
 ** 函数名称: __update_blocked_averages_cpu 
-** 功能描述: 更新指定的 cpu 上指定的任务组 cfs 运行队列的 blocked 负载贡献统计值
+** 功能描述: 更新指定的 cpu 上指定的 cfs 运行队列的阻塞负载贡献值以及平均负载贡献值信息
 ** 输	 入: tg - 指定的任务组指针
 **         : cpu - 指定的 cpu id
 ** 输	 出: 
@@ -8214,7 +8263,7 @@ static void __update_blocked_averages_cpu(struct task_group *tg, int cpu)
 
 /*********************************************************************************************************
 ** 函数名称: update_blocked_averages 
-** 功能描述: 更新指定的 cpu 运行队列上所有任务组 cfs 运行队列的 blocked 负载贡献统计值
+** 功能描述: 更新指定的 cpu 运行队列上每一个 cfs 运行队列的阻塞负载贡献统计值
 ** 输	 入: cpu - 指定的 cpu id
 ** 输	 出: 
 ** 全局变量: 
@@ -8321,7 +8370,7 @@ static unsigned long task_h_load(struct task_struct *p)
 #else
 /*********************************************************************************************************
 ** 函数名称: update_blocked_averages 
-** 功能描述: 更新指定的 cpu 运行队列上所有任务组 cfs 运行队列的 blocked 负载贡献统计值
+** 功能描述: 更新指定的 cpu 运行队列上每一个 cfs 运行队列的阻塞负载贡献统计值
 ** 输	 入: cpu - 指定的 cpu id
 ** 输	 出: 
 ** 全局变量: 
@@ -8358,17 +8407,22 @@ enum group_type {
  * 详情见 update_sg_lb_stats 函数
  */
 struct sg_lb_stats {
-    /* 表示当前调度组所有负载贡献统计值平均分配到每个 cpu 上是多少 */
+	/* 表示的是当前调度组内所有和负载均衡任务迁移匹配的 cpu 在过去一段时间内经过衰减
+	   的平均负载贡献值占当前调度组的负载计算能力的百分比（乘以了精度因子），详情见 
+	   update_sg_lb_stats 函数，衰减函数见 __update_cpu_load 函数 */
 	unsigned long avg_load; /*Avg load across the CPUs of the group */
 
-    /* 表示当前调度组内所有和负载均衡任务迁移匹配的 cpu 的负载贡献总和 */
+    /* 表示当前调度组内所有和负载均衡任务迁移匹配的 cpu 在过去一段时间内经过衰减的负载
+       贡献总和，详情见 update_sg_lb_stats 函数，衰减函数见 __update_cpu_load 函数 */
 	unsigned long group_load; /* Total load over the CPUs of the group */
 
-	/* 表示当前调度组内所有和负载均衡任务迁移匹配的 cpu 的“加权”负载贡献统计值
-	   的总和(cpu_rq(cpu)->cfs.runnable_load_avg) */
+	/* 表示当前调度组内所有和负载均衡任务迁移匹配的 cpu 在过去一段时间内经过衰减的“加权”
+	   负载贡献统计值的总和，详情见 update_sg_lb_stats 函数，衰减函数见 update_entity_load_avg 函数 */
 	unsigned long sum_weighted_load; /* Weighted load of group's tasks */
 
-	/* 表示当前调度组内所有和负载均衡任务迁移匹配的 cpu 的“加权”负载贡献统计值平分到每个任务是多少 */
+	/* 表示当前调度组内所有和负载均衡任务迁移匹配的 cpu 在过去一段时间内经过衰减的“加权”
+	   负载贡献统计值平分到每个任务是多少，详情见 update_sg_lb_stats 函数，衰减函数见
+	   update_entity_load_avg 函数 */
 	unsigned long load_per_task;
 
 	/* 表示当前调度组的 cpu 在减去实时调度实例运行的时间后，给 cfs 调度实例剩余的负载计算能力 */
@@ -8414,24 +8468,25 @@ struct sd_lb_stats {
 	/* 表示当前调度域一共贡献的负载统计值 */
 	unsigned long total_load;	/* Total load of all groups in sd */
 
-	/* 表示当前调度域的负载能力 */
+	/* 表示当前调度域的负载计算能力 */
 	unsigned long total_capacity;	/* Total capacity of all groups in sd */
 
-	/* 表示当前调度域所有负载贡献统计值平均分配到每个调度组上是多少 */
+	/* 表示的是当前调度域的平均负载贡献值占当前调度域的负载计算能力的百分比（乘以了精度因子）
+       详情见 find_busiest_group 函数 */
 	unsigned long avg_load;	/* Average load across all groups in sd */
 
 	/* 表示当前调度域内最忙的调度组的负载均衡状态统计数据结构 */
 	struct sg_lb_stats busiest_stat;/* Statistics of the busiest group */
 
-	/* 表示当前调度域中的本地调度组的负载均衡状态统计数据结构 */
+	/* 表示当前调度域中的本地调度组（当前 cpu 所在调度组）的负载均衡状态统计数据结构 */
 	struct sg_lb_stats local_stat;	/* Statistics of the local group */
 };
 
 /*********************************************************************************************************
 ** 函数名称: init_sd_lb_stats
-** 功能描述: 初始化指定的调度域负载均衡状态统计数据结构
+** 功能描述: 初始化指定的调度域负载均衡状态统计数据结构到默认状态
 ** 输	 入: sds - 指定的负载均衡状态统计数据结构指针
-** 输	 出: 
+** 输	 出: sds - 初始化好的负载均衡状态统计数据结构指针
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -8495,11 +8550,11 @@ static inline int get_sd_load_idx(struct sched_domain *sd,
 
 /*********************************************************************************************************
 ** 函数名称: default_scale_capacity
-** 功能描述: 获取指定的调度域上指定的 cpu 的默认负载计算能力的缩放因子
-** 注     释: 获取到的负载计算能力缩放因子是以 SCHED_CAPACITY_SHIFT 为基准分母的，详情见 update_cpu_capacity
+** 功能描述: 获取指定的调度域上指定的 cpu 的默认频率负载计算能力缩放比
+** 注     释: 获取到的默认频率负载计算能力是以 SCHED_CAPACITY_SHIFT 为基准分母的，详情见 update_cpu_capacity
 ** 输	 入: sd - 指定的调度域指针
 **         : cpu - 指定的 cpu id
-** 输	 出: unsigned long - 默认负载计算能力的缩放因子
+** 输	 出: unsigned long - 默认频率负载计算能力缩放比
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -8510,11 +8565,12 @@ static unsigned long default_scale_capacity(struct sched_domain *sd, int cpu)
 
 /*********************************************************************************************************
 ** 函数名称: default_scale_capacity
-** 功能描述: 获取指定的调度域上指定的 cpu 的负载计算能力的缩放因子
-** 注     释: 获取到的负载计算能力缩放因子是以 SCHED_CAPACITY_SHIFT 为基准分母的，详情见 update_cpu_capacity
+** 功能描述: 获取指定的调度域上指定的 cpu 的频率负载计算能力缩放比
+** 注     释: 1. 获取到的负载计算能力是以 SCHED_CAPACITY_SHIFT 为基准分母的，详情见 update_cpu_capacity
+**         : 2. 这是个虚函数，可以在 arch 里面重新实现，如果 arch 没实现，则使用这个函数
 ** 输	 入: sd - 指定的调度域指针
 **         : cpu - 指定的 cpu id
-** 输	 出: unsigned long - 负载计算能力的缩放因子
+** 输	 出: unsigned long - 频率负载计算能力缩放比
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -8525,11 +8581,11 @@ unsigned long __weak arch_scale_freq_capacity(struct sched_domain *sd, int cpu)
 
 /*********************************************************************************************************
 ** 函数名称: default_scale_capacity
-** 功能描述: 获取指定的调度域上指定的 cpu 默认 cpu 负载计算能力的缩放因子
-** 注     释: 获取到的负载计算能力缩放因子是以 SCHED_CAPACITY_SHIFT 为基准分母的，详情见 update_cpu_capacity
+** 功能描述: 获取指定的调度域上指定的 cpu 默认 cpu 负载计算能力
+** 注     释: 获取到的负载计算能力是以 SCHED_CAPACITY_SHIFT 为基准分母的，详情见 update_cpu_capacity
 ** 输	 入: sd - 指定的调度域指针
 **         : cpu - 指定的 cpu id
-** 输	 出: unsigned long - 负载计算能力的缩放因子
+** 输	 出: unsigned long - 负载计算能力，单位是 DMIPS / MHZ
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -8542,12 +8598,13 @@ static unsigned long default_scale_cpu_capacity(struct sched_domain *sd, int cpu
 }
 
 /*********************************************************************************************************
-** 函数名称: default_scale_capacity
-** 功能描述: 获取指定的调度域上指定的 cpu 的负载计算能力的缩放因子
-** 注     释: 获取到的负载计算能力缩放因子是以 SCHED_CAPACITY_SHIFT 为基准分母的，详情见 update_cpu_capacity
+** 函数名称: arch_scale_cpu_capacity
+** 功能描述: 获取指定的调度域上指定的 cpu 的负载计算能力
+** 注     释: 1. 获取到的负载计算能力是以 SCHED_CAPACITY_SHIFT 为基准分母的，详情见 update_cpu_capacity
+**         : 2. 这是个虚函数，可以在 arch 里面重新实现，如果 arch 没实现，则使用这个函数
 ** 输	 入: sd - 指定的调度域指针
 **         : cpu - 指定的 cpu id
-** 输	 出: unsigned long - 负载计算能力的缩放因子
+** 输	 出: unsigned long - 负载计算能力，单位是 DMIPS / MHZ
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -8559,9 +8616,9 @@ unsigned long __weak arch_scale_cpu_capacity(struct sched_domain *sd, int cpu)
 /*********************************************************************************************************
 ** 函数名称: scale_rt_capacity
 ** 功能描述: 获取指定的 cpu 上把实时调度实例运行时间去除之后为 cfs 调度实例剩余的负载计算能力所占比例
-** 注     释: 获取到的负载计算能力缩放因子是以 SCHED_CAPACITY_SHIFT 为基准分母的，详情见 update_cpu_capacity
+** 注     释: 获取到的负载计算能力扩大了 SCHED_CAPACITY_SCALE 倍，详情见 update_cpu_capacity
 ** 输	 入: cpu - 指定的 cpu id
-** 输	 出: unsigned long - 剩余的负载计算能力所占比例
+** 输	 出: unsigned long - 剩余的负载计算能力所占比例，扩大了 SCHED_CAPACITY_SCALE 倍
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -8594,16 +8651,41 @@ static unsigned long scale_rt_capacity(int cpu)
 	if (unlikely((s64)total < SCHED_CAPACITY_SCALE))
 		total = SCHED_CAPACITY_SCALE;
 
-    /* 因为获取到的负载计算能力缩放因子是以 SCHED_CAPACITY_SHIFT 为基准分母的
-       所以这个位置需要执行 total >>= SCHED_CAPACITY_SHIFT 操作 */
 	total >>= SCHED_CAPACITY_SHIFT;
 
+    /* avg   = rq->rt_avg
+    
+       total = sched_avg_period() + delta
+
+       delta = __rq_clock_broken(rq) - age_stamp
+             = rq->clock - rq->age_stamp
+             
+       available = total - avg 
+                 = sched_avg_period() + delta - avg 
+                 = sched_avg_period() + delta - rq->rt_avg 
+                 
+       return = available / (total >> SCHED_CAPACITY_SHIFT)
+       
+              = (sched_avg_period() + delta - rq->rt_avg) / ((sched_avg_period() + delta) >> SCHED_CAPACITY_SHIFT)
+              
+                     sched_avg_period() + delta - rq->rt_avg
+              = ----------------------------------------------------
+                (sched_avg_period() + delta) >> SCHED_CAPACITY_SHIFT
+                                           
+                      0.5S + delta - rq->rt_avg
+              = --------------------------------------
+                (0.5S + delta) >> SCHED_CAPACITY_SHIFT
+
+                0.5S + rq->clock - rq->age_stamp - rq->rt_avg
+              = --------------------------------------------- << SCHED_CAPACITY_SHIFT
+                      0.5S + rq->clock - rq->age_stamp     */
 	return div_u64(available, total);
 }
 
 /*********************************************************************************************************
 ** 函数名称: update_cpu_capacity
-** 功能描述: 更新指定的调度域上指定 cpu 的负载计算能力信息
+** 功能描述: 更新指定的调度域上指定 cpu 的负载计算能力信息，这些负载计算能力是以 SCHED_CAPACITY_SCALE
+**         : 为基准归一化后的数值
 ** 输	 入: sd - 指定的调度域指针
 **         : cpu - 指定的 cpu id
 ** 输	 出: 
@@ -8615,15 +8697,16 @@ static void update_cpu_capacity(struct sched_domain *sd, int cpu)
 	unsigned long capacity = SCHED_CAPACITY_SCALE;
 	struct sched_group *sdg = sd->groups;
 
+    /* 计算指定 cpu 在全速运行状态下的 cpu capacity */
 	if (sched_feat(ARCH_CAPACITY))
 		capacity *= arch_scale_cpu_capacity(sd, cpu);
 	else
 		capacity *= default_scale_cpu_capacity(sd, cpu);
 
 	capacity >>= SCHED_CAPACITY_SHIFT;
-
 	sdg->sgc->capacity_orig = capacity;
 
+    /* 计算指定 cpu 在指定频率运行状态下的 cpu capacity */
 	if (sched_feat(ARCH_CAPACITY))
 		capacity *= arch_scale_freq_capacity(sd, cpu);
 	else
@@ -8631,19 +8714,22 @@ static void update_cpu_capacity(struct sched_domain *sd, int cpu)
 
 	capacity >>= SCHED_CAPACITY_SHIFT;
 
+    /* 计算指定 cpu 在指定频率运行状态下移除 rt 调度类后为 cfs 调度类剩余的 cpu capacity */
 	capacity *= scale_rt_capacity(cpu);
 	capacity >>= SCHED_CAPACITY_SHIFT;
 
 	if (!capacity)
 		capacity = 1;
 
+    /* 因为在调度域最下层的调度组中只有一个 cpu，所以我们把 cpu 的 capacity 存储在了他的调度组结构中 */
 	cpu_rq(cpu)->cpu_capacity = capacity;
 	sdg->sgc->capacity = capacity;
 }
 
 /*********************************************************************************************************
 ** 函数名称: update_group_capacity
-** 功能描述: 更新指定的调度域的负载计算能力信息
+** 功能描述: 更新指定的调度域上指定 cpu 所在调度组的负载计算能力信息，这些负载计算能力是以
+**         : SCHED_CAPACITY_SCALE 为基准归一化后的数值
 ** 输	 入: sd - 指定的调度域指针
 **         : cpu - 指定的 cpu id
 ** 输	 出: 
@@ -8661,6 +8747,7 @@ void update_group_capacity(struct sched_domain *sd, int cpu)
 	interval = clamp(interval, 1UL, max_load_balance_interval);
 	sdg->sgc->next_update = jiffies + interval;
 
+    /* 如果已经到了调度域最底层，即一个调度组内只有一个 cpu，则直接更新这个 cpu 的 capacity 并返回 */
 	if (!child) {
 		update_cpu_capacity(sd, cpu);
 		return;
@@ -8673,7 +8760,7 @@ void update_group_capacity(struct sched_domain *sd, int cpu)
 		 * SD_OVERLAP domains cannot assume that child groups
 		 * span the current group.
 		 */
-        /* 遍历当前调度组内每一个 cpu 并统计他们的负载计算能力 */
+        /* 如果子调度组之间存在交叉 cpu，则遍历指定调度组内每一个 cpu 并统计他们的负载计算能力 */
 		for_each_cpu(cpu, sched_group_cpus(sdg)) {
 			struct sched_group_capacity *sgc;
 			struct rq *rq = cpu_rq(cpu);
@@ -8706,7 +8793,7 @@ void update_group_capacity(struct sched_domain *sd, int cpu)
 		 * !SD_OVERLAP domains can assume that child groups
 		 * span the current group.
 		 */ 
-		/* 当前调度域内所有调度组的负载能力之和就是就是当前调度域的负载能力信息 */
+		/* 如果子调度组之间没有交叉 cpu，则统计指定调度域子节点的所有调度组的负载能力 */
 		group = child->groups;
 		do {
 			capacity_orig += group->sgc->capacity_orig;
@@ -8810,16 +8897,28 @@ static inline int sg_capacity_factor(struct lb_env *env, struct sched_group *gro
 	capacity_orig = group->sgc->capacity_orig;
 	cpus = group->group_weight;
 
-	/* smt := ceil(cpus / capacity), assumes: 1 < smt_capacity < 2 */
+	/* smt := ceil(SCHED_CAPACITY_SCALE * cpus / capacity_orig)，assumes: 1 < smt_capacity < 2
+
+	   因为 capacity_orig 是当前调度组内所有 cpu 负载计算能力在归一化后的总和，所以
+	   
+		  capacity_orig
+	   -------------------- 就是当前调度组一共可以运行的调度任务个数，所以
+	   SCHED_CAPACITY_SCALE
+	   
+                       capacity_orig
+	   1 / smt = --------------------------- 就是当前调度组内每个 cpu 平均可以运行的调度任务个数
+	             SCHED_CAPACITY_SCALE * cpus */
 	smt = DIV_ROUND_UP(SCHED_CAPACITY_SCALE * cpus, capacity_orig);
 
-	/* capacity_factor = cpus / (ceil(cpus / capacity_orig))
-	                   = cpus * (ceil(capacity_orig / cpus))
-	                   = ceil(capacity_orig) */
+	/* 因为 1 / smt 是当前调度组内每个 cpu 平均可以运行的调度任务个数，所以
+	   capacity_factor = cpus * (1 / smt) 就是当前调度组一共可以运行的调度任务个数
+	   capacity_factor 的值是经过向上取整计算后得出的 */
 	capacity_factor = cpus / smt; /* cores */
 
+    /* 从向上取整计算结果和四舍五入计算结果中取较小值作为最终结果 */
 	capacity_factor = min_t(unsigned,
 		capacity_factor, DIV_ROUND_CLOSEST(capacity, SCHED_CAPACITY_SCALE));
+	
 	if (!capacity_factor)
 		capacity_factor = fix_small_capacity(env->sd, group);
 
@@ -8828,10 +8927,10 @@ static inline int sg_capacity_factor(struct lb_env *env, struct sched_group *gro
 
 /*********************************************************************************************************
 ** 函数名称: group_classify
-** 功能描述: 根据指定的调度组负载均衡统计数据获取指定调度组的类别信息
+** 功能描述: 根据指定的调度组负载均衡统计数据获取指定调度组的负载状态类别信息
 ** 输	 入: group - 指定的调度组指针
 **         : sgs - 指定的调度组负载均衡统计数据结构指针
-** 输	 出: group_type - 调度组所属类别
+** 输	 出: group_type - 调度组的负载状态类别信息
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -8906,6 +9005,8 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 
 	/* Adjust by relative CPU capacity of the group */
 	sgs->group_capacity = group->sgc->capacity;
+
+	/* 计算当前调度组的平均负载贡献值占当前调度组的负载计算能力的百分比（乘以了精度因子）*/
 	sgs->avg_load = (sgs->group_load*SCHED_CAPACITY_SCALE) / sgs->group_capacity;
 
 	if (sgs->sum_nr_running)
@@ -8983,7 +9084,7 @@ static bool update_sd_pick_busiest(struct lb_env *env,
 #ifdef CONFIG_NUMA_BALANCING
 /*********************************************************************************************************
 ** 函数名称: fbq_classify_group
-** 功能描述: 根据指定的调度组负载均衡状态统计数据获取它的 fbq 类型
+** 功能描述: 根据指定的调度组状态获取它的 fbq 类型
 ** 输	 入: sgs - 指定的调度组负载均衡状态统计数据结构指针
 ** 输	 出: fbq_type - 获取到的 fbq 类型
 ** 全局变量: 
@@ -9017,7 +9118,7 @@ static inline enum fbq_type fbq_classify_rq(struct rq *rq)
 #else
 /*********************************************************************************************************
 ** 函数名称: fbq_classify_group
-** 功能描述: 根据指定的调度组负载均衡状态统计数据获取它的 fbq 类型
+** 功能描述: 根据指定的调度组状态获取它的 fbq 类型
 ** 输	 入: sgs - 指定的调度组负载均衡状态统计数据结构指针
 ** 输	 出: fbq_type - 获取到的 fbq 类型
 ** 全局变量: 
@@ -9049,7 +9150,7 @@ static inline enum fbq_type fbq_classify_rq(struct rq *rq)
  */
 /*********************************************************************************************************
 ** 函数名称: update_sd_lb_stats
-** 功能描述: 根据指定的负载均衡环境更新指定的调度域负载均衡状态统计结构数据
+** 功能描述: 根据指定的负载均衡环境更新指定的调度域的负载能力和计算能力信息并找出本地调度组和最忙调度组
 ** 输	 入: env - 指定的负载均衡环境指针
 ** 输	 出: sds - 指定的调度域负载均衡状态统计结构指针
 ** 全局变量: 
@@ -9068,7 +9169,7 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 
 	load_idx = get_sd_load_idx(env->sd, env->idle);
 
-    /* 遍历指定的调度域内的所有调度组，统计所有调度组的负载能力和计算能力信息 */
+    /* 遍历指定的调度域内的所有调度组，更新调度域的负载能力和计算能力信息并找出最忙的调度组 */
 	do {
 		struct sg_lb_stats *sgs = &tmp_sgs;
 		int local_group;
@@ -9083,6 +9184,7 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 				update_group_capacity(env->sd, env->dst_cpu);
 		}
 
+        /* 更新当前调度组的负载均衡统计数据信息 */
 		update_sg_lb_stats(env, sg, load_idx, local_group, sgs,
 						&overload);
 
@@ -9105,6 +9207,7 @@ static inline void update_sd_lb_stats(struct lb_env *env, struct sd_lb_stats *sd
 			sgs->group_type = group_classify(sg, sgs);
 		}
 
+        /* 找出最忙的调度组 */
 		if (update_sd_pick_busiest(env, sds, sg, sgs)) {
 			sds->busiest = sg;
 			sds->busiest_stat = *sgs;
@@ -9121,6 +9224,7 @@ next_group:
 	if (env->sd->flags & SD_NUMA)
 		env->fbq_type = fbq_classify_group(&sds->busiest_stat);
 
+    /* 如果当前负载均衡环境指定的调度域是调度域属性结构的根节点，则更新根调度域的过载标识变量值 */
 	if (!env->sd->parent) {
 		/* update overload indicator if we are at root domain */
 		if (env->dst_rq->rd->overload != overload)
@@ -9152,6 +9256,22 @@ next_group:
  * @env: The load balancing environment.
  * @sds: Statistics of the sched_domain which is to be packed
  */
+/* SD_ASYM_PACKING 原则是什么：
+   因为在类似 POWER7 核心中，在 cpu id 较低的 cpu 上运行 SMT 将会有更好的性能
+   （因为他们共享更少的核心运算单元），所以我们要尽量把处于运行状态的 SMT 线程
+   迁移到 cpu id 较小的 cpu 核上，而把处于 idle 状态的 SMT 线程迁移到 cpu id
+   较大的 cpu 核上，这样会是系统性能更高（这个函数运行在 idle cpu 上）*/
+/*********************************************************************************************************
+** 函数名称: check_asym_packing
+** 功能描述: 根据指定的函数参数检查是否可以根据 SD_ASYM_PACKING 原则向当前 cpu 上迁移任务
+** 输	 入: env - 指定的负载均衡环境指针
+**         : sds - 指定的调度域负载均衡状态统计结构指针
+** 输	 出: env->imbalance - 当前负载均衡环境一共需要平衡的负载量（即已经失衡的负载量）
+**         : 1 - 可以向当前 cpu 迁移任务
+**         : 0 - 不可以向当前 cpu 迁移任务
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int check_asym_packing(struct lb_env *env, struct sd_lb_stats *sds)
 {
 	int busiest_cpu;
@@ -9162,6 +9282,9 @@ static int check_asym_packing(struct lb_env *env, struct sd_lb_stats *sds)
 	if (!sds->busiest)
 		return 0;
 
+    /* busiest_cpu 表示的是负载较高的 cpu id，而 env->dst_cpu 表示的是负载较低的 cpu id 
+	   这个地方在判断负载较低的 cpu 的 id 值是否要比负载较高的 cpu 的 id 值大，如果负载
+	   低的 cpu id 值比较大，表示和 SD_ASYM_PACKING 原则相违背，所以我们不能进行任务迁移 */
 	busiest_cpu = group_first_cpu(sds->busiest);
 	if (env->dst_cpu > busiest_cpu)
 		return 0;
@@ -9180,6 +9303,17 @@ static int check_asym_packing(struct lb_env *env, struct sd_lb_stats *sds)
  * @env: The load balancing environment.
  * @sds: Statistics of the sched_domain whose imbalance is to be calculated.
  */
+/*********************************************************************************************************
+** 函数名称: fix_small_imbalance
+** 功能描述: 在计算指定调度域内调度组间负载失衡时，如果这些调度组之间的负载失衡较小，不足以迁移一个任务
+**         : 的时候，会通过这个函数来处理这种微小不平衡，尝试将负载失衡量向上取整到一个任务的负载量，这
+**         : 样就可以进行任务迁移操作了
+** 输	 入: env - 指定的负载均衡环境指针
+**         : sds - 指定的调度域负载均衡状态统计结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline
 void fix_small_imbalance(struct lb_env *env, struct sd_lb_stats *sds)
 {
@@ -9196,10 +9330,14 @@ void fix_small_imbalance(struct lb_env *env, struct sd_lb_stats *sds)
 	else if (busiest->load_per_task > local->load_per_task)
 		imbn = 1;
 
+    /* 计算指定调度域中最忙调度组中每个任务在过去一段时间内经过衰减“加权”的
+       负载贡献占这个调度组的负载计算能力的百分比（乘以了精度因子）*/
 	scaled_busy_load_per_task =
 		(busiest->load_per_task * SCHED_CAPACITY_SCALE) /
 		busiest->group_capacity;
 
+    /* 为了能够执行负载失衡任务迁移操作，如果指定调度域内最忙调度组比当前调度组的平均
+	   负载贡献值大指定阈值时，将失衡负载量向上取整到一个 busiest->load_per_task */
 	if (busiest->avg_load + scaled_busy_load_per_task >=
 	    local->avg_load + (scaled_busy_load_per_task * imbn)) {
 		env->imbalance = busiest->load_per_task;
@@ -9211,7 +9349,6 @@ void fix_small_imbalance(struct lb_env *env, struct sd_lb_stats *sds)
 	 * however we may be able to increase total CPU capacity used by
 	 * moving them.
 	 */
-
 	capa_now += busiest->group_capacity *
 			min(busiest->load_per_task, busiest->avg_load);
 	capa_now += local->group_capacity *
@@ -9249,6 +9386,15 @@ void fix_small_imbalance(struct lb_env *env, struct sd_lb_stats *sds)
  * @env: load balance environment
  * @sds: statistics of the sched_domain whose imbalance is to be calculated.
  */
+/*********************************************************************************************************
+** 函数名称: calculate_imbalance
+** 功能描述: 根据函数参数计算指定调度域内最忙调度组的最小负载失衡量
+** 输	 入: env - 指定的负载均衡环境指针
+**         : sds - 指定的调度域负载均衡状态统计结构指针
+** 输	 出: env->imbalance - 指定的调度域内最忙调度组的最小负载失衡量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *sds)
 {
 	unsigned long max_pull, load_above_capacity = ~0UL;
@@ -9285,7 +9431,10 @@ static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *s
 		load_above_capacity =
 			(busiest->sum_nr_running - busiest->group_capacity_factor);
 
+        /* 表示的是过载任务贡献的负载量（乘以了精度因子）*/
 		load_above_capacity *= (SCHED_LOAD_SCALE * SCHED_CAPACITY_SCALE);
+
+		/* 表示的是过载任务贡献的负载量占当前调度组的负载计算能力的百分比（乘以了精度因子）*/
 		load_above_capacity /= busiest->group_capacity;
 	}
 
@@ -9297,9 +9446,17 @@ static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *s
 	 * (so that we can implement power-savings policies etc). Thus we look
 	 * for the minimum possible imbalance.
 	 */
+	/* 我们尝试将所有的 cpu 负载都平衡到当前调度域的平均负载，因此我们不想让
+	   当前 cpu 的负载超过当前调度域的平均负载，也不希望将 cpu 的最大负载降低
+	   到低于当前调度域的平均负载。同时，我们也不希望将实际运行负载降低到低于
+	   组负载计算能力(以便我们可以实现省电策略等)。因此，我们需要寻找可能的最
+	   小不平衡 */
+
+    /* 计算指定调度域内最忙调度组的最小负载失衡量百分比（乘以了精度因子）*/
 	max_pull = min(busiest->avg_load - sds->avg_load, load_above_capacity);
 
 	/* How much load to actually move to equalise the imbalance */
+    /* 计算指定调度域内最忙调度组的最小负载失衡量 */
 	env->imbalance = min(
 		max_pull * busiest->group_capacity,
 		(sds->avg_load - local->avg_load) * local->group_capacity
@@ -9334,6 +9491,15 @@ static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *s
  *		   return the least loaded group whose CPUs can be
  *		   put to idle by rebalancing its tasks onto our group.
  */
+/*********************************************************************************************************
+** 函数名称: find_busiest_group
+** 功能描述: 根据指定的负载均衡环境找出指定的调度域内最忙调度组并计算最忙调度组的最小负载失衡量
+** 输	 入: env - 指定的负载均衡环境指针
+** 输	 出: sds.busiest - 最忙调度组指针
+**         : env->imbalance - 最忙调度组的最小负载失衡量
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static struct sched_group *find_busiest_group(struct lb_env *env)
 {
 	struct sg_lb_stats *local, *busiest;
@@ -9357,6 +9523,7 @@ static struct sched_group *find_busiest_group(struct lb_env *env)
 	if (!sds.busiest || busiest->sum_nr_running == 0)
 		goto out_balanced;
 
+	/* 计算当前调度域的平均负载贡献值占当前调度域的负载计算能力的百分比（乘以了精度因子）*/
 	sds.avg_load = (SCHED_CAPACITY_SCALE * sds.total_load)
 						/ sds.total_capacity;
 
@@ -9421,6 +9588,15 @@ out_balanced:
 /*
  * find_busiest_queue - find the busiest runqueue among the cpus in group.
  */
+/*********************************************************************************************************
+** 函数名称: find_busiest_queue
+** 功能描述: 根据指定的负载均衡环境查找指定的调度组内最忙的 cpu 运行队列
+** 输	 入: env - 指定的负载均衡环境指针
+**         : group - 指定的最忙调度组指针
+** 输	 出: busiest - 最忙 cpu 运行队列指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static struct rq *find_busiest_queue(struct lb_env *env,
 				     struct sched_group *group)
 {
@@ -9428,6 +9604,7 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 	unsigned long busiest_load = 0, busiest_capacity = 1;
 	int i;
 
+    /* 遍历指定的最忙调度组内和负载均衡任务迁移目的 cpu 匹配的 cpu */
 	for_each_cpu_and(i, sched_group_cpus(group), env->cpus) {
 		unsigned long capacity, capacity_factor, wl;
 		enum fbq_type rt;
@@ -9468,6 +9645,9 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 		 * When comparing with imbalance, use weighted_cpuload()
 		 * which is not scaled with the cpu capacity.
 		 */
+		/* env->imbalance = min(max_pull * busiest->group_capacity, 
+		                       (sds->avg_load - local->avg_load) * local->group_capacity)
+		                       / SCHED_CAPACITY_SCALE; */
 		if (capacity_factor && rq->nr_running == 1 && wl > env->imbalance)
 			continue;
 
@@ -9482,6 +9662,13 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 		 * to: wl_i * capacity_j > wl_j * capacity_i;  where j is
 		 * our previous maximum.
 		 */
+		/* 因为 wl * busiest_capacity > busiest_load * capacity，所以
+		
+              wl        busiest_load
+           -------- > ----------------
+           capacity   busiest_capacity   
+
+           即我们选择平均加权衰减负载贡献值和 cpu 负载计算能力比值最大的 cpu 运行队列 */
 		if (wl * busiest_capacity > busiest_load * capacity) {
 			busiest_load = wl;
 			busiest_capacity = capacity;
@@ -9499,8 +9686,18 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 #define MAX_PINNED_INTERVAL	512
 
 /* Working cpumask for load_balance and load_balance_newidle. */
+/* 表示当前 cpu 负载均衡环境可以用来执行负载均衡的所有目的 cpu 候选者掩码值 */
 DEFINE_PER_CPU(cpumask_var_t, load_balance_mask);
 
+/*********************************************************************************************************
+** 函数名称: need_active_balance
+** 功能描述: 根据指定的负载均衡环境判断当前是否需要执行负载均衡操作
+** 输	 入: env - 指定的负载均衡环境指针
+** 输	 出: 1 - 需要执行负载均衡操作
+**         : 0 - 不需要执行负载均衡操作
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int need_active_balance(struct lb_env *env)
 {
 	struct sched_domain *sd = env->sd;
@@ -9521,6 +9718,15 @@ static int need_active_balance(struct lb_env *env)
 
 static int active_load_balance_cpu_stop(void *data);
 
+/*********************************************************************************************************
+** 函数名称: need_active_balance
+** 功能描述: 根据指定的负载均衡环境判断“是否可以”执行负载均衡操作
+** 输	 入: env - 指定的负载均衡环境指针
+** 输	 出: 1 - 可以执行负载均衡操作
+**         : 0 - 不可以执行负载均衡操作
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int should_we_balance(struct lb_env *env)
 {
 	struct sched_group *sg = env->sd->groups;
@@ -9536,6 +9742,7 @@ static int should_we_balance(struct lb_env *env)
 
 	sg_cpus = sched_group_cpus(sg);
 	sg_mask = sched_group_mask(sg);
+	
 	/* Try to find first idle cpu */
 	for_each_cpu_and(cpu, sg_cpus, env->cpus) {
 		if (!cpumask_test_cpu(cpu, sg_mask) || !idle_cpu(cpu))
@@ -9559,6 +9766,19 @@ static int should_we_balance(struct lb_env *env)
  * Check this_cpu to ensure it is balanced within domain. Attempt to move
  * tasks if there is an imbalance.
  */
+/*********************************************************************************************************
+** 函数名称: load_balance
+** 功能描述: 尝试从指定的调度域内最忙 cpu 运行队列中迁移任务到当前 cpu 的运行队列上，使这两个 cpu
+**         : 运行队列的负载处于平衡状态
+** 输	 入: this_cpu - 指定的当前 cpu id
+**         : this_rq - 指定的当前 cpu 运行队列指针
+**         : sd - 指定的调度域指针
+**         : idle - 指定的当前 cpu 的 idle 类型
+** 输	 出: continue_balancing - 表示当前函数返回后是否需要继续指定负载均衡操作
+**         : ld_moved - 成功迁移的任务数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int load_balance(int this_cpu, struct rq *this_rq,
 			struct sched_domain *sd, enum cpu_idle_type idle,
 			int *continue_balancing)
@@ -9599,12 +9819,14 @@ redo:
 		goto out_balanced;
 	}
 
+    /* 根据指定的负载均衡环境找出指定的调度域内最忙调度组并计算最忙调度组的最小负载失衡量 */
 	group = find_busiest_group(&env);
 	if (!group) {
 		schedstat_inc(sd, lb_nobusyg[idle]);
 		goto out_balanced;
 	}
 
+    /* 根据指定的负载均衡环境查找指定的调度组内最忙的 cpu 运行队列 */
 	busiest = find_busiest_queue(&env, group);
 	if (!busiest) {
 		schedstat_inc(sd, lb_nobusyq[idle]);
@@ -9678,6 +9900,18 @@ more_balance:
 		 * moreover subsequent load balance cycles should correct the
 		 * excess load moved.
 		 */
+		/* 重新访问源 cpu 上那些不可以迁移到当前 cpu 但是可以迁移到当前 cpu 所属调度组
+		   的其他 cpu 上运行的任务，我们迭代访问源 cpu 的次数取决于当前 cpu 所属调度组
+		   上包含的 cpu 个数
+
+           (ilb - idle load balance)
+           这在一定程度上改变了负载均衡的语义（即我们需要将负载迁移到指定的 cpu 上的语义）
+           除了指定的 cpu 之外（或者在指定的 cpu 是 nohz-idle 状态时，让处于 ilb_cpu 代替
+           它执行），我们现在还可以将 balance_cpu 的负载迁移到指定的 cpu 上面，在很少的情
+           景下，这可能会出现冲突（即 balance_cpu 和指定的 cpu 或者 ilb_cpu 决定相互独立并
+           在同一时间向指定的 cpu 上迁移负载），这将会导致迁移过多的负载到指定的 cpu 上。
+           然而，在实际情况中这种情景是很少发生的，即使出现了这种情景，在随后的负载平衡周
+           期中也会把过多迁移的负载平衡回来 */
 		if ((env.flags & LBF_DST_PINNED) && env.imbalance > 0) {
 
 			/* Prevent to re-select dst_cpu via env's cpus */
@@ -9708,6 +9942,8 @@ more_balance:
 
 		/* All tasks on this runqueue were pinned by CPU affinity */
 		if (unlikely(env.flags & LBF_ALL_PINNED)) {
+		    /* 从候选 cpu 列表中清除当前选择的目的 cpu 并尝试重新执行负载
+		       均衡任务迁移操作 */
 			cpumask_clear_cpu(cpu_of(busiest), cpus);
 			if (!cpumask_empty(cpus)) {
 				env.loop = 0;
@@ -9729,6 +9965,7 @@ more_balance:
 		if (idle != CPU_NEWLY_IDLE)
 			sd->nr_balance_failed++;
 
+        /* 如果一个任务都没有迁移成功并且当前需要执行负载均衡任务迁移，则执行下面的操作 */
 		if (need_active_balance(&env)) {
 			raw_spin_lock_irqsave(&busiest->lock, flags);
 
@@ -9821,6 +10058,15 @@ out:
 	return ld_moved;
 }
 
+/*********************************************************************************************************
+** 函数名称: get_sd_balance_interval
+** 功能描述: 获取指定调度域内的负载均衡操作周期时间间隔，单位是 jiffies 周期数
+** 输	 入: sd - 指定的调度域指针
+**         : cpu_busy - 表示当前正在运行的 cpu 是否忙
+** 输	 出: interval - 执行负载均衡操作周期时间间隔，单位是 jiffies 周期数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline unsigned long
 get_sd_balance_interval(struct sched_domain *sd, int cpu_busy)
 {
@@ -9836,6 +10082,16 @@ get_sd_balance_interval(struct sched_domain *sd, int cpu_busy)
 	return interval;
 }
 
+/*********************************************************************************************************
+** 函数名称: update_next_balance
+** 功能描述: 尝试把指定的调度域的 next_balance 值提前到计算出的 next 值位置
+** 输	 入: sd - 指定的调度域指针
+**         : cpu_busy - 表示当前正在运行的 cpu 是否忙
+**         : next_balance - 指定的 next_balance 变量指针
+** 输	 出: next_balance - 指定的 next_balance 变量指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void
 update_next_balance(struct sched_domain *sd, int cpu_busy, unsigned long *next_balance)
 {
@@ -9844,6 +10100,7 @@ update_next_balance(struct sched_domain *sd, int cpu_busy, unsigned long *next_b
 	interval = get_sd_balance_interval(sd, cpu_busy);
 	next = sd->last_balance + interval;
 
+    /* 把指定的 next_balance 值提前到 next 指定的位置 */
 	if (time_after(*next_balance, next))
 		*next_balance = next;
 }
@@ -9852,14 +10109,25 @@ update_next_balance(struct sched_domain *sd, int cpu_busy, unsigned long *next_b
  * idle_balance is called by schedule() if this_cpu is about to become
  * idle. Attempts to pull tasks from other CPUs.
  */
+/*********************************************************************************************************
+** 函数名称: idle_balance
+** 功能描述: 当 cpu 处于 idle 状态下时尝试从其他最忙 cpu 上迁移任务到当前的 idle cpu 上使系统负载均衡 
+** 输	 入: this_rq - 指定的 idle cpu 的 cpu 运行队列指针
+** 输	 出: pulled_task - 成功迁移到当前 cpu 上的任务数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int idle_balance(struct rq *this_rq)
 {
 	unsigned long next_balance = jiffies + HZ;
 	int this_cpu = this_rq->cpu;
 	struct sched_domain *sd;
 	int pulled_task = 0;
+	
+	/* 统计本次负载均衡操作一共消耗的时间，单位是 ns */
 	u64 curr_cost = 0;
 
+    /* 在进入 idle 进程之前调用，用来更新指定的 cpu 运行队列的 runnable_avg 贡献值信息 */
 	idle_enter_fair(this_rq);
 
 	/*
@@ -9868,6 +10136,7 @@ static int idle_balance(struct rq *this_rq)
 	 */
 	this_rq->idle_stamp = rq_clock(this_rq);
 
+    /* 如果当前 cpu 处于 idle 状态并且当前 cpu 的负载较低，则尝试提高执行负载均衡的频率 */
 	if (this_rq->avg_idle < sysctl_sched_migration_cost ||
 	    !this_rq->rd->overload) {
 		rcu_read_lock();
@@ -9884,12 +10153,17 @@ static int idle_balance(struct rq *this_rq)
 	 */
 	raw_spin_unlock(&this_rq->lock);
 
+	/* 更新指定的 cpu 运行队列上每一个 cfs 运行队列的阻塞负载贡献统计值 */
 	update_blocked_averages(this_cpu);
+	
 	rcu_read_lock();
+	/* 从指定的 cpu 的调度域开始到所属调度域树根节点遍历路径中每一个调度域，尝试从其它 cpu
+	   上迁移任务到当前处于 idle 状态的 cpu 上 */
 	for_each_domain(this_cpu, sd) {
 		int continue_balancing = 1;
 		u64 t0, domain_cost;
 
+        /* 如果当前调度域不可以执行负载均衡操作，则直接跳过 */
 		if (!(sd->flags & SD_LOAD_BALANCE))
 			continue;
 
@@ -9901,6 +10175,8 @@ static int idle_balance(struct rq *this_rq)
 		if (sd->flags & SD_BALANCE_NEWIDLE) {
 			t0 = sched_clock_cpu(this_cpu);
 
+            /* 尝试从指定的调度域内最忙 cpu 运行队列中迁移任务到当前 cpu 的运行队列上
+               使这两个 cpu 运行队列的负载处于平衡状态 */
 			pulled_task = load_balance(this_cpu, this_rq,
 						   sd, CPU_NEWLY_IDLE,
 						   &continue_balancing);
@@ -9946,6 +10222,7 @@ out:
 		pulled_task = -1;
 
 	if (pulled_task) {
+		/* 在退出 idle 进程之前调用，用来更新指定的 cpu 运行队列的 runnable_avg 贡献值信息 */
 		idle_exit_fair(this_rq);
 		this_rq->idle_stamp = 0;
 	}
@@ -9959,6 +10236,14 @@ out:
  * least 1 task to be running on each physical CPU where possible, and
  * avoids physical / logical imbalances.
  */
+/*********************************************************************************************************
+** 函数名称: active_load_balance_cpu_stop
+** 功能描述: 在 cpu stop 状态下尝试从指定的最忙 cpu 运行队列上迁移一个任务到指定的目的 cpu 运行队列上
+** 输	 入: data - 指定的最忙 cpu 运行队列指针
+** 输	 出: 0 - 执行完成
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int active_load_balance_cpu_stop(void *data)
 {
 	struct rq *busiest_rq = data;
@@ -9988,6 +10273,9 @@ static int active_load_balance_cpu_stop(void *data)
 
 	/* Search for an sd spanning us and the target CPU. */
 	rcu_read_lock();
+
+	/* 遍历指定的目的 cpu 所属调度域到所属调度域树根节点遍历路径找到第一个可以执行
+	   负载均衡任务迁移并且同时包含目的 cpu 和最忙 cpu 的调度域 */
 	for_each_domain(target_cpu, sd) {
 		if ((sd->flags & SD_LOAD_BALANCE) &&
 		    cpumask_test_cpu(busiest_cpu, sched_domain_span(sd)))
@@ -10012,7 +10300,9 @@ static int active_load_balance_cpu_stop(void *data)
 		else
 			schedstat_inc(sd, alb_failed);
 	}
+
 	rcu_read_unlock();
+	
 out_unlock:
 	busiest_rq->active_balance = 0;
 	raw_spin_unlock(&busiest_rq->lock);
@@ -10025,6 +10315,15 @@ out_unlock:
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: on_null_domain
+** 功能描述: 判断指定的 cpu 运行队列是否挂载在 NULL 调度域上
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int on_null_domain(struct rq *rq)
 {
 	return unlikely(!rcu_dereference_sched(rq->sd));
@@ -10037,12 +10336,29 @@ static inline int on_null_domain(struct rq *rq)
  *   needed, they will kick the idle load balancer, which then does idle
  *   load balancing for all the idle CPUs.
  */
+/* 空闲负载均衡详细描述：
+   当一个繁忙的 cpu 注意到可能需要一个空闲的负载均衡时，它将启动空闲负载平衡器
+   空闲负载平衡器将会为所有处于空闲状态的 cpu 执行空闲负载均衡操作 */
+
 static struct {
+    /* 表示当前系统内处于空闲状态的 cpu 的位图掩码值 */
 	cpumask_var_t idle_cpus_mask;
+
+	/* 表示当前系统内处于空闲状态的 cpu 的个数 */
 	atomic_t nr_cpus;
+	
 	unsigned long next_balance;     /* in jiffy units */
 } nohz ____cacheline_aligned;
 
+/*********************************************************************************************************
+** 函数名称: find_new_ilb
+** 功能描述: 查找当前系统内第一个处于空闲状态的 cpu 的 id 值
+** 输	 入: 
+** 输	 出: ilb - 空闲状态的 cpu 的 id 值
+**         : nr_cpu_ids - 没找到空闲状态的 cpu
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int find_new_ilb(void)
 {
 	int ilb = cpumask_first(nohz.idle_cpus_mask);
@@ -10058,6 +10374,14 @@ static inline int find_new_ilb(void)
  * nohz_load_balancer CPU (if there is one) otherwise fallback to any idle
  * CPU (if there is one).
  */
+/*********************************************************************************************************
+** 函数名称: nohz_balancer_kick
+** 功能描述: 尝试向当前系统内处于 idle 状态的 cpu 发送一个核间中断使其执行一次 nohz 负载均衡操作
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void nohz_balancer_kick(void)
 {
 	int ilb_cpu;
@@ -10077,10 +10401,20 @@ static void nohz_balancer_kick(void)
 	 * is idle. And the softirq performing nohz idle load balance
 	 * will be run before returning from the IPI.
 	 */
+	/* 向指定的 ilb_cpu 上发送一个 IPI_RESCHEDULE 核间中断 */
 	smp_send_reschedule(ilb_cpu);
 	return;
 }
 
+/*********************************************************************************************************
+** 函数名称: nohz_balance_exit_idle
+** 功能描述: 在指定的处于 idle 状态的 cpu 执行完 nohz 负载均衡后退出 idle 状态时调用，用来更新系统中
+**         : 相关的数据状态和标志
+** 输	 入: cpu - 指定的处于 idle 状态的 cpu id 值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void nohz_balance_exit_idle(int cpu)
 {
 	if (unlikely(test_bit(NOHZ_TICK_STOPPED, nohz_flags(cpu)))) {
@@ -10095,6 +10429,14 @@ static inline void nohz_balance_exit_idle(int cpu)
 	}
 }
 
+/*********************************************************************************************************
+** 函数名称: set_cpu_sd_state_busy
+** 功能描述: 把当前正在运行的 cpu 的调度域从 nohz idle 状态退出并设置为忙状态
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void set_cpu_sd_state_busy(void)
 {
 	struct sched_domain *sd;
@@ -10105,6 +10447,7 @@ static inline void set_cpu_sd_state_busy(void)
 
 	if (!sd || !sd->nohz_idle)
 		goto unlock;
+	
 	sd->nohz_idle = 0;
 
 	atomic_inc(&sd->groups->sgc->nr_busy_cpus);
@@ -10112,6 +10455,14 @@ unlock:
 	rcu_read_unlock();
 }
 
+/*********************************************************************************************************
+** 函数名称: set_cpu_sd_state_idle
+** 功能描述: 设置当前正在运行的 cpu 的调度域为 nohz idle 状态
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void set_cpu_sd_state_idle(void)
 {
 	struct sched_domain *sd;
@@ -10133,6 +10484,15 @@ unlock:
  * This routine will record that the cpu is going idle with tick stopped.
  * This info will be used in performing idle load balancing in the future.
  */
+/*********************************************************************************************************
+** 函数名称: nohz_balance_enter_idle
+** 功能描述: 在 tick 中断结束时如果指定的 cpu 进入了 idle 状态，则调用这个函数更新其状态为 idle，这样
+**         : 我们将来就可以在这个 cpu 上执行 idle 负载均衡操作了
+** 输	 入: cpu - 指定的 cpu id 值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void nohz_balance_enter_idle(int cpu)
 {
 	/*
@@ -10155,6 +10515,16 @@ void nohz_balance_enter_idle(int cpu)
 	set_bit(NOHZ_TICK_STOPPED, nohz_flags(cpu));
 }
 
+/*********************************************************************************************************
+** 函数名称: sched_ilb_notifier
+** 功能描述: 用来通知系统当前正在运行的 cpu 将会退出 nohz 负载均衡的 idle 状态
+** 输	 入: nfb - 不使用
+**         : action - 指定的动作类型
+**         : hcpu - 不使用
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int sched_ilb_notifier(struct notifier_block *nfb,
 					unsigned long action, void *hcpu)
 {
@@ -10174,6 +10544,14 @@ static DEFINE_SPINLOCK(balancing);
  * Scale the max load_balance interval with the number of CPUs in the system.
  * This trades load-balance latency on larger machines for less cross talk.
  */
+/*********************************************************************************************************
+** 函数名称: update_max_interval
+** 功能描述: 根据当前系统内存在的 online 状态 cpu 个数更新最大负载均衡间隔时间
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void update_max_interval(void)
 {
 	max_load_balance_interval = HZ*num_online_cpus()/10;
@@ -10185,6 +10563,17 @@ void update_max_interval(void)
  *
  * Balancing parameters are set up in init_sched_domains.
  */
+/*********************************************************************************************************
+** 函数名称: rebalance_domains
+** 功能描述: 从指定的当前 cpu 的调度域开始到所属调度域树根节点遍历路径中每一个调度域，尝试从遍历的
+**         : 调度域内最忙 cpu 运行队列中迁移任务到当前 cpu 的运行队列上，使这两个 cpu 运行队列的负
+**         : 载处于平衡状态
+** 输	 入: rq - 指定的当前 cpu 运行队列指针
+**         : idle - 指定的当前 cpu idle 类型
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 {
 	int continue_balancing = 1;
@@ -10197,9 +10586,12 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 	int need_serialize, need_decay = 0;
 	u64 max_cost = 0;
 
+    /* 更新指定的 cpu 运行队列上每一个 cfs 运行队列的阻塞负载贡献统计值 */
 	update_blocked_averages(cpu);
 
 	rcu_read_lock();
+	/* 从指定的 cpu 的调度域开始到所属调度域树根节点遍历路径中每一个调度域，尝试从遍历的调度域内
+	   最忙 cpu 运行队列中迁移任务到当前 cpu 的运行队列上，使这两个 cpu 运行队列的负载处于平衡状态 */
 	for_each_domain(cpu, sd) {
 		/*
 		 * Decay the newidle max times here because this is a regular
@@ -10247,6 +10639,7 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 			sd->last_balance = jiffies;
 			interval = get_sd_balance_interval(sd, idle != CPU_IDLE);
 		}
+		
 		if (need_serialize)
 			spin_unlock(&balancing);
 out:
@@ -10255,6 +10648,7 @@ out:
 			update_next_balance = 1;
 		}
 	}
+	
 	if (need_decay) {
 		/*
 		 * Ensure the rq-wide value also decays but keep it at a
@@ -10279,6 +10673,17 @@ out:
  * In CONFIG_NO_HZ_COMMON case, the idle balance kickee will do the
  * rebalancing for all the cpus for whom scheduler ticks are stopped.
  */
+/*********************************************************************************************************
+** 函数名称: nohz_idle_balance
+** 功能描述: 根据当前正在运行的 cpu 状态尝试遍历 nohz.idle_cpus_mask 看是否存在当前正在运行的 cpu
+**         : 如果存在则尝试从当前 cpu 所属调度域内最忙 cpu 运行队列中迁移任务到当前 cpu 的运行队列
+**         : 上，使这两个 cpu 运行队列的负载处于平衡状态
+** 输	 入: rq - 指定的当前 cpu 运行队列指针
+**         : idle - 指定的当前 cpu idle 类型
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle)
 {
 	int this_cpu = this_rq->cpu;
@@ -10289,6 +10694,8 @@ static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle)
 	    !test_bit(NOHZ_BALANCE_KICK, nohz_flags(this_cpu)))
 		goto end;
 
+    /* 遍历 nohz.idle_cpus_mask 看是否存在当前正在运行的 cpu，如果存在则尝试从当前 cpu 所属调度域内
+       最忙 cpu 运行队列中迁移任务到当前 cpu 的运行队列上，使这两个 cpu 运行队列的负载处于平衡状态 */
 	for_each_cpu(balance_cpu, nohz.idle_cpus_mask) {
 		if (balance_cpu == this_cpu || !idle_cpu(balance_cpu))
 			continue;
@@ -10308,16 +10715,23 @@ static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle)
 		 * do the balance.
 		 */
 		if (time_after_eq(jiffies, rq->next_balance)) {
+		
+		    /* 更新指定的处于 idle 状态的 cpu 运行队列时钟和负载贡献值 */
 			raw_spin_lock_irq(&rq->lock);
 			update_rq_clock(rq);
 			update_idle_cpu_load(rq);
 			raw_spin_unlock_irq(&rq->lock);
+			
+			/* 从指定的当前 cpu 的调度域开始到所属调度域树根节点遍历路径中每一个
+			   调度域，尝试从遍历的调度域内最忙 cpu 运行队列中迁移任务到当前 cpu
+			   的运行队列上，使这两个 cpu 运行队列的负载处于平衡状态 */
 			rebalance_domains(rq, CPU_IDLE);
 		}
 
 		if (time_after(this_rq->next_balance, rq->next_balance))
 			this_rq->next_balance = rq->next_balance;
 	}
+	
 	nohz.next_balance = this_rq->next_balance;
 end:
 	clear_bit(NOHZ_BALANCE_KICK, nohz_flags(this_cpu));
@@ -10332,6 +10746,15 @@ end:
  *   - For SD_ASYM_PACKING, if the lower numbered cpu's in the scheduler
  *     domain span are idle.
  */
+/*********************************************************************************************************
+** 函数名称: nohz_kick_needed
+** 功能描述: 判断指定的 cpu 运行队列是否需要执行 idle 负载均衡操作
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 1 - 需要执行 idle 负载均衡操作
+**         : 0 - 不需要执行 idle 负载均衡操作
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int nohz_kick_needed(struct rq *rq)
 {
 	unsigned long now = jiffies;
@@ -10342,11 +10765,15 @@ static inline int nohz_kick_needed(struct rq *rq)
 	if (unlikely(rq->idle_balance))
 		return 0;
 
-       /*
+   /*
 	* We may be recently in ticked or tickless idle mode. At the first
 	* busy tick after returning from idle, we will update the busy stats.
 	*/
+    /* 把当前正在运行的 cpu 的调度域从 nohz idle 状态退出并设置为忙状态 */
 	set_cpu_sd_state_busy();
+
+	/* 在指定的处于 idle 状态的 cpu 执行完 nohz 负载均衡后退出 idle 状态时
+	   调用，用来更新系统中相关的数据状态和标志 */
 	nohz_balance_exit_idle(cpu);
 
 	/*
@@ -10388,6 +10815,17 @@ need_kick:
 	return 1;
 }
 #else
+/*********************************************************************************************************
+** 函数名称: nohz_idle_balance
+** 功能描述: 根据当前正在运行的 cpu 状态尝试遍历 nohz.idle_cpus_mask 看是否存在当前正在运行的 cpu
+**         : 如果存在则尝试从当前 cpu 所属调度域内最忙 cpu 运行队列中迁移任务到当前 cpu 的运行队列
+**         : 上，使这两个 cpu 运行队列的负载处于平衡状态
+** 输	 入: rq - 指定的当前 cpu 运行队列指针
+**         : idle - 指定的当前 cpu idle 类型
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle) { }
 #endif
 
@@ -10395,12 +10833,24 @@ static void nohz_idle_balance(struct rq *this_rq, enum cpu_idle_type idle) { }
  * run_rebalance_domains is triggered when needed from the scheduler tick.
  * Also triggered for nohz idle balancing (with nohz_balancing_kick set).
  */
+/*********************************************************************************************************
+** 函数名称: run_rebalance_domains
+** 功能描述: 尝试在当前正在运行的 cpu 所属调度域内执行负载均衡操作
+** 注     释: 这个函数由 trigger_load_balance 函数通过软中断方式触发调用
+** 输	 入: h - 未使用
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void run_rebalance_domains(struct softirq_action *h)
 {
 	struct rq *this_rq = this_rq();
 	enum cpu_idle_type idle = this_rq->idle_balance ?
 						CPU_IDLE : CPU_NOT_IDLE;
 
+    /* 从指定的当前 cpu 的调度域开始到所属调度域树根节点遍历路径中每一个调度域，尝试从遍历的
+       调度域内最忙 cpu 运行队列中迁移任务到当前 cpu 的运行队列上，使这两个 cpu 运行队列的负
+       载处于平衡状态 */
 	rebalance_domains(this_rq, idle);
 
 	/*
@@ -10408,12 +10858,24 @@ static void run_rebalance_domains(struct softirq_action *h)
 	 * balancing on behalf of the other idle cpus whose ticks are
 	 * stopped.
 	 */
+	/* 根据当前正在运行的 cpu 状态尝试遍历 nohz.idle_cpus_mask 看是否存在当前正在运行的 cpu
+       如果存在则尝试从当前 cpu 所属调度域内最忙 cpu 运行队列中迁移任务到当前 cpu 的运行队列
+       上，使这两个 cpu 运行队列的负载处于平衡状态 */
 	nohz_idle_balance(this_rq, idle);
 }
 
 /*
  * Trigger the SCHED_SOFTIRQ if it is time to do periodic load balancing.
  */
+/*********************************************************************************************************
+** 函数名称: trigger_load_balance
+** 功能描述: 尝试在执行的 cpu 运行队列所属 cpu 上触发一次负载均衡操作
+** 注     释: 这个函数会在 scheduler_tick 中周期性调用
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void trigger_load_balance(struct rq *rq)
 {
 	/* Don't need to rebalance while attached to NULL domain */
@@ -10422,6 +10884,7 @@ void trigger_load_balance(struct rq *rq)
 
 	if (time_after_eq(jiffies, rq->next_balance))
 		raise_softirq(SCHED_SOFTIRQ);
+
 #ifdef CONFIG_NO_HZ_COMMON
 	if (nohz_kick_needed(rq))
 		nohz_balancer_kick();
@@ -10466,13 +10929,22 @@ static void rq_offline_fair(struct rq *rq)
 /*
  * scheduler tick hitting a task of our scheduling class:
  */
+/*********************************************************************************************************
+** 函数名称: task_tick_fair
+** 功能描述: 当前系统 cfs 调度类的 tick 处理函数，在 cpu 正在运行的任务是 cfs 任务时调用
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : curr - 当前正在运行的 cfs 任务指针
+**         : queued - 当前 tick 是否为 queued ticks
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 {
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se = &curr->se;
 
-    /* 遍历指定的调度任务组实例所属任务组树形结构中的路径
-       根节点挂在 cpu cfs 运行队列的红黑树上 */
+    /* 更新当前正在运行的调度任务或者调度任务组的运行时统计信息 */
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
 		entity_tick(cfs_rq, se, queued);
@@ -10489,6 +10961,14 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
  *  - child not yet on the tasklist
  *  - preemption disabled
  */
+/*********************************************************************************************************
+** 函数名称: task_tick_fair
+** 功能描述: 当前系统 cfs 调度类的 fork 处理函数，在系统 fork 一个 cfs 任务时调用
+** 输	 入: p - 指定的“子任务”指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void task_fork_fair(struct task_struct *p)
 {
 	struct cfs_rq *cfs_rq;
@@ -10501,6 +10981,7 @@ static void task_fork_fair(struct task_struct *p)
 
 	update_rq_clock(rq);
 
+    /* 表示父任务所属 cfs 运行队列以及父任务所属 cfs 运行队列当前正在运行的任务指针 */
 	cfs_rq = task_cfs_rq(current);
 	curr = cfs_rq->curr;
 
@@ -10510,14 +10991,18 @@ static void task_fork_fair(struct task_struct *p)
 	 * child->se.parent,cfs_rq. So call __set_task_cpu() to make those
 	 * of child point to valid ones.
 	 */
+	/* 为子任务分配 cpu */
 	rcu_read_lock();
 	__set_task_cpu(p, this_cpu);
 	rcu_read_unlock();
 
+    /* 更新父任务的 cfs 运行队列中当前正在运行的调度实例的运行时统计信息*/
 	update_curr(cfs_rq);
 
+    /* 为了防止子任务在刚创建后长时间独占 cfs 运行队列，使其继承父任务的虚拟运行时间 */
 	if (curr)
 		se->vruntime = curr->vruntime;
+	
 	place_entity(cfs_rq, se, 1);
 
 	if (sysctl_sched_child_runs_first && curr && entity_before(curr, se)) {
@@ -10529,6 +11014,15 @@ static void task_fork_fair(struct task_struct *p)
 		resched_curr(rq);
 	}
 
+    /* 在 place_entity 函数中我们是以当前正在运行的 cpu 的 min_vruntime 作为子任务的
+       虚拟时间补偿，且每个 cpu 都有自己的运行队列，每个队列中的进程的 vruntime 也走
+       得有快有慢，如果一个进程从 min_vruntime 更小的 cpu(A) 上迁移到 min_vruntime 
+       更大的 cpu(B) 上，可能就会占便宜了，因为 cpu(B) 的运行队列中进程的 vruntime
+       普遍比较大，迁移过来的进程就会获得更多的 cpu 时间片，为了处理不同 cpu 运行队列
+       之间存在的虚拟运行时间差异，我们在一个任务 dequeue_entity 的时候会减去这个 cpu
+       运行队列的 min_vruntime，而在 enqueue_entity 的时候会再加上新的 cpu 运行队列的
+       min_vruntime，因为新创建的子任务还没分配 cpu 运行队列，所以这个位置要减去当前
+       cpu 运行队列的 min_vruntime */
 	se->vruntime -= cfs_rq->min_vruntime;
 
 	raw_spin_unlock_irqrestore(&rq->lock, flags);
@@ -10538,6 +11032,16 @@ static void task_fork_fair(struct task_struct *p)
  * Priority of the task has changed. Check to see if we preempt
  * the current task.
  */
+/*********************************************************************************************************
+** 函数名称: task_tick_fair
+** 功能描述: 当前系统 cfs 调度类的 prio_changed 处理函数，在 cfs 任务修改优先级“后”调用
+** 输	 入: rq - 指定的任务所属 cpu 运行队列指针
+**         : p - 指定的任务指针
+**         : oldprio - 指定的任务旧的优先级
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void
 prio_changed_fair(struct rq *rq, struct task_struct *p, int oldprio)
 {
@@ -10556,6 +11060,15 @@ prio_changed_fair(struct rq *rq, struct task_struct *p, int oldprio)
 		check_preempt_curr(rq, p, 0);
 }
 
+/*********************************************************************************************************
+** 函数名称: switched_from_fair
+** 功能描述: 当前系统 cfs 调度类的 switched_from 处理函数，在从 cfs 任务切换“出”前调用
+** 输	 入: rq - 指定的任务所属 cpu 运行队列指针
+**         : p - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void switched_from_fair(struct rq *rq, struct task_struct *p)
 {
 	struct sched_entity *se = &p->se;
@@ -10595,6 +11108,15 @@ static void switched_from_fair(struct rq *rq, struct task_struct *p)
 /*
  * We switched to the sched_fair class.
  */
+/*********************************************************************************************************
+** 函数名称: switched_from_fair
+** 功能描述: 当前系统 cfs 调度类的 switched_from 处理函数，在切换到 cfs 任务后调用
+** 输	 入: rq - 指定的任务所属 cpu 运行队列指针
+**         : p - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void switched_to_fair(struct rq *rq, struct task_struct *p)
 {
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -10605,6 +11127,7 @@ static void switched_to_fair(struct rq *rq, struct task_struct *p)
 	 */
 	se->depth = se->parent ? se->parent->depth + 1 : 0;
 #endif
+
 	if (!task_on_rq_queued(p))
 		return;
 
@@ -10624,6 +11147,14 @@ static void switched_to_fair(struct rq *rq, struct task_struct *p)
  * This routine is mostly called to set cfs_rq->curr field when a task
  * migrates between groups/classes.
  */
+/*********************************************************************************************************
+** 函数名称: set_curr_task_fair
+** 功能描述: 当前系统 cfs 调度类的 set_curr_task 处理函数
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void set_curr_task_fair(struct rq *rq)
 {
 	struct sched_entity *se = &rq->curr->se;
@@ -10637,6 +11168,14 @@ static void set_curr_task_fair(struct rq *rq)
 	}
 }
 
+/*********************************************************************************************************
+** 函数名称: init_cfs_rq
+** 功能描述: 初始化指定的 cfs 运行队列数据结构
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void init_cfs_rq(struct cfs_rq *cfs_rq)
 {
 	cfs_rq->tasks_timeline = RB_ROOT;
@@ -10651,6 +11190,15 @@ void init_cfs_rq(struct cfs_rq *cfs_rq)
 }
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
+/*********************************************************************************************************
+** 函数名称: task_move_group_fair
+** 功能描述: 在 cfs 调度类中的任务在任务组之间迁移时调用
+** 输	 入: p - 指定的迁移任务指针
+**         : queued - 指定的迁移任务是否在 cpu 运行队列上
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void task_move_group_fair(struct task_struct *p, int queued)
 {
 	struct sched_entity *se = &p->se;
@@ -10681,13 +11229,39 @@ static void task_move_group_fair(struct task_struct *p, int queued)
 	 * To prevent boost or penalty in the new cfs_rq caused by delta
 	 * min_vruntime between the two cfs_rqs, we skip vruntime adjustment.
 	 */
+	/* 如果任务在这个任务组上移动的时候不在 cpu 运行队列上，那么它一定是处
+	   于睡眠状态，睡眠任务保持它们原来旧的 ->vruntime，直到唤醒它们（我们
+	   在 place_entity() 函数中需要公平奖励睡眠任务）
+
+       如果任务在 cpu 运行队列上，我们只是“抢占”它，那么它会将 ->vruntime 
+       转换成一个相对的基数值
+
+       为了确保从一个任务组迁移到另一个任务组的 cpu 运行队列时虚拟时间的相
+       计数值不变所做的操作在一定程度上会影响到 cpu 运行队列上第一个位置的
+       睡眠者，但是谁在乎呢 */
+    /* 在 queued 参数为 0 时，大多数任务的 vruntime 都是没有标准化的，但是
+       在某些情况下，有的任务的 vruntime 已经被标准化了，具体如下：
+       1. 正在移动的任务是一个正在等待 wake_up_new_task() 函数唤醒的、刚刚
+          fork 的子任务
+       2. 移动一个已经被 try_to_wake_up() 函数唤醒的任务，但是还在等待被
+          sched_ttwu_pending() 函数唤醒的任务
+
+       为了防止因为两个 cfs 运行队列的 min_vruntime 差异导致的虚拟时间奖励
+       和补偿，我们跳过了 vruntime 的调整 */
+
+    /* 处理上面描述的 1 和 2 两种情况 */
 	if (!queued && (!se->sum_exec_runtime || p->state == TASK_WAKING))
 		queued = 1;
 
+    /* 下面的 !queued 逻辑分支是用来处理 vruntime 的标准化 */
 	if (!queued)
 		se->vruntime -= cfs_rq_of(se)->min_vruntime;
+
+	/* 设置指定的任务的运行队列信息为其所在 cpu 的运行队列信息 */
 	set_task_rq(p, task_cpu(p));
+	
 	se->depth = se->parent ? se->parent->depth + 1 : 0;
+	
 	if (!queued) {
 		cfs_rq = cfs_rq_of(se);
 		se->vruntime += cfs_rq->min_vruntime;
@@ -10703,12 +11277,22 @@ static void task_move_group_fair(struct task_struct *p, int queued)
 	}
 }
 
+/*********************************************************************************************************
+** 函数名称: free_fair_sched_group
+** 功能描述: 在 cfs 调度类中用来释放指定的任务组
+** 输	 入: tg - 指定的任务组指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void free_fair_sched_group(struct task_group *tg)
 {
 	int i;
 
+    /* 尝试销毁指定的 cfs 带宽控制结构 */
 	destroy_cfs_bandwidth(tg_cfs_bandwidth(tg));
 
+    /* 释放指定任务组在每个 cpu 上的 cfs 运行队列结构和调度实例结构 */
 	for_each_possible_cpu(i) {
 		if (tg->cfs_rq)
 			kfree(tg->cfs_rq[i]);
@@ -10720,23 +11304,38 @@ void free_fair_sched_group(struct task_group *tg)
 	kfree(tg->se);
 }
 
+/*********************************************************************************************************
+** 函数名称: alloc_fair_sched_group
+** 功能描述: 在 cfs 调度类中用来初始化指定的任务组结构
+** 输	 入: tg - 指定的任务组指针
+**         : parent - 指定的任务组父节点指针
+** 输	 出: 1 - 初始化成功
+**         : 0 - 初始化失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int alloc_fair_sched_group(struct task_group *tg, struct task_group *parent)
 {
 	struct cfs_rq *cfs_rq;
 	struct sched_entity *se;
 	int i;
 
+	/* 为指定的任务组在每个 cpu 上分配一个 cfs 运行队列实例指针数组结构 */
 	tg->cfs_rq = kzalloc(sizeof(cfs_rq) * nr_cpu_ids, GFP_KERNEL);
 	if (!tg->cfs_rq)
 		goto err;
+
+	/* 为指定的任务组在每个 cpu 上分配一个调度实例指针数组结构 */
 	tg->se = kzalloc(sizeof(se) * nr_cpu_ids, GFP_KERNEL);
 	if (!tg->se)
 		goto err;
 
 	tg->shares = NICE_0_LOAD;
 
+    /* 初始化指定的 cfs 带宽控制结构 */
 	init_cfs_bandwidth(tg_cfs_bandwidth(tg));
 
+    /* 为指定的任务组在每个 cpu 上分配并初始化 cfs 运行队列结构和调度实例结构 */
 	for_each_possible_cpu(i) {
 		cfs_rq = kzalloc_node(sizeof(struct cfs_rq),
 				      GFP_KERNEL, cpu_to_node(i));
@@ -10760,6 +11359,15 @@ err:
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: unregister_fair_sched_group
+** 功能描述: 在 cfs 调度类中用来把指定 cpu 上指定任务组的 cfs 运行队列从所属 cpu 运行队列上移除
+** 输	 入: tg - 指定的任务组指针
+**         : cpu - 指定的 cpu id 值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void unregister_fair_sched_group(struct task_group *tg, int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);
@@ -10779,7 +11387,7 @@ void unregister_fair_sched_group(struct task_group *tg, int cpu)
 
 /*********************************************************************************************************
 ** 函数名称: init_tg_cfs_entry
-** 功能描述: 
+** 功能描述: 根据函数指定的参数初始化指定的 cfs 任务组实例结构
 ** 输	 入: tg - 指定的任务组实例指针
 **         : cfs_rq- 为指定任务组分配的 cfs 运行队列指针
 **         : se - 表示和指定任务组对应的调度实例指针
@@ -10797,6 +11405,8 @@ void init_tg_cfs_entry(struct task_group *tg, struct cfs_rq *cfs_rq,
 
 	cfs_rq->tg = tg;
 	cfs_rq->rq = rq;
+
+	/* 初始化指定的 cfs 运行队列中和带宽控制运行时时间相关的成员 */
 	init_cfs_rq_runtime(cfs_rq);
 
 	tg->cfs_rq[cpu] = cfs_rq;
@@ -10824,6 +11434,15 @@ void init_tg_cfs_entry(struct task_group *tg, struct cfs_rq *cfs_rq,
 
 static DEFINE_MUTEX(shares_mutex);
 
+/*********************************************************************************************************
+** 函数名称: sched_group_set_shares
+** 功能描述: 设置指定任务组的 shares 字段值为指定的 shares 值
+** 输	 入: tg - 指定的任务组实例指针
+**         : shares - 指定的 shares 值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int sched_group_set_shares(struct task_group *tg, unsigned long shares)
 {
 	int i;
@@ -10863,18 +11482,53 @@ done:
 }
 #else /* CONFIG_FAIR_GROUP_SCHED */
 
+/*********************************************************************************************************
+** 函数名称: free_fair_sched_group
+** 功能描述: 在 cfs 调度类中用来释放指定的任务组
+** 输	 入: tg - 指定的任务组指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void free_fair_sched_group(struct task_group *tg) { }
 
+/*********************************************************************************************************
+** 函数名称: alloc_fair_sched_group
+** 功能描述: 在 cfs 调度类中用来初始化指定的任务组结构
+** 输	 入: tg - 指定的任务组指针
+**         : parent - 指定的任务组父节点指针
+** 输	 出: 1 - 初始化成功
+**         : 0 - 初始化失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int alloc_fair_sched_group(struct task_group *tg, struct task_group *parent)
 {
 	return 1;
 }
 
+/*********************************************************************************************************
+** 函数名称: unregister_fair_sched_group
+** 功能描述: 在 cfs 调度类中用来把指定 cpu 上指定任务组的 cfs 运行队列从所属 cpu 运行队列上移除
+** 输	 入: tg - 指定的任务组指针
+**         : cpu - 指定的 cpu id 值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void unregister_fair_sched_group(struct task_group *tg, int cpu) { }
 
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
-
+/*********************************************************************************************************
+** 函数名称: get_rr_interval_fair
+** 功能描述: 获取指定的任务实例在指定 cpu 运行队列上可以分配到的 round robin 时间片
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : task - 指定的任务指针
+** 输	 出: rr_interval - 分配到的 round robin 时间片，单位是一个 HZ 周期
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static unsigned int get_rr_interval_fair(struct rq *rq, struct task_struct *task)
 {
 	struct sched_entity *se = &task->se;
@@ -10933,6 +11587,15 @@ const struct sched_class fair_sched_class = {
 };
 
 #ifdef CONFIG_SCHED_DEBUG
+/*********************************************************************************************************
+** 函数名称: print_cfs_stats
+** 功能描述: 打印指定的 cpu 上的 cfs 运行队列信息
+** 输	 入: m - 指定的 seq_file 文件指针
+**         : cpu - 指定的 cpu id 值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void print_cfs_stats(struct seq_file *m, int cpu)
 {
 	struct cfs_rq *cfs_rq;
@@ -10944,6 +11607,14 @@ void print_cfs_stats(struct seq_file *m, int cpu)
 }
 #endif
 
+/*********************************************************************************************************
+** 函数名称: init_sched_fair_class
+** 功能描述: 初始化 cfs 调度类
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 __init void init_sched_fair_class(void)
 {
 #ifdef CONFIG_SMP

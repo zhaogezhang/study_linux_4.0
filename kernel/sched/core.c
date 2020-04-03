@@ -748,8 +748,9 @@ bool sched_can_stop_tick(void)
 *********************************************************************************************************/
 void sched_avg_update(struct rq *rq)
 {
-	s64 period = sched_avg_period();
+	s64 period = sched_avg_period(); /* 0.5S */
 
+	/* 因为 rq->age_stamp 递增步长是 period，所以这个位置可能循环执行多次 */
 	while ((s64)(rq_clock(rq) - rq->age_stamp) > period) {
 		/*
 		 * Inline assembly required to prevent the compiler
@@ -1544,6 +1545,15 @@ int select_task_rq(struct task_struct *p, int cpu, int sd_flags, int wake_flags)
 	return cpu;
 }
 
+/*********************************************************************************************************
+** 函数名称: update_avg
+** 功能描述: 通过指定的当前采样值更新指定的 avg 变量值，通过累加衰减历史值的方式保证 avg 的平稳变化
+** 输	 入: avg - 指定的 avg 变量指针
+**         : sample - 指定的当前采样值
+** 输	 出: avg - 更新后的 avg 变量值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void update_avg(u64 *avg, u64 sample)
 {
 	s64 diff = sample - *avg;
@@ -6069,6 +6079,7 @@ static void build_group_mask(struct sched_domain *sd, struct sched_group *sg)
 	struct sched_domain *sibling;
 	int i;
 
+    /* 遍历指定的调度域内的每一个 cpu */
 	for_each_cpu(i, span) {
 		sibling = *per_cpu_ptr(sdd->sd, i);
 		if (!cpumask_test_cpu(i, sched_domain_span(sibling)))
@@ -6082,6 +6093,14 @@ static void build_group_mask(struct sched_domain *sd, struct sched_group *sg)
  * Return the canonical balance cpu for this group, this is the first cpu
  * of this group that's also in the iteration mask.
  */
+/*********************************************************************************************************
+** 函数名称: group_balance_cpu
+** 功能描述: 返回指定的调度组内用来负载均衡的 cpu id
+** 输	 入: sg - 指定的调度组指针
+** 输	 出: int - 用来负载均衡的 cpu id
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int group_balance_cpu(struct sched_group *sg)
 {
 	return cpumask_first_and(sched_group_cpus(sg), sched_group_mask(sg));
@@ -7772,7 +7791,8 @@ void sched_move_task(struct task_struct *tsk)
 		tsk->sched_class->task_move_group(tsk, queued);
 	else
 #endif
-		set_task_rq(tsk, task_cpu(tsk));
+
+    set_task_rq(tsk, task_cpu(tsk));
 
 	if (unlikely(running))
 		tsk->sched_class->set_curr_task(rq);

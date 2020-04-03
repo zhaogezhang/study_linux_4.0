@@ -38,6 +38,8 @@ extern int sysctl_max_map_count;
 extern unsigned int sysctl_sched_latency;
 extern unsigned int sysctl_sched_min_granularity;
 extern unsigned int sysctl_sched_wakeup_granularity;
+
+/* 表示在执行 fork 函数后，是否需要先运行子任务 */
 extern unsigned int sysctl_sched_child_runs_first;
 
 enum sched_tunable_scaling {

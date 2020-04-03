@@ -434,6 +434,16 @@ static const unsigned char
  * would be when CPU is idle and so we just decay the old load without
  * adding any new load.
  */
+/*********************************************************************************************************
+** 函数名称: decay_load_missed
+** 功能描述: 
+** 输	 入: load - 指定的 cpu 负载贡献值
+**         : missed_updates - 指定的衰减的周期数
+**         : idx - 指定的 cpu 负载贡献数据索引值
+** 输	 出: load - 衰减后的 cpu 负载贡献值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static unsigned long
 decay_load_missed(unsigned long load, unsigned long missed_updates, int idx)
 {
@@ -463,6 +473,16 @@ decay_load_missed(unsigned long load, unsigned long missed_updates, int idx)
  * scheduler tick (TICK_NSEC). With tickless idle this will not be called
  * every tick. We fix it up based on jiffies.
  */
+/*********************************************************************************************************
+** 函数名称: __update_cpu_load
+** 功能描述: 更新指定的 cpu 运行队列的负载贡献值
+** 输	 入: this_rq - 指定的 cpu 运行队列指针
+**         : this_load - 当前统计周期内的负载贡献值
+**         : pending_updates - 需要执行的负载衰减周期数，周期等于一个 tick 周期
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void __update_cpu_load(struct rq *this_rq, unsigned long this_load,
 			      unsigned long pending_updates)
 {
@@ -506,11 +526,29 @@ static void __update_cpu_load(struct rq *this_rq, unsigned long this_load,
 }
 
 #ifdef CONFIG_SMP
+/*********************************************************************************************************
+** 函数名称: get_rq_runnable_load
+** 功能描述: 获取指定的 cpu 运行队列的在指定的“时间段”内经过衰减后的处于可运行状态（运行态）
+**         : 时间的平均负载贡献值
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: unsigned long - 平均负载贡献值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline unsigned long get_rq_runnable_load(struct rq *rq)
 {
 	return rq->cfs.runnable_load_avg;
 }
 #else
+/*********************************************************************************************************
+** 函数名称: get_rq_runnable_load
+** 功能描述: 获取指定的 cpu 运行队列的在指定的“时间段”内经过衰减后的处于可运行状态（运行态）
+**         : 时间的平均负载贡献值
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: unsigned long - 平均负载贡献值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline unsigned long get_rq_runnable_load(struct rq *rq)
 {
 	return rq->load.weight;
@@ -535,6 +573,14 @@ static inline unsigned long get_rq_runnable_load(struct rq *rq)
  * Called from nohz_idle_balance() to update the load ratings before doing the
  * idle balance.
  */
+/*********************************************************************************************************
+** 函数名称: update_idle_cpu_load
+** 功能描述: 更新指定的处于 idle 状态的 cpu 运行队列的负载贡献值
+** 输	 入: rq - 指定的处于 idle 状态的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void update_idle_cpu_load(struct rq *this_rq)
 {
 	unsigned long curr_jiffies = ACCESS_ONCE(jiffies);

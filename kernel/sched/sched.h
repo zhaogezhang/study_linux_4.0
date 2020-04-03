@@ -61,6 +61,8 @@ extern void update_cpu_load_active(struct rq *this_rq);
 #endif
 
 #define SCHED_LOAD_SHIFT	(10 + SCHED_LOAD_RESOLUTION)  /*       10 */
+
+/* 表示单个 cpu 的最大 cpu capacity 值 */
 #define SCHED_LOAD_SCALE	(1L << SCHED_LOAD_SHIFT)      /* 1L << 10 */
 
 #define NICE_0_LOAD		SCHED_LOAD_SCALE                  /* 1L << 10 */
@@ -524,7 +526,7 @@ struct cfs_rq {
 	/* 在当前运行队列属于某个任务组的时候，表示当前运行队列是否已经添加到了所属的 cpu 运行队列上 */
 	int on_list;
 
-	/* 在当前运行队列属于某个任务组的时候，通过这个链表节点把当前 cfs 运行队列添加到所属的 cpu 运行队列上 */
+	/* 通过这个链表节点把当前 cfs 运行队列添加到所属的 cpu 运行队列上，详情见 enqueue_entity 函数 */
 	struct list_head leaf_cfs_rq_list;
 
 	/* 在当前运行队列属于某个任务组的时候，表示当前运行队列所属的任务组 */
@@ -537,7 +539,7 @@ struct cfs_rq {
     /* 表示当前 cfs 运行队列带宽控制的当前统计周期的到期时间 */
 	u64 runtime_expires;
 
-	/* 表示当前 cfs 运行队列还剩余的可运行时间 */
+	/* 表示当前 cfs 运行队列还剩余的可运行时间，主要在带宽控制时使用 */
 	s64 runtime_remaining;
 
     /* throttled_clock - 表是当前 cfs 运行队列上一次执行 throttled 操作时所属 cpu 运行队列的时钟值
@@ -689,7 +691,7 @@ struct rq {
 	 * remote CPUs use both these fields when doing load calculation.
 	 */
 
-	/* 表示当前 cpu 运行队列上包含的调度实例数 */
+	/* 表示当前 cpu 运行队列上包含的实时调度实例和 cfs 调度实例数 */
 	unsigned int nr_running;
 	
 #ifdef CONFIG_NUMA_BALANCING
@@ -728,6 +730,8 @@ struct rq {
 	unsigned long last_load_update_tick;
 #ifdef CONFIG_NO_HZ_COMMON
 	u64 nohz_stamp;
+
+    /* 在 idle load balance 中使用，详情见 nohz_balancer_kick 函数和 NOHZ_BALANCE_KICK 定义 */
 	unsigned long nohz_flags;
 #endif
 #ifdef CONFIG_NO_HZ_FULL
@@ -747,7 +751,7 @@ struct rq {
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* list of leaf cfs_rq on this cpu: */
-    /* 通过链表的方式把当前 cpu 运行队列上的所有任务组的 cfs 运行队列链接起来 */
+    /* 通过链表的方式把当前 cpu 运行队列上的所有 cfs 运行队列链接起来，详情见 enqueue_entity 函数 */
 	struct list_head leaf_cfs_rq_list;
 
 	struct sched_avg avg;
@@ -781,21 +785,32 @@ struct rq {
 #ifdef CONFIG_SMP
 	struct root_domain *rd;
 
-    /* 表示当前 cpu 运行队列所属调度域指针 */
+    /* 表示当前 cpu 运行队列的 base 调度域指针 */
 	struct sched_domain *sd;
 
 	/* 表示当前 cpu 运行队列在减去实时调度实例运行的时间后，给 cfs 调度实例
 	   剩余的负载能力运行时间，详情见 update_cpu_capacity 函数 */
 	unsigned long cpu_capacity;
 
+    /* 表示当前 cpu 运行队列是否处于 idle 状态，即是否可以执行 idle 负载均衡操作
+       详情见 scheduler_tick 函数和 nohz_kick_needed 函数 */
 	unsigned char idle_balance;
+	
 	/* For active balancing */
 	int post_schedule;
+
+	/* 详情见 load_balance 函数（设置 active_balance 标志）和
+	   active_load_balance_cpu_stop 函数（清除 active_balance 标志）*/
 	int active_balance;
+
+	/* 详情见 active_load_balance_cpu_stop 函数 */
 	int push_cpu;
+	
 	struct cpu_stop_work active_balance_work;
+
 	/* cpu of this runqueue: */
 	int cpu;
+	
 	int online;
 
     /* 把属于当前 cpu 运行队列的所有任务通过链表链接起来 */
@@ -805,14 +820,17 @@ struct rq {
 	   详情见 sched_rt_avg_update 函数和 sched_avg_update 函数 */
 	u64 rt_avg;
 
-	/* 表示当前 cpu 运行队列一共运行了的时间统计值，更新粒度为 sched_avg_period
+	/* 表示当前 cpu 运行队列一共运行了的时间统计值，单位是 ns，更新粒度为 sched_avg_period
 	   详情见 sched_avg_update 函数 */
 	u64 age_stamp;
 
+    /* 表示当前 cpu 运行队列进入在 idle 状态下开始执行负载均衡操作的 cpu 运行队列时钟，详情见 idle_balance 函数 */
 	u64 idle_stamp;
+	
 	u64 avg_idle;
 
 	/* This is used to determine avg_idle's max value */
+	/* 表示当前 cpu 运行队列在 idle 状态下从其他忙 cpu 上拉取任务时消耗的最大时间，单位是 ns，详情见 idle_balance 函数 */
 	u64 max_idle_balance_cost;
 #endif
 
@@ -907,7 +925,7 @@ DECLARE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 ** 函数名称: __rq_clock_broken
 ** 功能描述: 获取指定的 cpu 运行队列的时钟信息
 ** 输	 入: rq - 指定的 cpu 运行队列指针
-** 输	 出: 
+** 输	 出: u64 - cpu 运行队列的时钟信息，单位是 ns
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -1076,8 +1094,14 @@ struct sched_group_capacity {
 	 * CPU capacity of this group, SCHED_LOAD_SCALE being max capacity
 	 * for a single CPU.
 	 */
-	/* capacity - 表示当前调度组的 cpu 在减去实时调度实例运行的时间后，给 cfs 调度实例剩余的负载计算能力
-	   capacity_orig - 表示当前调度组的 cpu 在一共具有的负载计算能力，详情见 update_cpu_capacity 函数 */
+	/* 这些负载计算能力是以 1024 归一化后的数值，有关 cpu capacity 的介绍详情见
+	   Documentation/devicetree/bindings/arm/cpu-capacity.txt
+
+	   capacity - 表示当前调度组的 cpu 在指定频率状态下，除去 rt 调度类之后给 cfs 调度类剩余的以
+	              SCHED_CAPACITY_SCALE 为基准值的归一化负载计算能力，单位是 DMIPS
+	   capacity_orig - 表示当前调度组的 cpu 在全速（不降频）运行状态下以 SCHED_CAPACITY_SCALE 为
+	              基准值的归一化负载计算能力，单位是 DMIPS
+	   详情见 update_cpu_capacity 函数 */
 	unsigned int capacity, capacity_orig;
 
 	/* 表示下一次更新当前调度组负载能力信息的 jiffies 时间点，详情见 update_group_capacity 
@@ -1086,6 +1110,7 @@ struct sched_group_capacity {
 
 	/* 表示当前调度组是否因为 cpu 亲和力导致不能进行负载均衡任务迁移操作，详情见 load_balance 函数 */
 	int imbalance; /* XXX unrelated to capacity but shared group state */
+	
 	/*
 	 * Number of busy cpus in this group.
 	 */
@@ -1151,7 +1176,7 @@ static inline struct cpumask *sched_group_mask(struct sched_group *sg)
  */
 /*********************************************************************************************************
 ** 函数名称: group_first_cpu
-** 功能描述: 获取指定的调度组内第一个 cpu 的 id 值
+** 功能描述: 获取指定的调度组内第一个 cpu 的 id 值，也是 cpu id 值最小的 cpu
 ** 输	 入: group - 指定的调度组指针
 ** 输	 出: unsigned int - 第一个 cpu 的 id 值
 ** 全局变量: 
@@ -1495,7 +1520,9 @@ static const u32 prio_to_wmult[40] = {
  /*  15 */ 119304647, 148102320, 186737708, 238609294, 286331153,
 };
 
-#define ENQUEUE_WAKEUP		1   /* 表示在把指定的调度实例添加到运行队列中后要及时唤醒并运行这个调度实例 */
+/* 表示在把指定的调度实例添加到运行队列中后要及时唤醒并运行这个调度实例 */
+#define ENQUEUE_WAKEUP		1
+
 #define ENQUEUE_HEAD		2
 #ifdef CONFIG_SMP
 #define ENQUEUE_WAKING		4	/* sched_class::task_waking was called */
@@ -1504,6 +1531,7 @@ static const u32 prio_to_wmult[40] = {
 #endif
 #define ENQUEUE_REPLENISH	8
 
+/* 表示在把指定的调度实例从运行队列中移除后会进入睡眠状态 */
 #define DEQUEUE_SLEEP		1
 
 #define RETRY_TASK		((void *)-1UL)
@@ -1731,9 +1759,11 @@ extern const_debug unsigned int sysctl_sched_migration_cost;
 
 /*********************************************************************************************************
 ** 函数名称: sched_avg_period
-** 功能描述: 获取当前调度系统的平均调度统计周期，单位是 ns
+** 功能描述: 获取当前调度系统中 cfs 调度类的基准分时周期，单位是 ns
+** 注     释: 当前系统为了在实时调度类中任务过载情况下不会把 cfs 调度类任务饿死，为 cfs 调度类分配了
+**         : 基准分时周期，即在一个调度分时周期内，至少有一半时间会分配给 cfs 调度类
 ** 输	 入: 
-** 输	 出: u64 - 平均调度统计周期，单位是 ns
+** 输	 出: u64 - cfs 调度类的基准分时周期，单位是 ns(0.5S)
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -2154,10 +2184,21 @@ extern void cfs_bandwidth_usage_dec(void);
 
 #ifdef CONFIG_NO_HZ_COMMON
 enum rq_nohz_flag_bits {
+    /* 表示当前 cpu 在 tick 中断退出时处于 idle 状态，这样我们就可以在这个 cpu 上执行 idle 负载均衡操作了 */
 	NOHZ_TICK_STOPPED,
+
+    /* 表示当前 cpu 需要执行一次 nohz 负载均衡操作，详情见 nohz_balancer_kick 函数和 nohz_idle_balance 函数 */
 	NOHZ_BALANCE_KICK,
 };
 
+/*********************************************************************************************************
+** 函数名称: nohz_flags
+** 功能描述: 获取指定 cpu 的 cpu 运行队列的 nohz 标志值
+** 输	 入: cpu - 指定的 cpu id 值
+** 输	 出: nohz_flags - nohz 标志值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define nohz_flags(cpu)	(&cpu_rq(cpu)->nohz_flags)
 #endif
 

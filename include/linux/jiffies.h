@@ -98,10 +98,21 @@ static inline u64 get_jiffies_64(void)
  * good compiler would generate better code (and a really good compiler
  * wouldn't care). Gcc is currently neither.
  */
+/*********************************************************************************************************
+** 函数名称: time_after
+** 功能描述: 判断指定的时间 a 是否在指定的时间 b 后
+** 输	 入: a - 指定的时间 a
+**         : b - 指定的时间 b
+** 输	 出: 1 - a 在 b 后面
+**         : 0 - a 不在 b 后面
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define time_after(a,b)		\
 	(typecheck(unsigned long, a) && \
 	 typecheck(unsigned long, b) && \
 	 ((long)((b) - (a)) < 0))
+	 
 #define time_before(a,b)	time_after(b,a)
 
 #define time_after_eq(a,b)	\

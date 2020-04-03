@@ -400,9 +400,9 @@ enum
 	BLOCK_SOFTIRQ,
 	BLOCK_IOPOLL_SOFTIRQ,
 	TASKLET_SOFTIRQ,
-	SCHED_SOFTIRQ,
+	SCHED_SOFTIRQ,        /* 用来触发系统周期性负载均衡操作的软中断，详情见 trigger_load_balance 函数 */
 	HRTIMER_SOFTIRQ,
-	RCU_SOFTIRQ,    /* Preferable RCU should always be the last softirq */
+	RCU_SOFTIRQ,          /* Preferable RCU should always be the last softirq */
 
 	NR_SOFTIRQS
 };
