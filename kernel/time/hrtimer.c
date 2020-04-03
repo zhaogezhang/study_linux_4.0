@@ -658,6 +658,15 @@ static void retrigger_next_event(void *arg)
 /*
  * Switch to high resolution mode
  */
+/*********************************************************************************************************
+** 函数名称: hrtimer_switch_to_hres
+** 功能描述: 把当前正在运行的 cpu 的高精度定时器基础时钟切换为高精度模式
+** 输	 入: 
+** 输	 出: 1 - 切换成功
+**         : 0 - 切换失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int hrtimer_switch_to_hres(void)
 {
 	int i, cpu = smp_processor_id();
@@ -802,23 +811,37 @@ void unlock_hrtimer_base(const struct hrtimer *timer, unsigned long *flags)
  * Forward the timer expiry so it will expire in the future.
  * Returns the number of overruns.
  */
+/*********************************************************************************************************
+** 函数名称: hrtimer_forward
+** 功能描述: 把指定的高精度定时器的超时时间按照指定的超时周期设置为离指定的当前时间最近的时间点
+** 输	 入: timer - 指定的高精度定时器指针
+**         : now - 指定的当前时钟时间
+**         : interval - 指定的超时周期时间
+** 输	 出: orun - 表示指定的当前时间和指定的高精度定时器原来的超时时间跨越的超时周期数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 u64 hrtimer_forward(struct hrtimer *timer, ktime_t now, ktime_t interval)
 {
 	u64 orun = 1;
 	ktime_t delta;
 
+    /* 计算当前高精度定时器时间和指定的高精度定时器超时时间的差值 */
 	delta = ktime_sub(now, hrtimer_get_expires(timer));
 
 	if (delta.tv64 < 0)
 		return 0;
 
+	/* 高精度定时器的超时时间间隔不能小于高精度定时器最小粒度 */
 	if (interval.tv64 < timer->base->resolution.tv64)
 		interval.tv64 = timer->base->resolution.tv64;
 
 	if (unlikely(delta.tv64 >= interval.tv64)) {
 		s64 incr = ktime_to_ns(interval);
 
+        /* 计算指定的当前时间和指定的高精度定时器原来的超时时间跨越的超时周期数 */
 		orun = ktime_divns(delta, incr);
+	
 		hrtimer_add_expires_ns(timer, incr * orun);
 		if (hrtimer_get_expires_tv64(timer) > now.tv64)
 			return orun;
@@ -931,6 +954,19 @@ remove_hrtimer(struct hrtimer *timer, struct hrtimer_clock_base *base)
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: __hrtimer_start_range_ns
+** 功能描述: 根据函数指定参数启动指定的高精度定时器
+** 输	 入: timer - 指定的高精度定时器指针
+**         : tim - 指定的高精度定时器超时范围起始值
+**         : delta_ns - 指定的高精度定时器超时抖动值
+**         : mode - 指定的高精度定时器模式
+**         : wakeup - 是否触发高精度定时器 HRTIMER_SOFTIRQ 软中断
+** 输	 出: 1 - 启动成功
+**         : 0 - 定时器处于激活状态
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int __hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
 		unsigned long delta_ns, const enum hrtimer_mode mode,
 		int wakeup)
@@ -1018,6 +1054,18 @@ EXPORT_SYMBOL_GPL(__hrtimer_start_range_ns);
  *  0 on success
  *  1 when the timer was active
  */
+/*********************************************************************************************************
+** 函数名称: hrtimer_start_range_ns
+** 功能描述: 根据函数指定参数启动指定的高精度定时器并触发高精度定时器 HRTIMER_SOFTIRQ 软中断
+** 输	 入: timer - 指定的高精度定时器指针
+**         : tim - 指定的高精度定时器超时范围起始值
+**         : delta_ns - 指定的高精度定时器超时抖动值
+**         : mode - 指定的高精度定时器模式
+** 输	 出: 1 - 启动成功
+**         : 0 - 定时器处于激活状态
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
 		unsigned long delta_ns, const enum hrtimer_mode mode)
 {
@@ -1036,6 +1084,17 @@ EXPORT_SYMBOL_GPL(hrtimer_start_range_ns);
  *  0 on success
  *  1 when the timer was active
  */
+/*********************************************************************************************************
+** 函数名称: hrtimer_start
+** 功能描述: 根据函数指定参数启动指定的高精度定时器并触发高精度定时器 HRTIMER_SOFTIRQ 软中断
+** 输	 入: timer - 指定的高精度定时器指针
+**         : tim - 指定的高精度定时器超时范围起始值
+**         : mode - 指定的高精度定时器模式
+** 输	 出: 1 - 启动成功
+**         : 0 - 定时器处于激活状态
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int
 hrtimer_start(struct hrtimer *timer, ktime_t tim, const enum hrtimer_mode mode)
 {
@@ -1194,6 +1253,15 @@ int hrtimer_get_res(const clockid_t which_clock, struct timespec *tp)
 }
 EXPORT_SYMBOL_GPL(hrtimer_get_res);
 
+/*********************************************************************************************************
+** 函数名称: __run_hrtimer
+** 功能描述: 开始执行指定的高精度定时器的超时处理函数并从所在队列中移除
+** 输	 入: timer -睡眠任务使用的高精度定时器指针
+**         : now - 指定的当前基础时钟值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void __run_hrtimer(struct hrtimer *timer, ktime_t *now)
 {
 	struct hrtimer_clock_base *base = timer->base;
@@ -1391,6 +1459,14 @@ void hrtimer_peek_ahead_timers(void)
 	local_irq_restore(flags);
 }
 
+/*********************************************************************************************************
+** 函数名称: run_hrtimer_softirq
+** 功能描述: 高精度定时器使用的软中断处理函数，中断号是 HRTIMER_SOFTIRQ 
+** 输	 入: h - 未使用
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void run_hrtimer_softirq(struct softirq_action *h)
 {
 	hrtimer_peek_ahead_timers();
@@ -1468,6 +1544,14 @@ void hrtimer_run_queues(void)
 /*
  * Sleep related functions:
  */
+/*********************************************************************************************************
+** 函数名称: hrtimer_wakeup
+** 功能描述: 在任务通过高精度定时器睡眠延时到达时用来唤醒这个睡眠任务
+** 输	 入: timer -睡眠任务使用的高精度定时器指针
+** 输	 出: HRTIMER_NORESTART - 指定的高精度定时器不需要重新启动
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static enum hrtimer_restart hrtimer_wakeup(struct hrtimer *timer)
 {
 	struct hrtimer_sleeper *t =
@@ -1481,6 +1565,14 @@ static enum hrtimer_restart hrtimer_wakeup(struct hrtimer *timer)
 	return HRTIMER_NORESTART;
 }
 
+/*********************************************************************************************************
+** 函数名称: hrtimer_init_sleeper
+** 功能描述: 根据指定的任务初始化一个指定的高精度定时器睡眠器
+** 输	 入: task - 指定的任务指针
+** 输	 出: sl - 指定的高精度定时器睡眠器结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void hrtimer_init_sleeper(struct hrtimer_sleeper *sl, struct task_struct *task)
 {
 	sl->timer.function = hrtimer_wakeup;
@@ -1488,6 +1580,15 @@ void hrtimer_init_sleeper(struct hrtimer_sleeper *sl, struct task_struct *task)
 }
 EXPORT_SYMBOL_GPL(hrtimer_init_sleeper);
 
+/*********************************************************************************************************
+** 函数名称: do_nanosleep
+** 功能描述: 根据指定的高精度定时器睡眠期和指定的高精度定时器工作模式执行当前任务睡眠延时操作
+** 输	 入: t - 指定的高精度定时器指针
+** 输	 出: 1 - 当前任务因为延时时间到达而被唤醒
+**         : 0 - 当前任务因为信号被唤醒
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int __sched do_nanosleep(struct hrtimer_sleeper *t, enum hrtimer_mode mode)
 {
 	hrtimer_init_sleeper(t, current);
@@ -1495,6 +1596,8 @@ static int __sched do_nanosleep(struct hrtimer_sleeper *t, enum hrtimer_mode mod
 	do {
 		set_current_state(TASK_INTERRUPTIBLE);
 		hrtimer_start_expires(&t->timer, mode);
+
+		/* 判断定时器是否到期，如果 hrtimer_active 返回 false，说明定时器已经过期 */
 		if (!hrtimer_active(&t->timer))
 			t->task = NULL;
 
@@ -1511,6 +1614,14 @@ static int __sched do_nanosleep(struct hrtimer_sleeper *t, enum hrtimer_mode mod
 	return t->task == NULL;
 }
 
+/*********************************************************************************************************
+** 函数名称: update_rmtp
+** 功能描述: 在当前任务通过高精度定时器睡眠但被提前唤醒时用来更新当前任务还剩余需要睡眠的时间
+** 输	 入: timer - 指定的高精度定时器指针
+** 输	 出: rmtp - 经过本次睡眠还剩余需要睡眠的时间长度，因为当前任务可能被信号提前唤醒
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int update_rmtp(struct hrtimer *timer, struct timespec __user *rmtp)
 {
 	struct timespec rmt;
@@ -1554,6 +1665,17 @@ out:
 	return ret;
 }
 
+/*********************************************************************************************************
+** 函数名称: hrtimer_nanosleep
+** 功能描述: 尝试通过高精度定时器对当前任务执行指定的 ns 级睡眠延时
+** 输	 入: rqtp - 指定的需要睡眠时间长度
+**         : mode - 指定的高精度定时器工作模式
+**         : clockid - 指定的高精度定时器时钟 id 值
+** 输	 出: ret - 执行状态
+**         : rmtp - 经过本次睡眠还剩余需要睡眠的时间长度，因为当前任务可能被信号提前唤醒
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 long hrtimer_nanosleep(struct timespec *rqtp, struct timespec __user *rmtp,
 		       const enum hrtimer_mode mode, const clockid_t clockid)
 {
@@ -1595,6 +1717,15 @@ out:
 	return ret;
 }
 
+/*********************************************************************************************************
+** 函数名称: nanosleep
+** 功能描述: 尝试通过高精度定时器对当前任务执行指定的 ns 级睡眠延时
+** 输	 入: rqtp - 指定的需要睡眠时间长度
+** 输	 出: ret - 执行状态
+**         : rmtp - 经过本次睡眠还剩余需要睡眠的时间长度，因为当前任务可能被信号提前唤醒
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 SYSCALL_DEFINE2(nanosleep, struct timespec __user *, rqtp,
 		struct timespec __user *, rmtp)
 {

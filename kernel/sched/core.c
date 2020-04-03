@@ -155,6 +155,7 @@ void update_rq_clock(struct rq *rq)
 #define SCHED_FEAT(name, enabled)	\
 	(1UL << __SCHED_FEAT_##name) * enabled |
 
+/* 定义并初始化当前系统调度特征控制变量的位图值 */
 const_debug unsigned int sysctl_sched_features =
 #include "features.h"
 	0;
@@ -171,6 +172,15 @@ static const char * const sched_feat_names[] = {
 
 #undef SCHED_FEAT
 
+/*********************************************************************************************************
+** 函数名称: sched_feat_show
+** 功能描述: 打印当前系统调度特征控制使能情况信息
+** 输	 入: m - 指定的 seq_file 指针
+**         : v - 未使用
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int sched_feat_show(struct seq_file *m, void *v)
 {
 	int i;
@@ -949,7 +959,7 @@ void deactivate_task(struct rq *rq, struct task_struct *p, int flags)
 
 /*********************************************************************************************************
 ** 函数名称: update_rq_clock_task
-** 功能描述: 更新指定的 cpu 运行队列的任务时钟信息
+** 功能描述: 更新指定的 cpu 运行队列的运行时钟信息
 ** 输	 入: rq - 指定的 cpu 运行队列指针
 **         : delta - 指定的时钟增量值
 ** 输	 出: 
@@ -965,6 +975,7 @@ static void update_rq_clock_task(struct rq *rq, s64 delta)
 #if defined(CONFIG_IRQ_TIME_ACCOUNTING) || defined(CONFIG_PARAVIRT_TIME_ACCOUNTING)
 	s64 steal = 0, irq_delta = 0;
 #endif
+
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 	irq_delta = irq_time_read(cpu_of(rq)) - rq->prev_irq_time;
 
@@ -989,6 +1000,7 @@ static void update_rq_clock_task(struct rq *rq, s64 delta)
 	rq->prev_irq_time += irq_delta;
 	delta -= irq_delta;
 #endif
+
 #ifdef CONFIG_PARAVIRT_TIME_ACCOUNTING
 	if (static_key_false((&paravirt_steal_rq_enabled))) {
 		steal = paravirt_steal_clock(cpu_of(rq));

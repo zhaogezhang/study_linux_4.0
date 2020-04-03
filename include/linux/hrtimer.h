@@ -106,9 +106,15 @@ enum hrtimer_restart {
  * The hrtimer structure must be initialized by hrtimer_init()
  */
 struct hrtimer {
+	/* 通过这个数据结构把定时器队列节点插入到全局定时器红黑树上 */
 	struct timerqueue_node		node;
+
+	/* 表示当前高精度定时器的 softexpires 绝对超时时间 */
 	ktime_t				_softexpires;
+
+	/* 表示当前高精度定时器的超时处理函数 */
 	enum hrtimer_restart		(*function)(struct hrtimer *);
+	
 	struct hrtimer_clock_base	*base;
 	unsigned long			state;
 #ifdef CONFIG_TIMER_STATS
@@ -187,7 +193,10 @@ struct hrtimer_cpu_base {
 #ifdef CONFIG_HIGH_RES_TIMERS
 	ktime_t				expires_next;
 	int				in_hrtirq;
+
+	/* 表示当前的高精度定时器的是否工作在高精度模式下 */
 	int				hres_active;
+	
 	int				hang_detected;
 	unsigned long			nr_events;
 	unsigned long			nr_retries;
@@ -197,66 +206,171 @@ struct hrtimer_cpu_base {
 	struct hrtimer_clock_base	clock_base[HRTIMER_MAX_CLOCK_BASES];
 };
 
+/*********************************************************************************************************
+** 函数名称: hrtimer_set_expires
+** 功能描述: 设置指定的高精度定时器的 expires 绝对超时时间
+** 输	 入: timer - 指定的高精度定时器指针
+**         : time - 指定的超时时间，单位是 ns
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void hrtimer_set_expires(struct hrtimer *timer, ktime_t time)
 {
 	timer->node.expires = time;
 	timer->_softexpires = time;
 }
 
+/*********************************************************************************************************
+** 函数名称: hrtimer_set_expires_range
+** 功能描述: 设置指定的高精度定时器的 expires 绝对超时时间范围
+** 输	 入: timer - 指定的高精度定时器指针
+**         : time - 指定的起始超时时间，单位是 ns
+**         : delta - 指定的超时时间范围跨度，单位是 ns
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void hrtimer_set_expires_range(struct hrtimer *timer, ktime_t time, ktime_t delta)
 {
 	timer->_softexpires = time;
 	timer->node.expires = ktime_add_safe(time, delta);
 }
 
+/*********************************************************************************************************
+** 函数名称: hrtimer_set_expires_range
+** 功能描述: 设置指定的高精度定时器的 expires 绝对超时时间范围
+** 输	 入: timer - 指定的高精度定时器指针
+**         : time - 指定的起始超时时间，单位是 ns
+**         : delta - 指定的超时时间范围跨度，单位是 ns
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void hrtimer_set_expires_range_ns(struct hrtimer *timer, ktime_t time, unsigned long delta)
 {
 	timer->_softexpires = time;
 	timer->node.expires = ktime_add_safe(time, ns_to_ktime(delta));
 }
 
+/*********************************************************************************************************
+** 函数名称: hrtimer_set_expires_tv64
+** 功能描述: 设置指定的高精度定时器的 expires 绝对超时时间
+** 输	 入: timer - 指定的高精度定时器指针
+**         : tv64 - 指定的超时时间，单位是 ns
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void hrtimer_set_expires_tv64(struct hrtimer *timer, s64 tv64)
 {
 	timer->node.expires.tv64 = tv64;
 	timer->_softexpires.tv64 = tv64;
 }
 
+/*********************************************************************************************************
+** 函数名称: hrtimer_add_expires
+** 功能描述: 把指定的高精度定时器的 expires 超时时间向后平移指定的时间
+** 输	 入: timer - 指定的高精度定时器指针
+**         : tv64 - 指定的后移时间，单位是 ns
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void hrtimer_add_expires(struct hrtimer *timer, ktime_t time)
 {
 	timer->node.expires = ktime_add_safe(timer->node.expires, time);
 	timer->_softexpires = ktime_add_safe(timer->_softexpires, time);
 }
 
+/*********************************************************************************************************
+** 函数名称: hrtimer_add_expires_ns
+** 功能描述: 把指定的高精度定时器的 expires 超时时间向后平移指定的时间
+** 输	 入: timer - 指定的高精度定时器指针
+**         : ns - 指定的后移时间，单位是 ns
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void hrtimer_add_expires_ns(struct hrtimer *timer, u64 ns)
 {
 	timer->node.expires = ktime_add_ns(timer->node.expires, ns);
 	timer->_softexpires = ktime_add_ns(timer->_softexpires, ns);
 }
 
+/*********************************************************************************************************
+** 函数名称: hrtimer_get_expires
+** 功能描述: 获取指定的高精度定时器的 expires 超时时间
+** 输	 入: timer - 指定的高精度定时器指针
+** 输	 出: ktime_t - 高精度定时器的超时时间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline ktime_t hrtimer_get_expires(const struct hrtimer *timer)
 {
 	return timer->node.expires;
 }
 
+/*********************************************************************************************************
+** 函数名称: hrtimer_get_softexpires
+** 功能描述: 获取指定的高精度定时器的 softexpires 超时时间
+** 输	 入: timer - 指定的高精度定时器指针
+** 输	 出: ktime_t - 高精度定时器的超时时间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline ktime_t hrtimer_get_softexpires(const struct hrtimer *timer)
 {
 	return timer->_softexpires;
 }
 
+/*********************************************************************************************************
+** 函数名称: hrtimer_get_expires_tv64
+** 功能描述: 获取指定的高精度定时器的 expires 超时时间
+** 输	 入: timer - 指定的高精度定时器指针
+** 输	 出: s64 - 高精度定时器的超时时间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline s64 hrtimer_get_expires_tv64(const struct hrtimer *timer)
 {
 	return timer->node.expires.tv64;
 }
+
+/*********************************************************************************************************
+** 函数名称: hrtimer_get_expires_tv64
+** 功能描述: 获取指定的高精度定时器的 softexpires 超时时间
+** 输	 入: timer - 指定的高精度定时器指针
+** 输	 出: s64 - 高精度定时器的第一个超时时间
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline s64 hrtimer_get_softexpires_tv64(const struct hrtimer *timer)
 {
 	return timer->_softexpires.tv64;
 }
 
+/*********************************************************************************************************
+** 函数名称: hrtimer_get_expires_ns
+** 功能描述: 获取指定的高精度定时器的 expires 超时时间
+** 输	 入: timer - 指定的高精度定时器指针
+** 输	 出: s64 - 高精度定时器的超时时间，单位 ns
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline s64 hrtimer_get_expires_ns(const struct hrtimer *timer)
 {
 	return ktime_to_ns(timer->node.expires);
 }
 
+/*********************************************************************************************************
+** 函数名称: hrtimer_expires_remaining
+** 功能描述: 获取指定的高精度定时器的还需要多长时间发生 expires 超时
+** 输	 入: timer - 指定的高精度定时器指针
+** 输	 出: s64 - 还需要的时间，单位 ns
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline ktime_t hrtimer_expires_remaining(const struct hrtimer *timer)
 {
 	return ktime_sub(timer->node.expires, timer->base->get_time());
@@ -270,11 +384,28 @@ extern void hrtimer_interrupt(struct clock_event_device *dev);
 /*
  * In high resolution mode the time reference must be read accurate
  */
+/*********************************************************************************************************
+** 函数名称: hrtimer_cb_get_time
+** 功能描述: 获取指定的高精度定时器当前时钟值
+** 输	 入: timer - 指定的高精度定时器指针
+** 输	 出: ktime_t - 当前时钟值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline ktime_t hrtimer_cb_get_time(struct hrtimer *timer)
 {
 	return timer->base->get_time();
 }
 
+/*********************************************************************************************************
+** 函数名称: hrtimer_is_hres_active
+** 功能描述: 判断指定的高精度定时器的是否工作在高精度模式下
+** 输	 入: timer - 指定的高精度定时器指针
+** 输	 出: 1 - 是在高精度模式下
+**         : 0 - 不是在高精度模式下
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int hrtimer_is_hres_active(struct hrtimer *timer)
 {
 	return timer->base->cpu_base->hres_active;
@@ -306,6 +437,14 @@ static inline void hrtimer_peek_ahead_timers(void) { }
  * In non high resolution mode the time reference is taken from
  * the base softirq time variable.
  */
+/*********************************************************************************************************
+** 函数名称: hrtimer_cb_get_time
+** 功能描述: 获取指定的高精度定时器当前时钟值
+** 输	 入: timer - 指定的高精度定时器指针
+** 输	 出: ktime_t - 当前时钟值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline ktime_t hrtimer_cb_get_time(struct hrtimer *timer)
 {
 	return timer->base->softirq_time;
@@ -365,6 +504,15 @@ __hrtimer_start_range_ns(struct hrtimer *timer, ktime_t tim,
 extern int hrtimer_cancel(struct hrtimer *timer);
 extern int hrtimer_try_to_cancel(struct hrtimer *timer);
 
+/*********************************************************************************************************
+** 函数名称: hrtimer_start_expires
+** 功能描述: 根据指定的高精度定时器参数启动这个高精度定时器
+** 输	 入: timer - 指定的高精度定时器指针
+**         : mode - 指定的高精度定时器工作模式
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int hrtimer_start_expires(struct hrtimer *timer,
 						enum hrtimer_mode mode)
 {
@@ -376,6 +524,14 @@ static inline int hrtimer_start_expires(struct hrtimer *timer,
 	return hrtimer_start_range_ns(timer, soft, delta, mode);
 }
 
+/*********************************************************************************************************
+** 函数名称: hrtimer_restart
+** 功能描述: 重新启动指定的高精度定时器
+** 输	 入: timer - 指定的高精度定时器指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int hrtimer_restart(struct hrtimer *timer)
 {
 	return hrtimer_start_expires(timer, HRTIMER_MODE_ABS);
@@ -392,6 +548,15 @@ extern ktime_t hrtimer_get_next_event(void);
  * callback function is running or it's in the state of being migrated
  * to another cpu.
  */
+/*********************************************************************************************************
+** 函数名称: hrtimer_active
+** 功能描述: 判断指定的高精度定时器是否是激活状态
+** 输	 入: timer - 指定的高精度定时器指针
+** 输	 出: 1 - 激活状态
+**         : 0 - 非激活状态
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int hrtimer_active(const struct hrtimer *timer)
 {
 	return timer->state != HRTIMER_STATE_INACTIVE;
@@ -400,6 +565,15 @@ static inline int hrtimer_active(const struct hrtimer *timer)
 /*
  * Helper function to check, whether the timer is on one of the queues
  */
+/*********************************************************************************************************
+** 函数名称: hrtimer_is_queued
+** 功能描述: 判断指定的高精度定时器是否在等待队列中
+** 输	 入: timer - 指定的高精度定时器指针
+** 输	 出: 1 - 在等待队列中
+**         : 0 - 不在等待队列中
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int hrtimer_is_queued(struct hrtimer *timer)
 {
 	return timer->state & HRTIMER_STATE_ENQUEUED;
@@ -409,6 +583,15 @@ static inline int hrtimer_is_queued(struct hrtimer *timer)
  * Helper function to check, whether the timer is running the callback
  * function
  */
+/*********************************************************************************************************
+** 函数名称: hrtimer_callback_running
+** 功能描述: 判断指定的高精度定时器是否在执行超时处理回调函数
+** 输	 入: timer - 指定的高精度定时器指针
+** 输	 出: 1 - 在执行超时处理回调函数
+**         : 0 - 不在执行超时处理回调函数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int hrtimer_callback_running(struct hrtimer *timer)
 {
 	return timer->state & HRTIMER_STATE_CALLBACK;

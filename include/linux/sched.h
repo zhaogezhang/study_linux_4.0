@@ -2155,7 +2155,9 @@ struct task_struct {
 	 * time slack values; these are used to round up poll() and
 	 * select() etc timeout values. These are in nanoseconds.
 	 */
+    /* 表示当前任务使用的高精度定时器抖动值，单位是 ns */
 	unsigned long timer_slack_ns;
+
 	unsigned long default_timer_slack_ns;
 
 #ifdef CONFIG_KASAN

@@ -4,10 +4,10 @@
 #include <linux/rbtree.h>
 #include <linux/ktime.h>
 
-
+/* 通过这个数据结构把定时器队列节点插入到全局定时器红黑树上 */
 struct timerqueue_node {
-	struct rb_node node;
-	ktime_t expires;
+	struct rb_node node; /* 红黑树节点 */
+	ktime_t expires;     /* 表示当前定时器队列在红黑树上排列使用的时间键值 */
 };
 
 struct timerqueue_head {
