@@ -59,7 +59,7 @@ extern bool static_key_initialized;
 
 struct static_key {
 	atomic_t enabled;
-/* Set lsb bit to 1 if branch is default true, 0 ot */
+    /* Set lsb bit to 1 if branch is default true, 0 ot */
 	struct jump_entry *entries;
 #ifdef CONFIG_MODULES
 	struct static_key_mod *next;
@@ -83,6 +83,14 @@ struct module;
 
 #include <linux/atomic.h>
 
+/*********************************************************************************************************
+** 函数名称: static_key_count
+** 功能描述: 获取指定的 static_key 结构计数值
+** 输	 入: key - 指定的 static_key 指针
+** 输	 出: int - 计数值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int static_key_count(struct static_key *key)
 {
 	return atomic_read(&key->enabled);
@@ -148,6 +156,15 @@ static __always_inline void jump_label_init(void)
 	static_key_initialized = true;
 }
 
+/*********************************************************************************************************
+** 函数名称: static_key_false
+** 功能描述: 判断指定的 static_key 结构当前状态是否为 unlikely 状态
+** 输	 入: key - 指定的 static_key 指针
+** 输	 出: true - 是 unlikely 状态
+**         : false - 不是 unlikely 状态
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static __always_inline bool static_key_false(struct static_key *key)
 {
 	if (unlikely(static_key_count(key) > 0))
@@ -155,6 +172,15 @@ static __always_inline bool static_key_false(struct static_key *key)
 	return false;
 }
 
+/*********************************************************************************************************
+** 函数名称: static_key_false
+** 功能描述: 判断指定的 static_key 结构当前状态是否为 likely 状态
+** 输	 入: key - 指定的 static_key 指针
+** 输	 出: true - 是 likely 状态
+**         : false - 不是 likely 状态
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static __always_inline bool static_key_true(struct static_key *key)
 {
 	if (likely(static_key_count(key) > 0))
@@ -162,12 +188,30 @@ static __always_inline bool static_key_true(struct static_key *key)
 	return false;
 }
 
+/*********************************************************************************************************
+** 函数名称: static_key_slow_inc
+** 功能描述: 对指定的 static_key 结构计数值指定递增操作
+** 注     释: The 'slow' prefix makes it abundantly clear that this is an expensive operation
+** 输	 入: key - 指定的 static_key 指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void static_key_slow_inc(struct static_key *key)
 {
 	STATIC_KEY_CHECK_USE();
 	atomic_inc(&key->enabled);
 }
 
+/*********************************************************************************************************
+** 函数名称: static_key_slow_dec
+** 功能描述: 对指定的 static_key 结构计数值指定递减操作
+** 注     释: The 'slow' prefix makes it abundantly clear that this is an expensive operation
+** 输	 入: key - 指定的 static_key 指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void static_key_slow_dec(struct static_key *key)
 {
 	STATIC_KEY_CHECK_USE();
@@ -187,8 +231,25 @@ static inline int jump_label_apply_nops(struct module *mod)
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: STATIC_KEY_INIT_TRUE
+** 功能描述: 声明并初始化一个 static_key 结构并设置默认值为 true
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define STATIC_KEY_INIT_TRUE ((struct static_key) \
 		{ .enabled = ATOMIC_INIT(1) })
+
+/*********************************************************************************************************
+** 函数名称: STATIC_KEY_INIT_TRUE
+** 功能描述: 声明并初始化一个 static_key 结构并设置默认值为 false
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define STATIC_KEY_INIT_FALSE ((struct static_key) \
 		{ .enabled = ATOMIC_INIT(0) })
 
@@ -197,6 +258,15 @@ static inline int jump_label_apply_nops(struct module *mod)
 #define STATIC_KEY_INIT STATIC_KEY_INIT_FALSE
 #define jump_label_enabled static_key_enabled
 
+/*********************************************************************************************************
+** 函数名称: static_key_enabled
+** 功能描述: 判断指定的 static_key 是否处于使能状态
+** 输	 入: key - 指定的 static_key 指针
+** 输	 出: 1 - 使能
+**         : 0 - 未使能
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline bool static_key_enabled(struct static_key *key)
 {
 	return static_key_count(key) > 0;

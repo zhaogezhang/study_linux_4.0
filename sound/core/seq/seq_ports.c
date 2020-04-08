@@ -174,7 +174,8 @@ struct snd_seq_client_port *snd_seq_create_port(struct snd_seq_client *client,
 	return new_port;
 }
 
-/* */
+/* DEST_LIST 组类型要比 SRC_LIST 组类型 busiest，在负载均衡处使用
+   详情见 update_sd_pick_busiest 函数 */
 enum group_type {
 	SRC_LIST, DEST_LIST
 };

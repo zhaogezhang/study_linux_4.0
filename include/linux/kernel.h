@@ -810,6 +810,16 @@ static inline void ftrace_dump(enum ftrace_dump_mode oops_dump_mode) { }
  * This macro does strict typechecking of lo/hi to make sure they are of the
  * same type as val.  See the unnecessary pointer comparisons.
  */
+/*********************************************************************************************************
+** 函数名称: clamp
+** 功能描述: 把指定的值固定到指定的范围内
+** 输	 入: val - 指定的值
+**         : lo - 指定的范围下边界
+**         : hi - 指定的范围上边界
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define clamp(val, lo, hi) min((typeof(val))max(val, lo), hi)
 
 /*

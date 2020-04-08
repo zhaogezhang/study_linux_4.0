@@ -853,10 +853,11 @@ struct rq {
 
 #ifdef CONFIG_SCHED_HRTICK
 #ifdef CONFIG_SMP
+    /* 详情见 hrtick_start 函数 */
 	int hrtick_csd_pending;
 	struct call_single_data hrtick_csd;
 #endif
-    /* 表示当前 cpu 运行队列在任务调度时使用的高精度定时器 */
+    /* 表示当前 cpu 运行队列的高精度定时器，在超时处理函数中更新 cpu 运行队列时钟并触发调度类 tick */
 	struct hrtimer hrtick_timer;
 #endif
 

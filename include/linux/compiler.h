@@ -160,6 +160,11 @@ void ftrace_likely_update(struct ftrace_branch_data *f, int val, int expect);
 #endif /* CONFIG_PROFILE_ALL_BRANCHES */
 
 #else
+/* 这里的 __built_expect() 函数是 gcc(version >= 2.96) 的内建函数，提供给程序员使用的
+   目的是将“分支转移”的信息提供给编译器，这样编译器对代码进行优化，以减少指令跳转带来
+   的性能下降：
+   __buildin_expect((x), 1) 表示 x 的值为真的可能性更大
+   __buildin_expect((x), 0) 表示 x 的值为假的可能性  */
 # define likely(x)	__builtin_expect(!!(x), 1)
 # define unlikely(x)	__builtin_expect(!!(x), 0)
 #endif
