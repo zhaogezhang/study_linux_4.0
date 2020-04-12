@@ -602,6 +602,14 @@ void update_idle_cpu_load(struct rq *this_rq)
 /*
  * Called from tick_nohz_idle_exit() -- try and fix up the ticks we missed.
  */
+/*********************************************************************************************************
+** 函数名称: update_cpu_load_nohz
+** 功能描述: 在 cpu 从 NOHZ idle 状态退出后，用来更新当前 cpu 运行队列的 cpu 负载贡献值
+** 输	 入: this_rq - 退出 NOHZ idle 状态的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void update_cpu_load_nohz(void)
 {
 	struct rq *this_rq = this_rq();
@@ -628,6 +636,14 @@ void update_cpu_load_nohz(void)
 /*
  * Called from scheduler_tick()
  */
+/*********************************************************************************************************
+** 函数名称: update_cpu_load_active
+** 功能描述: 在 cpu 处于 active 状态下，用来更新指定的 cpu 运行队列的 cpu 负载贡献值
+** 输	 入: this_rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void update_cpu_load_active(struct rq *this_rq)
 {
 	unsigned long load = get_rq_runnable_load(this_rq);

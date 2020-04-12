@@ -84,26 +84,71 @@ extern void update_cpu_load_active(struct rq *this_rq);
  */
 #define RUNTIME_INF	((u64)~0ULL)
 
+/*********************************************************************************************************
+** 函数名称: fair_policy
+** 功能描述: 判断指定的调度策略是否为完全公平调度策略
+** 输	 入: policy - 指定的调度策略
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int fair_policy(int policy)
 {
 	return policy == SCHED_NORMAL || policy == SCHED_BATCH;
 }
 
+/*********************************************************************************************************
+** 函数名称: rt_policy
+** 功能描述: 判断指定的调度策略是否为实时调度策略
+** 输	 入: policy - 指定的调度策略
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int rt_policy(int policy)
 {
 	return policy == SCHED_FIFO || policy == SCHED_RR;
 }
 
+/*********************************************************************************************************
+** 函数名称: dl_policy
+** 功能描述: 判断指定的调度策略是否为 DEADLINE 调度策略
+** 输	 入: policy - 指定的调度策略
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int dl_policy(int policy)
 {
 	return policy == SCHED_DEADLINE;
 }
 
+/*********************************************************************************************************
+** 函数名称: task_has_rt_policy
+** 功能描述: 判断指定的任务的调度策略是否为实时调度策略
+** 输	 入: p - 指定的任务指针
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int task_has_rt_policy(struct task_struct *p)
 {
 	return rt_policy(p->policy);
 }
 
+/*********************************************************************************************************
+** 函数名称: task_has_dl_policy
+** 功能描述: 判断指定的任务的调度策略是否为 DEADLINE 调度策略
+** 输	 入: p - 指定的任务指针
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int task_has_dl_policy(struct task_struct *p)
 {
 	return dl_policy(p->policy);
@@ -171,6 +216,15 @@ struct dl_bandwidth {
 	u64 dl_period;
 };
 
+/*********************************************************************************************************
+** 函数名称: dl_bandwidth_enabled
+** 功能描述: 判断当前系统是否使能了 deadline 带宽控制功能
+** 输	 入: 
+** 输	 出: 1 - 使能了
+**         : 0 - 没使能
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int dl_bandwidth_enabled(void)
 {
 	return sysctl_sched_rt_runtime >= 0;
@@ -178,23 +232,58 @@ static inline int dl_bandwidth_enabled(void)
 
 extern struct dl_bw *dl_bw_of(int i);
 
+/* 定义了保存 deadline 带宽控制相关参数数据结构 */
 struct dl_bw {
 	raw_spinlock_t lock;
+
+	/* bw - 表示当前系统“每个” cpu 可提供的最大带宽，-1 表示无效的参数
+	   total_bw - 表示当前系统“所有” cpu 一共使用的带宽 */
 	u64 bw, total_bw;
 };
 
+/*********************************************************************************************************
+** 函数名称: __dl_clear
+** 功能描述: 在我们移除一个实时任务时调用，用来更新当前系统 deadline 带宽使用量
+** 输	 入: dl_b - 指定的 deadline 带宽控制结构指针
+**         : tsk_bw - 移除任务的带宽使用量
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline
 void __dl_clear(struct dl_bw *dl_b, u64 tsk_bw)
 {
 	dl_b->total_bw -= tsk_bw;
 }
 
+/*********************************************************************************************************
+** 函数名称: __dl_add
+** 功能描述: 在我们添加一个实时任务时调用，用来更新当前系统 deadline 带宽使用量
+** 输	 入: dl_b - 指定的 deadline 带宽控制结构指针
+**         : tsk_bw - 添加任务的带宽使用量
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline
 void __dl_add(struct dl_bw *dl_b, u64 tsk_bw)
 {
 	dl_b->total_bw += tsk_bw;
 }
 
+/*********************************************************************************************************
+** 函数名称: __dl_overflow
+** 功能描述: 在系统中实时任务带宽使用量变化时调用，用来判断变化之后实时任务的总带宽使用量是否
+**         : 超过了我们预先为实时任务分配的阈值
+** 输	 入: dl_b - 指定的 deadline 带宽控制结构指针
+**         : cpus - 指定的 cpu 所属根调度域中参与 deadline 带宽控制的有效 cpu 个数
+**         : old_bw - 变化前的任务带宽使用量
+**         : new_bw - 变化后的任务带宽使用量
+** 输	 出: 1 - 超过了预先设定的阈值
+**         : 0 - 没超过预先设定的阈值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline
 bool __dl_overflow(struct dl_bw *dl_b, int cpus, u64 old_bw, u64 new_bw)
 {
@@ -734,15 +823,20 @@ struct rq {
     /* 在 idle load balance 中使用，详情见 nohz_balancer_kick 函数和 NOHZ_BALANCE_KICK 定义 */
 	unsigned long nohz_flags;
 #endif
+
 #ifdef CONFIG_NO_HZ_FULL
+    /* 用来追踪记录当前 cpu 运行队列最后一次 tick 的 jiffies 值，详情见 rq_last_tick_reset 函数 */
 	unsigned long last_sched_tick;
 #endif
+
 	/* capture load from *all* tasks on this cpu: */
     /* 表示当前 cpu 运行队列上所有调度实例的调度负载权重的总和，即把当前 cpu 运行队列当成一个调度实例
        的时候，这个 cpu 运行队列拥有的调度负载权重信息 */	
 	struct load_weight load;
 
 	unsigned long nr_load_updates;
+
+	/* 统计当前 cpu 运行队列上发生的任务切换次数，详情见 __schedule 函数 */
 	u64 nr_switches;
 
 	struct cfs_rq cfs;
@@ -767,9 +861,16 @@ struct rq {
 
     /* curr - 表示当前 cpu 运行队列正在运行的任务指针 
 	   idle - 表示当前 cpu 运行队列的 idle 任务指针
-	   stop - */
+	   stop - 表示当前 cpu 运行队列的 stop 任务指针，stop 任务是系统中优先级最高的任务
+	          它抢占所有的任务，并且不会被任何东西抢占 */
 	struct task_struct *curr, *idle, *stop;
+
+	/* 表示当前 cpu 运行队列下一次触发负载均衡的 jiffies 时间，详情见 rebalance_domains 函数
+	   和 idle_balance 函数以及 trigger_load_balance 函数等 */
 	unsigned long next_balance;
+
+	/* 在当前 cpu 运行队列执行任务切换时用来保存被切换出任务的内存结构指针，详情见
+	   context_switch 函数和 finish_task_switch 函数 */
 	struct mm_struct *prev_mm;
 
 	unsigned int clock_skip_update;
@@ -780,6 +881,7 @@ struct rq {
     /* 表示当前 cpu 运行队列中的调度实例在任务上下文中消耗的时间，在 update_rq_clock_task 函数中更新，单位是 ns */
 	u64 clock_task;
 
+    /* 表示当前 cpu 运行队列上一共发生的 IO 等待事件次数，详情见 io_schedule_timeout 函数 */
 	atomic_t nr_iowait;
 
 #ifdef CONFIG_SMP
@@ -824,7 +926,7 @@ struct rq {
 	   详情见 sched_avg_update 函数 */
 	u64 age_stamp;
 
-    /* 表示当前 cpu 运行队列进入在 idle 状态下开始执行负载均衡操作的 cpu 运行队列时钟，详情见 idle_balance 函数 */
+    /* 表示当前 cpu 运行队列在进入 idle 状态下开始执行负载均衡操作时的 cpu 运行队列时钟，详情见 idle_balance 函数 */
 	u64 idle_stamp;
 	
 	u64 avg_idle;
@@ -880,6 +982,7 @@ struct rq {
 #endif
 
 #ifdef CONFIG_SMP
+    /* 通过链表的方式把当前 cpu 运行队列中所有待唤醒的任务链接起来，详情见 sched_ttwu_pending 函数 */
 	struct llist_head wake_list;
 #endif
 
@@ -964,6 +1067,7 @@ static inline u64 rq_clock_task(struct rq *rq)
 }
 
 /* RQCF - run queue clock flags */
+/* 表示发送了一个不执行运行队列的时钟信息更新操作的请求标志，详情见 __schedule 函数 */
 #define RQCF_REQ_SKIP	0x01
 
 /* 表示在调用 update_rq_clock 函数的时候，不执行运行队列的时钟信息更新操作 */
@@ -971,7 +1075,8 @@ static inline u64 rq_clock_task(struct rq *rq)
 
 /*********************************************************************************************************
 ** 函数名称: rq_clock_skip_update
-** 功能描述: 设置指定的 cpu 运行队列的 RQCF_REQ_SKIP 标志
+** 功能描述: 设置指定的 cpu 运行队列的 RQCF_REQ_SKIP 标志，表示发送一个不执行运行队列的时钟信息
+**         : 更新操作的请求
 ** 输	 入: rq - 指定的 cpu 运行队列指针
 **         : skip - 设置或清除标志
 ** 输	 出: 
@@ -1192,6 +1297,16 @@ extern int group_balance_cpu(struct sched_group *sg);
 
 #else
 
+/*********************************************************************************************************
+** 函数名称: sched_ttwu_pending
+** 功能描述: 唤醒当前正在运行的 cpu 运行队列上所有被挂起且待唤醒的每一个任务
+** 输	 入: p - 指定的被唤醒任务指针
+**         : wake_flags - 指定的 wakeup flags，例如 WF_FORK
+** 输	 出: 1 - 执行成功
+**         : 0 - 执行失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void sched_ttwu_pending(void) { }
 
 #endif /* CONFIG_SMP */
@@ -1388,7 +1503,7 @@ static inline int task_running(struct rq *rq, struct task_struct *p)
 
 /*********************************************************************************************************
 ** 函数名称: task_on_rq_queued
-** 功能描述: 判断指定的任务是否处于 TASK_ON_RQ_QUEUED 状态
+** 功能描述: 判断指定的任务是否在所属 cpu 运行队列上
 ** 输	 入: p - 指定的任务指针
 ** 输	 出: 1 - 是
 **         : 0 - 不是
@@ -1424,6 +1539,16 @@ static inline int task_on_rq_migrating(struct task_struct *p)
 # define finish_arch_post_lock_switch()	do { } while (0)
 #endif
 
+/*********************************************************************************************************
+** 函数名称: prepare_lock_switch
+** 功能描述: 在指定的 cpu 运行队列上执行完任务切换前调用，用来切换 cpu 运行队列锁持有者
+** 注     释: 这个函数调用之前需要和 finish_lock_switch 函数成对的调用
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : next - 指定的将要被切换进来的将要运行的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void prepare_lock_switch(struct rq *rq, struct task_struct *next)
 {
 #ifdef CONFIG_SMP
@@ -1436,6 +1561,16 @@ static inline void prepare_lock_switch(struct rq *rq, struct task_struct *next)
 #endif
 }
 
+/*********************************************************************************************************
+** 函数名称: finish_lock_switch
+** 功能描述: 在指定的 cpu 运行队列上执行完任务切换后调用，用来切换 cpu 运行队列锁持有者
+** 注     释: 这个函数调用之前需要和 finish_lock_switch 函数成对的调用
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : prev - 指定的将要被切换出的当前正在运行的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void finish_lock_switch(struct rq *rq, struct task_struct *prev)
 {
 #ifdef CONFIG_SMP
@@ -1466,7 +1601,7 @@ static inline void finish_lock_switch(struct rq *rq, struct task_struct *prev)
  */
 #define WF_SYNC		0x01		/* waker goes to sleep after wakeup */
 #define WF_FORK		0x02		/* child wakeup after fork */
-#define WF_MIGRATED	0x4		/* internal use, task got migrated */
+#define WF_MIGRATED	0x4		    /* internal use, task got migrated */
 
 /*
  * To aid in avoiding the subversion of "niceness" due to uneven distribution
@@ -1613,7 +1748,17 @@ static inline void put_prev_task(struct rq *rq, struct task_struct *prev)
 	prev->sched_class->put_prev_task(rq, prev);
 }
 
+/* 表示当前系统内优先级最高的调度类指针 */
 #define sched_class_highest (&stop_sched_class)
+
+/*********************************************************************************************************
+** 函数名称: for_each_class
+** 功能描述: 遍历当前系统内支持的每一个调度类，按照优先级从高到底的顺序遍历
+** 输	 入: class - 遍历过程中使用的可操作临时变量
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define for_each_class(class) \
    for (class = sched_class_highest; class; class = class->next)
 
@@ -1740,6 +1885,14 @@ static inline void sub_nr_running(struct rq *rq, unsigned count)
 	rq->nr_running -= count;
 }
 
+/*********************************************************************************************************
+** 函数名称: rq_last_tick_reset
+** 功能描述: 更新指定的 cpu 运行队列的 last_sched_tick 字段值
+** 输	 入: rq - 指定的 cpu 运行队列指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void rq_last_tick_reset(struct rq *rq)
 {
 #ifdef CONFIG_NO_HZ_FULL

@@ -3710,7 +3710,9 @@ static inline u64 __synchronize_entity_decay(struct sched_entity *se)
 	struct cfs_rq *cfs_rq = cfs_rq_of(se);
 	u64 decays = atomic64_read(&cfs_rq->decay_counter);
 
+    /* se->avg.decay_count 是一个负值，详情见 migrate_task_rq_fair 函数 */
 	decays -= se->avg.decay_count;
+	
 	se->avg.decay_count = 0;
 	if (!decays)
 		return 0;
@@ -6938,11 +6940,11 @@ done:
 /*********************************************************************************************************
 ** 函数名称: select_task_rq_fair
 ** 功能描述: 根据函数指定的参数为指定的被唤醒的任务选择本次运行目标 cpu 
-** 输	 入: p - 指定的任务指针
-**         : prev_cpu - 上次运行所在 cpu id
+** 输	 入: p - 指定的被唤醒任务指针
+**         : prev_cpu - 上次运行所在 cpu id 值
 **         : sd_flag - 指定的调度域 flags，例如 SD_BALANCE_WAKE
 **         : wake_flags - 指定的唤醒 flags，例如 WF_SYNC
-** 输	 出: new_cpu - 本次运行所选择的 cpu id
+** 输	 出: new_cpu - 本次运行所选择的 cpu id 值
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -6960,7 +6962,7 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 
 	rcu_read_lock();
 
-	/* 尝试为指定的任务找到一个亲和性调度域并记录最靠近根节点的同属性调度域指针 */
+	/* 尝试为指定的任务找到一个亲和性调度域并记录最靠近 cpu 的同属性调度域指针 */
 	for_each_domain(cpu, tmp) {
 		if (!(tmp->flags & SD_LOAD_BALANCE))
 			continue;
@@ -11034,7 +11036,8 @@ static void task_fork_fair(struct task_struct *p)
  */
 /*********************************************************************************************************
 ** 函数名称: task_tick_fair
-** 功能描述: 当前系统 cfs 调度类的 prio_changed 处理函数，在 cfs 任务修改优先级“后”调用
+** 功能描述: 当前系统 cfs 调度类的 prio_changed 处理函数，在 cfs 任务修改优先级“后”调用，用来判断
+**         : 是否需要抢占当前正在运行的任务
 ** 输	 入: rq - 指定的任务所属 cpu 运行队列指针
 **         : p - 指定的任务指针
 **         : oldprio - 指定的任务旧的优先级
@@ -11062,7 +11065,8 @@ prio_changed_fair(struct rq *rq, struct task_struct *p, int oldprio)
 
 /*********************************************************************************************************
 ** 函数名称: switched_from_fair
-** 功能描述: 当前系统 cfs 调度类的 switched_from 处理函数，在从 cfs 任务切换“出”前调用
+** 功能描述: 当前系统 cfs 调度类的 switched_from 处理函数，在从 cfs 调度类切换到其他调度类“前”调用
+**         : 用来同步更新指定任务的虚拟时间信息和负载贡献信息
 ** 输	 入: rq - 指定的任务所属 cpu 运行队列指针
 **         : p - 指定的任务指针
 ** 输	 出: 
@@ -11110,7 +11114,8 @@ static void switched_from_fair(struct rq *rq, struct task_struct *p)
  */
 /*********************************************************************************************************
 ** 函数名称: switched_from_fair
-** 功能描述: 当前系统 cfs 调度类的 switched_from 处理函数，在切换到 cfs 任务后调用
+** 功能描述: 当前系统 cfs 调度类的 switched_to 处理函数，在从其他调度类切换到 cfs 任务“后”调用
+**         : 用来判断是否需要执行任务调度，如果需要，则尝试执行一次任务调度
 ** 输	 入: rq - 指定的任务所属 cpu 运行队列指针
 **         : p - 指定的任务指针
 ** 输	 出: 

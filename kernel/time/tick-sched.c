@@ -153,8 +153,12 @@ static void tick_sched_handle(struct tick_sched *ts, struct pt_regs *regs)
 }
 
 #ifdef CONFIG_NO_HZ_FULL
+/* 表示当前系统内使能了 nohz_full 模式的 cpu 位图变量值 */
 cpumask_var_t tick_nohz_full_mask;
+
 cpumask_var_t housekeeping_mask;
+
+/* 表示当前系统是否使能了 nohz_full 工作模式 */
 bool tick_nohz_full_running;
 
 static bool can_stop_full_tick(void)
@@ -242,6 +246,14 @@ void tick_nohz_full_kick(void)
  * Kick the CPU if it's full dynticks in order to force it to
  * re-evaluate its dependency on the tick and restart it if necessary.
  */
+/*********************************************************************************************************
+** 函数名称: tick_nohz_full_kick_cpu
+** 功能描述: 通过核间中断唤醒指定的处于 full_nohz 状态的 cpu
+** 输	 入: cpu - 指定的 cpu id 值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void tick_nohz_full_kick_cpu(int cpu)
 {
 	if (!tick_nohz_full_cpu(cpu))

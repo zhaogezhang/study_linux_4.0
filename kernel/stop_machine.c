@@ -241,6 +241,17 @@ static void irq_cpu_stop_queue_work(void *arg)
  *
  * returns when both are completed.
  */
+/*********************************************************************************************************
+** 函数名称: stop_two_cpus
+** 功能描述: 暂停运行指定的两个 cpu 并在其中一个 cpu 上运行指定的函数
+** 输	 入: cpu1 - 指定的第一个 cpu id 值
+**         : cpu2 - 指定的第二个 cpu id 值
+**         : fn - 指定的需要运行的函数指针
+**         : arg - 指定的函数参数
+** 输	 出: int - 运行函数的返回值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int stop_two_cpus(unsigned int cpu1, unsigned int cpu2, cpu_stop_fn_t fn, void *arg)
 {
 	struct cpu_stop_done done;

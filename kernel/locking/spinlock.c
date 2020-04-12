@@ -396,9 +396,19 @@ EXPORT_SYMBOL(_raw_spin_lock_nest_lock);
 
 #endif
 
+/*********************************************************************************************************
+** 函数名称: in_lock_functions
+** 功能描述: 判断指定的代码地址是否在 spin lock 代码段范围内
+** 输	 入: addr - 指定的代码地址
+** 输	 出: 1 - 在 spin lock 代码段范围内
+**         : 0 - 不在 spin lock 代码段范围内
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 notrace int in_lock_functions(unsigned long addr)
 {
-	/* Linker adds these: start and end of __lockfunc functions */
+	/* Linker adds these: start and end of __lockfunc functions
+	   __lock_text_start = .; *(.spinlock.text) __lock_text_end = .; */
 	extern char __lock_text_start[], __lock_text_end[];
 
 	return addr >= (unsigned long)__lock_text_start

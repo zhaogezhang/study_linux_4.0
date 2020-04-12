@@ -671,12 +671,25 @@ static inline void __ftrace_enabled_restore(int enabled)
 # endif
 #endif
 
+/* 表示获取当前正在运行的函数的返回地址 */
 #define CALLER_ADDR0 ((unsigned long)ftrace_return_address0)
+
+/* 表示获取当前正在运行的函数的父函数的返回地址 */
 #define CALLER_ADDR1 ((unsigned long)ftrace_return_address(1))
+
+/* 表示获取当前正在运行的函数的父函数的父函数的返回地址 */
 #define CALLER_ADDR2 ((unsigned long)ftrace_return_address(2))
+
+/* 表示获取当前正在运行的函数的父函数的父函数的父函数的返回地址 */
 #define CALLER_ADDR3 ((unsigned long)ftrace_return_address(3))
+
+/* 表示获取当前正在运行的函数的父函数的父函数的父函数的父函数的返回地址 */
 #define CALLER_ADDR4 ((unsigned long)ftrace_return_address(4))
+
+/* 表示获取当前正在运行的函数的父函数的父函数的父函数的父函数的父函数的返回地址 */
 #define CALLER_ADDR5 ((unsigned long)ftrace_return_address(5))
+
+/* 表示获取当前正在运行的函数的父函数的父函数的父函数的父函数的父函数的父函数的返回地址 */
 #define CALLER_ADDR6 ((unsigned long)ftrace_return_address(6))
 
 #ifdef CONFIG_IRQSOFF_TRACER

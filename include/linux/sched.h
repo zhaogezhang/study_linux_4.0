@@ -1504,7 +1504,7 @@ struct sched_entity {
     /* 表示当前调度实例本次调度开始运行（或者上一次更新运行时统计信息）时的运行队列时钟值，单位是 ns */
 	u64			exec_start;
 
-	/* 表示当前调度实例总计运行的 cpu 物理运行时间 */
+	/* 表示当前调度实例总计运行的 cpu 物理运行时间，单位是 ns */
 	u64			sum_exec_runtime;
 
 	/* 表示当前调度实例总计运行的虚拟时间 */
@@ -1656,13 +1656,20 @@ struct task_struct {
 	/* wakee_flip_decay_ts - 表示当前任务对唤醒其他任务计数值的衰减时间，详情见 record_wakee 函数 */
 	unsigned long wakee_flip_decay_ts;
 
+    /* 在当前任务被唤醒时使用，表示这个任务在睡眠前所属 cpu 的 id 值，详情见 try_to_wake_up 函数 */
 	int wake_cpu;
 #endif
     /* 表示当前任务的 on_run_queue 状态，例如 TASK_ON_RQ_QUEUED */
 	int on_rq;
 
+    /* prio - 表示实时任务的 effective 优先级，详情见 effective_prio 函数
+	   static_prio - 表示当前调度子系统将任务优先级归一化后的全局优先级，详情见 set_load_weight 函数
+	   normal_prio - 表示非实时任务的 effective 优先级，详情见 effective_prio 函数 */
 	int prio, static_prio, normal_prio;
+
+	/* 表示当前任务的 RT 优先级，详情见 normal_prio 函数 */
 	unsigned int rt_priority;
+	
 	const struct sched_class *sched_class;
 
 	/* 表示和当前任务对应的调度实例结构 */
@@ -1688,7 +1695,7 @@ struct task_struct {
 
 	int nr_cpus_allowed;
 
-	/* 表示为当前任务分配的 cpu 掩码值 */
+	/* 表示可以运行当前任务的 cpu 位图掩码值 */
 	cpumask_t cpus_allowed;
 
 #ifdef CONFIG_PREEMPT_RCU
@@ -1716,6 +1723,8 @@ struct task_struct {
 	struct rb_node pushable_dl_tasks;
 #endif
 
+    /* mm - 表示为当前任务分配的内存结构指针，如果是内核线程则为 NULL
+       active_mm - 表示当前任务在运行时实际使用的内存结构指针 */
 	struct mm_struct *mm, *active_mm;
 #ifdef CONFIG_COMPAT_BRK
 	unsigned brk_randomized:1;
@@ -1747,7 +1756,9 @@ struct task_struct {
 	unsigned in_iowait:1;
 
 	/* Revert to default priority/policy when forking */
+	/* 表示当前任务执行 fork 操作时“子”任务恢复到默认调度策略和调度优先级，详情见 sched_fork 函数 */
 	unsigned sched_reset_on_fork:1;
+	
 	unsigned sched_contributes_to_load:1;
 
 #ifdef CONFIG_MEMCG_KMEM
@@ -2778,6 +2789,15 @@ extern void do_set_cpus_allowed(struct task_struct *p,
 extern int set_cpus_allowed_ptr(struct task_struct *p,
 				const struct cpumask *new_mask);
 #else
+/*********************************************************************************************************
+** 函数名称: do_set_cpus_allowed
+** 功能描述: 设置指定的任务的 cpus_allowed 字段值
+** 输	 入: p - 指定的 task_struct 结构指针
+**         : new_mask - 指定的新位图掩码值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void do_set_cpus_allowed(struct task_struct *p,
 				      const struct cpumask *new_mask)
 {
@@ -3435,49 +3455,110 @@ extern void set_task_stack_end_magic(struct task_struct *tsk);
 /* set thread flags in other task's structures
  * - see asm/thread_info.h for TIF_xxxx flags available
  */
-// 设置指定进程的指定 flag 标志位
+/*********************************************************************************************************
+** 函数名称: set_tsk_thread_flag
+** 功能描述: 设置指定进程的指定 flag 标志位
+** 输	 入: tsk - 指定的任务指针
+**         : flag - 指定的 flag 标志位
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void set_tsk_thread_flag(struct task_struct *tsk, int flag)
 {
 	set_ti_thread_flag(task_thread_info(tsk), flag);
 }
 
-// 清除指定进程的指定 flag 标志位
+/*********************************************************************************************************
+** 函数名称: clear_tsk_thread_flag
+** 功能描述: 清除指定进程的指定 flag 标志位
+** 输	 入: tsk - 指定的任务指针
+**         : flag - 指定的 flag 标志位
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void clear_tsk_thread_flag(struct task_struct *tsk, int flag)
 {
 	clear_ti_thread_flag(task_thread_info(tsk), flag);
 }
 
-// 设置指定进程的指定 flag 标志位并返回原来的值
+/*********************************************************************************************************
+** 函数名称: test_and_set_tsk_thread_flag
+** 功能描述: 设置指定进程的指定 flag 标志位并返回原来的值
+** 输	 入: tsk - 指定的任务指针
+**         : flag - 指定的 flag 标志位
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int test_and_set_tsk_thread_flag(struct task_struct *tsk, int flag)
 {
 	return test_and_set_ti_thread_flag(task_thread_info(tsk), flag);
 }
 
-// 清除指定进程的指定 flag 标志位并返回原来的值
+/*********************************************************************************************************
+** 函数名称: test_and_clear_tsk_thread_flag
+** 功能描述: 清除指定进程的指定 flag 标志位并返回原来的值
+** 输	 入: tsk - 指定的任务指针
+**         : flag - 指定的 flag 标志位
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int test_and_clear_tsk_thread_flag(struct task_struct *tsk, int flag)
 {
 	return test_and_clear_ti_thread_flag(task_thread_info(tsk), flag);
 }
 
-// 测试指定进程的指定的标志位是否被置位
+/*********************************************************************************************************
+** 函数名称: test_tsk_thread_flag
+** 功能描述: 测试指定进程的指定的标志位是否被置位
+** 输	 入: tsk - 指定的任务指针
+**         : flag - 指定的 flag 标志位
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int test_tsk_thread_flag(struct task_struct *tsk, int flag)
 {
 	return test_ti_thread_flag(task_thread_info(tsk), flag);
 }
 
-// 设置指定进程的 TIF_NEED_RESCHED 标志位
+/*********************************************************************************************************
+** 函数名称: set_tsk_need_resched
+** 功能描述: 设置指定进程的 TIF_NEED_RESCHED 标志位
+** 输	 入: tsk - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void set_tsk_need_resched(struct task_struct *tsk)
 {
 	set_tsk_thread_flag(tsk,TIF_NEED_RESCHED);
 }
 
-// 清除指定进程的 TIF_NEED_RESCHED 标志位
+/*********************************************************************************************************
+** 函数名称: clear_tsk_need_resched
+** 功能描述: 清除指定进程的 TIF_NEED_RESCHED 标志位
+** 输	 入: tsk - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void clear_tsk_need_resched(struct task_struct *tsk)
 {
 	clear_tsk_thread_flag(tsk,TIF_NEED_RESCHED);
 }
 
-// 测试指定进程的 TIF_NEED_RESCHED 标志位是否被置位
+/*********************************************************************************************************
+** 函数名称: test_tsk_need_resched
+** 功能描述: 测试指定进程的 TIF_NEED_RESCHED 标志位是否被置位
+** 输	 入: tsk - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int test_tsk_need_resched(struct task_struct *tsk)
 {
 	return unlikely(test_tsk_thread_flag(tsk,TIF_NEED_RESCHED));
@@ -3489,19 +3570,40 @@ static inline int restart_syscall(void)
 	return -ERESTARTNOINTR;
 }
 
-// 判断指定的线程是否有正在挂起的信号
+/*********************************************************************************************************
+** 函数名称: signal_pending
+** 功能描述: 判断指定的线程是否有正在挂起的信号
+** 输	 入: tsk - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int signal_pending(struct task_struct *p)
 {
 	return unlikely(test_tsk_thread_flag(p,TIF_SIGPENDING));
 }
 
-// 判断指定的线程挂起的信号中是否有 SIGKILL 成员
+/*********************************************************************************************************
+** 函数名称: __fatal_signal_pending
+** 功能描述: 判断指定的线程挂起的信号中是否有 SIGKILL 成员
+** 输	 入: tsk - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int __fatal_signal_pending(struct task_struct *p)
 {
 	return unlikely(sigismember(&p->pending.signal, SIGKILL));
 }
 
-// 判断指定的线程是否正在挂起了 SIGKILL 信号
+/*********************************************************************************************************
+** 函数名称: fatal_signal_pending
+** 功能描述: 判断指定的线程是否正在挂起了 SIGKILL 信号
+** 输	 入: tsk - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int fatal_signal_pending(struct task_struct *p)
 {
 	return signal_pending(p) && __fatal_signal_pending(p);

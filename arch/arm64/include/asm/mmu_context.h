@@ -121,6 +121,16 @@ static inline void check_and_switch_context(struct mm_struct *mm,
 
 #define finish_arch_post_lock_switch \
 	finish_arch_post_lock_switch
+
+/*********************************************************************************************************
+** 函数名称: finish_arch_post_lock_switch
+** 功能描述: 在当前 cpu 执行完任务切换后，如果我们设置了 TIF_SWITCH_MM 标志，则将当前 cpu 的内存环境
+**         : 切换到新任务的内存环境下
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void finish_arch_post_lock_switch(void)
 {
 	if (test_and_clear_thread_flag(TIF_SWITCH_MM)) {

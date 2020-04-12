@@ -134,6 +134,15 @@ static inline int tick_oneshot_mode_active(void) { return 0; }
 # ifdef CONFIG_NO_HZ_COMMON
 DECLARE_PER_CPU(struct tick_sched, tick_cpu_sched);
 
+/*********************************************************************************************************
+** 函数名称: tick_nohz_tick_stopped
+** 功能描述: 判断当前正在运行的 cpu 的 tick 是否处于停止状态
+** 输	 入: 
+** 输	 出: 1 - 处于停止状态
+**         : 0 - 不是处于停止状态
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int tick_nohz_tick_stopped(void)
 {
 	return __this_cpu_read(tick_cpu_sched.tick_stopped);
@@ -147,6 +156,15 @@ extern u64 get_cpu_idle_time_us(int cpu, u64 *last_update_time);
 extern u64 get_cpu_iowait_time_us(int cpu, u64 *last_update_time);
 
 # else /* !CONFIG_NO_HZ_COMMON */
+/*********************************************************************************************************
+** 函数名称: tick_nohz_tick_stopped
+** 功能描述: 判断当前正在运行的 cpu 的 tick 是否处于停止状态
+** 输	 入: 
+** 输	 出: 1 - 处于停止状态
+**         : 0 - 不是处于停止状态
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int tick_nohz_tick_stopped(void)
 {
 	return 0;
@@ -170,6 +188,28 @@ extern bool tick_nohz_full_running;
 extern cpumask_var_t tick_nohz_full_mask;
 extern cpumask_var_t housekeeping_mask;
 
+/* 1. Never omit scheduling-clock ticks (CONFIG_HZ_PERIODIC=y or
+	  CONFIG_NO_HZ=n for older kernels).  You normally will -not-
+	  want to choose this option.
+
+   2. Omit scheduling-clock ticks on idle CPUs (CONFIG_NO_HZ_IDLE=y or
+	  CONFIG_NO_HZ=y for older kernels).  This is the most common
+	  approach, and should be the default.
+
+   3. Omit scheduling-clock ticks on CPUs that are either idle or that
+	  have only one runnable task (CONFIG_NO_HZ_FULL=y).  Unless you
+	  are running realtime applications or certain types of HPC
+	  workloads, you will normally -not- want this option */
+
+/*********************************************************************************************************
+** 函数名称: tick_nohz_full_enabled
+** 功能描述: 判断当前系统是否使能了 nohz_full 工作模式
+** 输	 入: 
+** 输	 出: true - 使能了 nohz_full 工作模式
+**         : false - 没使能 nohz_full 工作模式
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline bool tick_nohz_full_enabled(void)
 {
 	if (!context_tracking_is_enabled())
@@ -178,6 +218,15 @@ static inline bool tick_nohz_full_enabled(void)
 	return tick_nohz_full_running;
 }
 
+/*********************************************************************************************************
+** 函数名称: tick_nohz_full_cpu
+** 功能描述: 判断指定的 cpu 是否使能了 nohz_full 工作模式
+** 输	 入: cpu - 指定的 cpu id 值
+** 输	 出: true - 使能了 nohz_full 工作模式
+**         : false - 没使能 nohz_full 工作模式
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline bool tick_nohz_full_cpu(int cpu)
 {
 	if (!tick_nohz_full_enabled())

@@ -13,7 +13,15 @@
  * portions Copyright 2005, Red Hat, Inc., Ingo Molnar
  * Released under the General Public License (GPL).
  */
-
+/*********************************************************************************************************
+** 函数名称: in_lock_functions
+** 功能描述: 判断指定的代码地址是否在 spin lock 代码段范围内
+** 输	 入: addr - 指定的代码地址
+** 输	 出: 1 - 在 spin lock 代码段范围内
+**         : 0 - 不在 spin lock 代码段范围内
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define in_lock_functions(ADDR)		0
 
 #define assert_raw_spin_locked(lock)	do { (void)(lock); } while (0)
