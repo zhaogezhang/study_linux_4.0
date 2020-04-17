@@ -421,6 +421,15 @@ EXPORT_SYMBOL(file_ns_capable);
  * This sets PF_SUPERPRIV on the task if the capability is available on the
  * assumption that it's about to be used.
  */
+/*********************************************************************************************************
+** 函数名称: capable
+** 功能描述: 判断当前系统的用户级任务是否具备指定的特权能力
+** 输	 入: cap - 指定的特权能力
+** 输	 出: 1 - 具备指定的特权能力
+**         : 0 - 不具备指定的特权能力
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 bool capable(int cap)
 {
 	return ns_capable(&init_user_ns, cap);

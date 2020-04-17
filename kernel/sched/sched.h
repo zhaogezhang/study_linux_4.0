@@ -518,7 +518,7 @@ struct cfs_rq {
 	/* curr - 指向了当前 cfs 运行队列中正在运行的调度实例指针，这个调度实例不在 cfs 运行队列的红黑树上
 	   next - 详情见 features.h 文件
 	   last - 详情见 features.h 文件
-	   skip - 指向了当前 cfs 运行队列中调度时需要跳过的调度实例指针 */
+	   skip - 指向了当前 cfs 运行队列中调度时需要跳过的调度实例指针，详情见 yield_task_fair 函数 */
 	struct sched_entity *curr, *next, *last, *skip;
 
 #ifdef	CONFIG_SCHED_DEBUG
@@ -857,6 +857,7 @@ struct rq {
 	 * one CPU and if it got migrated afterwards it may decrease
 	 * it on another CPU. Always updated under the runqueue lock:
 	 */
+	/* 表示当前 cpu 运行队列上包含的处于不可被中断状态的实时调度实例和 cfs 调度实例数 */
 	unsigned long nr_uninterruptible;
 
     /* curr - 表示当前 cpu 运行队列正在运行的任务指针 
@@ -881,7 +882,7 @@ struct rq {
     /* 表示当前 cpu 运行队列中的调度实例在任务上下文中消耗的时间，在 update_rq_clock_task 函数中更新，单位是 ns */
 	u64 clock_task;
 
-    /* 表示当前 cpu 运行队列上一共发生的 IO 等待事件次数，详情见 io_schedule_timeout 函数 */
+    /* 表示当前 cpu 运行队列上目前一共存在的 IO 等待任务个数，详情见 io_schedule_timeout 函数 */
 	atomic_t nr_iowait;
 
 #ifdef CONFIG_SMP
@@ -951,6 +952,9 @@ struct rq {
 
 	/* calc_load related fields */
 	unsigned long calc_load_update;
+
+    /* 表示当前 cpu 运行队列上次统计系统全局平均负载使用的实时调度实例和 cfs 调度实例数
+       详情见 calc_load_fold_active 函数 */
 	long calc_load_active;
 
 #ifdef CONFIG_SCHED_HRTICK
@@ -1484,7 +1488,7 @@ static inline int task_current(struct rq *rq, struct task_struct *p)
 
 /*********************************************************************************************************
 ** 函数名称: task_running
-** 功能描述: 判断指定的任务是否正在运行
+** 功能描述: 判断指定的任务是否正在 cpu 上运行
 ** 输	 入: rq - 指定的 cpu 运行队列指针
 **         : p - 指定的任务指针
 ** 输	 出: i - 是
@@ -1670,6 +1674,7 @@ static const u32 prio_to_wmult[40] = {
 /* 表示在把指定的调度实例从运行队列中移除后会进入睡眠状态 */
 #define DEQUEUE_SLEEP		1
 
+/* 表示从当前调度类中没有找到合适的、待执行的任务，需要从其他调度类中查找，详情见 pick_next_task 函数 */
 #define RETRY_TASK		((void *)-1UL)
 
 struct sched_class {
@@ -2037,7 +2042,7 @@ extern void start_bandwidth_timer(struct hrtimer *period_timer, ktime_t period);
  */
 /*********************************************************************************************************
 ** 函数名称: __task_rq_lock
-** 功能描述: 获取指定任务所在的运行队列的锁
+** 功能描述: 获取指定任务所在的运行队列的锁并返回这个运行队列的指针
 ** 输	 入: p - 定的的 task_struct 结构指针
 ** 输	 出: q * - 成功获取锁的运行队列指针
 ** 全局变量: 

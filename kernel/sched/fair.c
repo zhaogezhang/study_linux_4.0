@@ -923,9 +923,10 @@ static void __dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 
 /*********************************************************************************************************
 ** 函数名称: __pick_first_entity
-** 功能描述: 获取指定的 cfs 运行队列中第一个需要运行的调度实例指针
+** 功能描述: 获取指定的 cfs 运行队列 cfs_rq->rb_leftmost 指向的调度实例指针
 ** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
-** 输	 出: sched_entity * - 获取的调度实例指针
+** 输	 出: sched_entity * - 调度实例指针
+**         : NULL - cfs_rq->rb_leftmost 为空
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -4746,18 +4747,21 @@ pick_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	 * Avoid running the skip buddy, if running something else can
 	 * be done without getting too unfair.
 	 */
+	/* 如果指定的 cfs 运行队列的 cfs_rq->skip 成员等于这个 cfs 运行队列中虚拟运行时间最小的调度实例 */
 	if (cfs_rq->skip == se) {
 		struct sched_entity *second;
 
 		if (se == curr) {
-			/* 如果需要跳过调度的任务是当前正在运行的任务，则选择 cfs_rq->rb_leftmost */
+            /* 表示我们需要跳过的调度实例 cfs_rq->skip 为 curr 并且 curr 调度实例的虚拟运行时间最小
+               则设置 second 为 cfs_rq->rb_leftmost */
 			second = __pick_first_entity(cfs_rq);
 		} else {
-		    /* 如果需要跳过调度的任务是不是当前正在运行的任务，则获取指定的 cfs 运行队列
-		       中和 cfs_rq->skip 相邻且最近接的下一个需要运行的调度实例指针 */
+		    /* 如果需要跳过的调度实例 cfs_rq->skip 虚拟运行时间最小且需要跳过的调度实例不是 curr
+		       则设置 second 为虚拟时间和 cfs_rq->skip 最接近的下一个调度实例 */
 			second = __pick_next_entity(se);
 
-			/* 如果当前正在运行的任务的虚拟时间仍然是最小的，则继续运行当前正在运行的任务 */
+			/* 如果 cfs_rq->skip 最接近的下一个调度实例为空或者当前正在运行的调度实例虚拟运行时间时最小的
+			   则设置 second 为 curr */
 			if (!second || (curr && entity_before(curr, second)))
 				second = curr;
 		}
@@ -7290,6 +7294,7 @@ preempt:
 /*********************************************************************************************************
 ** 函数名称: pick_next_task_fair
 ** 功能描述: 把指定的当前正在运行的调度实例放到所属 cfs 运行队列中并选择一个新的调度实例并设置为 current
+** 注     释: 如果我们指定的调度实例 prev 仍然是系统内最需要运行的任务，则会重新选择并运行它
 ** 输	 入: rq - 指定的 cpu 运行队列
 **         : prev - 指定的当前正在运行的调度实例指针
 ** 输	 出: p - 新的 current 任务指针
@@ -7392,6 +7397,7 @@ simple:
 	if (!cfs_rq->nr_running)
 		goto idle;
 
+    /* 把指定的当前正在运行的调度实例放回到所属 cpu 运行队列的上并更新相关调度统计值 */
 	put_prev_task(rq, prev);
 
 	/* 如果指定的调度实例是任务组，则递归向下选择，直到选择的调度实例为任务 */
@@ -7457,8 +7463,8 @@ static void put_prev_task_fair(struct rq *rq, struct task_struct *prev)
  */
 /*********************************************************************************************************
 ** 函数名称: yield_task_fair
-** 功能描述: 尝试把指定的 cpu 运行队列当前正在运行的 cfs 调度实例设置为所属 cfs 运行队列的 skip 成员
-**         : cfs 运行队列的 skip 成员在 pick_next_entity 函数中会用到
+** 功能描述: 尝试清除指定的 cpu 运行队列和当前正在运行的 cfs 调度实例相关的 buddies 信息并把
+**         : 当前正在运行的 cfs 调度实例设置为这个 cfs 运行队列的 skip 成员
 ** 输	 入: rq - 指定的 cpu 运行队列
 ** 输	 出: 
 ** 全局变量: 
@@ -7499,10 +7505,12 @@ static void yield_task_fair(struct rq *rq)
 ** 函数名称: yield_to_task_fair
 ** 功能描述: 把指定的任务设置为指定的 cpu 运行队列的 cfs 运行队列的 next 成员，并把当前正在运行的 cfs 
 **         : 调度实例设置为 cfs 运行队列的 skip 成员
+** 注     释: 执行完这个函数之后，指定的任务只是被设置为 cfs 运行队列的 next 成员，这个时候还没有运行它
 ** 输	 入: rq - 指定的 cpu 运行队列
 **         : p - 指定的待运行的任务指针
 **         : preempt - 未使用
-** 输	 出: 
+** 输	 出: true - 执行成功
+**         : false - 执行失败
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -7517,6 +7525,8 @@ static bool yield_to_task_fair(struct rq *rq, struct task_struct *p, bool preemp
 	/* Tell the scheduler that we'd really like pse to run next. */
 	set_next_buddy(se);
 
+    /* 尝试清除指定的 cpu 运行队列和当前正在运行的 cfs 调度实例相关的 buddies 信息并把
+       当前正在运行的 cfs 调度实例设置为这个 cfs 运行队列的 skip 成员 */
 	yield_task_fair(rq);
 
 	return true;

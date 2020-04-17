@@ -108,18 +108,25 @@ struct sched_param {
  * available in the scheduling class file or in Documentation/.
  */
 struct sched_attr {
+    /* 表示当前结构体有效数据字节数 */
 	u32 size;
 
+    /* 指定的新的调度策略 */
 	u32 sched_policy;
+
+	/* 指定的调度标志，例如 SCHED_FLAG_RESET_ON_FORK */
 	u64 sched_flags;
 
 	/* SCHED_NORMAL, SCHED_BATCH */
+	/* 为非实时任务指定的 nice 值 */
 	s32 sched_nice;
 
 	/* SCHED_FIFO, SCHED_RR */
+	/* 为 RT 任务指定的优先级，数值越大表示的优先级越高 */
 	u32 sched_priority;
 
 	/* SCHED_DEADLINE */
+	/* 为 deadline 任务指定的时间调度参数 */
 	u64 sched_runtime;
 	u64 sched_deadline;
 	u64 sched_period;
@@ -267,11 +274,28 @@ extern char ___assert_task_state[1 - 2*!!(
  *
  * If the caller does not need such serialisation then use __set_current_state()
  */
+/*********************************************************************************************************
+** 函数名称: __set_current_state
+** 功能描述: 设置当前正在运行的任务状态为指定的值，不执行内存屏障操作
+** 输	 入: state_value - 指定的任务状态
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define __set_current_state(state_value)			\
 	do {							\
 		current->task_state_change = _THIS_IP_;		\
 		current->state = (state_value);			\
 	} while (0)
+
+/*********************************************************************************************************
+** 函数名称: set_current_state
+** 功能描述: 设置当前正在运行的任务状态为指定的值，并执行内存屏障操作
+** 输	 入: state_value - 指定的任务状态
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define set_current_state(state_value)				\
 	do {							\
 		current->task_state_change = _THIS_IP_;		\
@@ -296,8 +320,25 @@ extern char ___assert_task_state[1 - 2*!!(
  *
  * If the caller does not need such serialisation then use __set_current_state()
  */
+/*********************************************************************************************************
+** 函数名称: __set_current_state
+** 功能描述: 设置当前正在运行的任务状态为指定的值，不执行内存屏障操作
+** 输	 入: state_value - 指定的任务状态
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define __set_current_state(state_value)		\
 	do { current->state = (state_value); } while (0)
+
+/*********************************************************************************************************
+** 函数名称: set_current_state
+** 功能描述: 设置当前正在运行的任务状态为指定的值，并执行内存屏障操作
+** 输	 入: state_value - 指定的任务状态
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define set_current_state(state_value)			\
 	set_mb(current->state, (state_value))
 
@@ -1573,7 +1614,7 @@ struct sched_dl_entity {
 	u64 dl_runtime;		/* maximum runtime for each instance	*/
 	u64 dl_deadline;	/* relative deadline of each instance	*/
 	u64 dl_period;		/* separation of two instances (period) */
-	u64 dl_bw;		/* dl_runtime / dl_deadline		*/
+	u64 dl_bw;		    /* dl_runtime / dl_deadline		*/
 
 	/*
 	 * Actual scheduling parameters. Initialized with the values above,
@@ -1628,8 +1669,8 @@ enum perf_event_task_context {
 };
 
 struct task_struct {
-	/* 表示当前任务的状态 */
-	volatile long state;	/* -1 unrunnable, 0 runnable, >0 stopped */
+	/* 表示当前任务的状态，例如 TASK_RUNNING */
+	volatile long state; /* -1 unrunnable, 0 runnable, >0 stopped */
 
 	/* 这个成员指向了内核栈最低地址处，即内核栈中 struct thread_info 结构的起始地址 */
 	void *stack;
@@ -1662,14 +1703,20 @@ struct task_struct {
     /* 表示当前任务的 on_run_queue 状态，例如 TASK_ON_RQ_QUEUED */
 	int on_rq;
 
-    /* prio - 表示实时任务的 effective 优先级，详情见 effective_prio 函数
-	   static_prio - 表示当前调度子系统将任务优先级归一化后的全局优先级，详情见 set_load_weight 函数
-	   normal_prio - 表示非实时任务的 effective 优先级，详情见 effective_prio 函数 */
+    /* prio - 表示当前任务的有效优先级，这个优先级可能是动态变化的（比如在 rt_mutex 中优先级
+              继承机制动态调整优先级），调度器会根据这个优先级决定调度哪个任务
+	   static_prio - 表示当前任务的静态优先级，数值越低优先级越大，[0 - 99] 范围内的值没有实际
+	                 意义，[100 139] 分别对应的 nice 数值为 [-20 19]，详情见 set_user_nice 函数
+	   normal_prio - 表示当前任务的归一化优先级，是把实时优先级和非实时优先级排列在一起后的
+	                 优先级数值，-1 表示 deadline 任务，[0 99] 表示 RT 任务，[100 139] 表示
+	                 普通任务，数值越小优先级越高 */
 	int prio, static_prio, normal_prio;
 
-	/* 表示当前任务的 RT 优先级，详情见 normal_prio 函数 */
+	/*  表示当前任务的实时优先级，0 表示当前任务是非实时任务，[1 99] 表示当前任务是
+        实时任务，且数值越大优先级越高 */
 	unsigned int rt_priority;
-	
+
+	/* 表示当前任务所属调度类指针 */
 	const struct sched_class *sched_class;
 
 	/* 表示和当前任务对应的调度实例结构 */
@@ -1834,16 +1881,19 @@ struct task_struct {
 		VTIME_SYS,
 	} vtime_snap_whence;
 #endif
+    /* nvcsw - 表示当前任务“主”动切换上下文的次数
+       nivcsw - 表示当前任务“被”动切换上下文的次数 */
 	unsigned long nvcsw, nivcsw; /* context switch counts */
+
 	u64 start_time;		/* monotonic time in nsec */
 	u64 real_start_time;	/* boot based time in nsec */
-/* mm fault and swap info: this can arguably be seen as either mm-specific or thread-specific */
+    /* mm fault and swap info: this can arguably be seen as either mm-specific or thread-specific */
 	unsigned long min_flt, maj_flt;
 
 	struct task_cputime cputime_expires;
 	struct list_head cpu_timers[3];
 
-/* process credentials */
+    /* process credentials */
 	const struct cred __rcu *real_cred; /* objective and real subjective task
 					 * credentials (COW) */
 	const struct cred __rcu *cred;	/* effective (overridable) subjective task
@@ -1906,9 +1956,12 @@ struct task_struct {
 
 #ifdef CONFIG_RT_MUTEXES
 	/* PI waiters blocked on a rt_mutex held by this task */
+    /* 表示正在等待当前任务持有的 rt_mutex 的所有任务成员组成的红黑树信息 */
 	struct rb_root pi_waiters;
 	struct rb_node *pi_waiters_leftmost;
+	
 	/* Deadlock detection and priority inheritance handling */
+    /* 表示正在等待当前任务持有的 rt_mutex 的任务成员信息 */
 	struct rt_mutex_waiter *pi_blocked_on;
 #endif
 
@@ -2944,6 +2997,14 @@ extern int task_prio(const struct task_struct *p);
  *
  * Return: The nice value [ -20 ... 0 ... 19 ].
  */
+/*********************************************************************************************************
+** 函数名称: task_nice
+** 功能描述: 获取指定任务的 nice 值
+** 输	 入: p - 指定的任务指针
+** 输	 出: int - nice 值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int task_nice(const struct task_struct *p)
 {
 	return PRIO_TO_NICE((p)->static_prio);
@@ -3410,9 +3471,10 @@ static inline void setup_thread_stack(struct task_struct *p, struct task_struct 
  */
 /*********************************************************************************************************
 ** 函数名称: end_of_stack
-** 功能描述: 获取指定 task_struct 的栈结构和它的 thread_info 的交界空洞地址
-** 输	 入: unsigned long * - 栈结构起始地址
-** 输	 出: 
+** 功能描述: 获取指定任务的栈结构和它的 thread_info 的交界空洞地址，如果这个任务的栈地址越过这个
+**         : 交界空洞地址则表示发生了栈溢出
+** 输	 入: p - 指定的任务指针
+** 输	 出: unsigned long * - 交界空洞地址
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -3426,9 +3488,27 @@ static inline unsigned long *end_of_stack(struct task_struct *p)
 }
 
 #endif
+/*********************************************************************************************************
+** 函数名称: task_stack_end_corrupted
+** 功能描述: 判断指定的任务是否发生了栈溢出
+** 输	 入: p - 指定的任务指针
+** 输	 出: 1 - 发生了栈溢出
+**         : 0 - 没发生栈溢出
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define task_stack_end_corrupted(task) \
 		(*(end_of_stack(task)) != STACK_END_MAGIC)
 
+/*********************************************************************************************************
+** 函数名称: object_is_on_stack
+** 功能描述: 判断指定的对象地址是否在当前正在运行的任务栈空间中
+** 输	 入: obj - 指定的对象地址
+** 输	 出: 1 - 在当前正在运行的任务栈空间中
+**         : 0 - 不在当前正在运行的任务栈空间中
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int object_is_on_stack(void *obj)
 {
 	void *stack = task_stack_page(current);
@@ -3439,6 +3519,14 @@ static inline int object_is_on_stack(void *obj)
 extern void thread_info_cache_init(void);
 
 #ifdef CONFIG_DEBUG_STACK_USAGE
+/*********************************************************************************************************
+** 函数名称: stack_not_used
+** 功能描述: 计算指定的任务的栈空间中从未被使用过的空间大小
+** 输	 入: p - 指定的任务指针
+** 输	 出: unsigned long - 从未被使用过的空间大小
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline unsigned long stack_not_used(struct task_struct *p)
 {
 	unsigned long *n = end_of_stack(p);
@@ -3574,7 +3662,8 @@ static inline int restart_syscall(void)
 ** 函数名称: signal_pending
 ** 功能描述: 判断指定的线程是否有正在挂起的信号
 ** 输	 入: tsk - 指定的任务指针
-** 输	 出: 
+** 输	 出: 1 - 有正在挂起的信号
+**         : 0 - 没有正在挂起的信号
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -3609,6 +3698,16 @@ static inline int fatal_signal_pending(struct task_struct *p)
 	return signal_pending(p) && __fatal_signal_pending(p);
 }
 
+/*********************************************************************************************************
+** 函数名称: signal_pending_state
+** 功能描述: 判断指定状态的指定任务是否可以接收唤醒信号且接收到了一个唤醒信号
+** 输	 入: state - 指定的任务当状态
+**         : p - 指定的任务指针
+** 输	 出: 1 - 可以且接收到了一个唤醒信号
+**         : 0 - 不可以或没接收到了一个唤醒信号
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int signal_pending_state(long state, struct task_struct *p)
 {
 	if (!(state & (TASK_INTERRUPTIBLE | TASK_WAKEKILL)))
@@ -3763,7 +3862,7 @@ static inline void current_clr_polling(void)
 
 /*********************************************************************************************************
 ** 函数名称: need_resched
-** 功能描述: 判断当前 cpu 当前正在运行的线程信息中的 TIF_NEED_RESCHED 标志位是否被置位
+** 功能描述: 判断当前正在运行的 cpu 上是否需要执行一次任务调度操作
 ** 输	 入: 
 ** 输	 出: 1 - 被置位
 **         : 0 - 没被置位

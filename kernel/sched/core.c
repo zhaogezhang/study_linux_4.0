@@ -1175,7 +1175,7 @@ int tg_nop(struct task_group *tg, void *data)
 
 /*********************************************************************************************************
 ** 函数名称: set_load_weight
-** 功能描述: 根据指定任务的优先级和调度策略信息设置它的权重信息
+** 功能描述: 根据指定任务的静态优先级和调度策略设置它的权重信息
 ** 输	 入: p - 指定的任务指针
 ** 输	 出: 
 ** 全局变量: 
@@ -1379,9 +1379,9 @@ void sched_set_stop_task(int cpu, struct task_struct *stop)
  */
 /*********************************************************************************************************
 ** 函数名称: __normal_prio
-** 功能描述: 获取指定的完全公平调度策略任务的 normal 优先级
+** 功能描述: 获取指定的完全公平调度策略任务的归一化优先级
 ** 输	 入: p - 指定的任务指针
-** 输	 出: p->static_prio - normal 优先级
+** 输	 出: p->static_prio - 归一化优先级
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -1399,9 +1399,9 @@ static inline int __normal_prio(struct task_struct *p)
  */
 /*********************************************************************************************************
 ** 函数名称: __normal_prio
-** 功能描述: 获取指定任务的 normal 优先级
+** 功能描述: 获取指定任务的归一化优先级
 ** 输	 入: p - 指定的任务指针
-** 输	 出: prio - normal 优先级
+** 输	 出: prio - 归一化优先级
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -1427,9 +1427,9 @@ static inline int normal_prio(struct task_struct *p)
  */
 /*********************************************************************************************************
 ** 函数名称: effective_prio
-** 功能描述: 获取指定任务的 effective 优先级
+** 功能描述: 获取指定任务的有效优先级
 ** 输	 入: p - 指定的任务指针
-** 输	 出: prio - normal 优先级
+** 输	 出: prio - 有效优先级
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -1716,8 +1716,12 @@ out:
 	return ret;
 }
 
+/* 为 cpu stop 线程定义的函数参数数据结构，详情见 migration_cpu_stop 函数 */
 struct migration_arg {
+    /* 需要被迁移的任务指针 */
 	struct task_struct *task;
+
+	/* 指定的目的 cpu id 值 */
 	int dest_cpu;
 };
 
@@ -2544,7 +2548,7 @@ int wake_up_state(struct task_struct *p, unsigned int state)
  */
 /*********************************************************************************************************
 ** 函数名称: __dl_clear_params
-** 功能描述: 清除指定的 deadline 调度实例的静态参数
+** 功能描述: 清除指定的 deadline 调度实例的调度参数
 ** 输	 入: p - 指定的任务指针
 ** 输	 出: 
 ** 全局变量: 
@@ -2573,7 +2577,7 @@ void __dl_clear_params(struct task_struct *p)
  */
 /*********************************************************************************************************
 ** 函数名称: __sched_fork
-** 功能描述: 在执行 fork 时用来初始化指定任务的状态为默认值
+** 功能描述: 在执行 fork 时用来初始化指定任务的调度参数为默认值
 ** 输	 入: clone_flags - 指定的 clone flags，例如 CLONE_VM
 **         : p - 指定的任务指针
 ** 输	 出: 
@@ -2821,7 +2825,7 @@ unsigned long to_ratio(u64 period, u64 runtime)
 #ifdef CONFIG_SMP
 /*********************************************************************************************************
 ** 函数名称: dl_bw_of
-** 功能描述: 获取指定的 cpu 运行队列的 deadline 带宽控制数据结构指针
+** 功能描述: 获取指定的 cpu 所属根调度域的 deadline 带宽控制数据结构指针
 ** 输	 入: i - 指定的 cpu id 值
 ** 输	 出: dl_bw * - deadline 带宽控制数据结构指针
 ** 全局变量: 
@@ -2857,7 +2861,7 @@ static inline int dl_bw_cpus(int i)
 #else
 /*********************************************************************************************************
 ** 函数名称: dl_bw_of
-** 功能描述: 获取指定的 cpu 运行队列的 deadline 带宽控制数据结构指针
+** 功能描述: 获取指定的 cpu 所属根调度域的 deadline 带宽控制数据结构指针
 ** 输	 入: i - 指定的 cpu id 值
 ** 输	 出: dl_bw * - deadline 带宽控制数据结构指针
 ** 全局变量: 
@@ -3210,7 +3214,8 @@ static struct rq *finish_task_switch(struct task_struct *prev)
 /* rq->lock is NOT held, but preemption is disabled */
 /*********************************************************************************************************
 ** 函数名称: post_schedule
-** 功能描述: 尝试运行指定的 cpu 运行队列中当前正在运行任务所属调度类的 post_schedule 函数
+** 功能描述: 尝试运行指定的 cpu 运行队列中当前正在运行任务所属调度类的 post_schedule 函数，在执行
+**         : 完任务调度后运行，详情见 __schedule 函数
 ** 输	 入: rq - 指定的 cpu 运行队列指针
 ** 输	 出: 
 ** 全局变量: 
@@ -3232,7 +3237,8 @@ static inline void post_schedule(struct rq *rq)
 #else
 /*********************************************************************************************************
 ** 函数名称: post_schedule
-** 功能描述: 尝试运行指定的 cpu 运行队列中当前正在运行任务所属调度类的 post_schedule 函数
+** 功能描述: 尝试运行指定的 cpu 运行队列中当前正在运行任务所属调度类的 post_schedule 函数，在执行
+**         : 完任务调度后运行，详情见 __schedule 函数
 ** 输	 入: rq - 指定的 cpu 运行队列指针
 ** 输	 出: 
 ** 全局变量: 
@@ -3636,7 +3642,14 @@ notrace unsigned long get_parent_ip(unsigned long addr)
 
 #if defined(CONFIG_PREEMPT) && (defined(CONFIG_DEBUG_PREEMPT) || \
 				defined(CONFIG_PREEMPT_TRACER))
-
+/*********************************************************************************************************
+** 函数名称: preempt_count_add
+** 功能描述: 把当前正在运行的任务的 preempt_count 变量加上指定的值
+** 输	 入: val - 指定的增量值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void preempt_count_add(int val)
 {
 #ifdef CONFIG_DEBUG_PREEMPT
@@ -3657,6 +3670,7 @@ void preempt_count_add(int val)
 	if (preempt_count() == val) {
 		unsigned long ip = get_parent_ip(CALLER_ADDR1);
 #ifdef CONFIG_DEBUG_PREEMPT
+        /* 记录第一个调用 preempt_count_add 函数的父函数的返回地址 */
 		current->preempt_disable_ip = ip;
 #endif
 		trace_preempt_off(CALLER_ADDR0, ip);
@@ -3665,6 +3679,14 @@ void preempt_count_add(int val)
 EXPORT_SYMBOL(preempt_count_add);
 NOKPROBE_SYMBOL(preempt_count_add);
 
+/*********************************************************************************************************
+** 函数名称: __preempt_count_sub
+** 功能描述: 把当前正在运行的任务的 preempt_count 变量减去指定的值
+** 输	 入: val - 指定的减量值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void preempt_count_sub(int val)
 {
 #ifdef CONFIG_DEBUG_PREEMPT
@@ -3693,6 +3715,14 @@ NOKPROBE_SYMBOL(preempt_count_sub);
 /*
  * Print scheduling while atomic bug:
  */
+/*********************************************************************************************************
+** 函数名称: __schedule_bug
+** 功能描述: 当调度子系统发生原子错误时打印一些相关信息
+** 输	 入: prev - 指定的被切换出去的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static noinline void __schedule_bug(struct task_struct *prev)
 {
 	if (oops_in_progress)
@@ -3719,6 +3749,14 @@ static noinline void __schedule_bug(struct task_struct *prev)
 /*
  * Various schedule()-time debugging checks and statistics:
  */
+/*********************************************************************************************************
+** 函数名称: schedule_debug
+** 功能描述: 用来检查并统计当前调度子系统的调试信息
+** 输	 入: prev - 指定的被切换出去的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void schedule_debug(struct task_struct *prev)
 {
 #ifdef CONFIG_SCHED_STACK_END_CHECK
@@ -3741,6 +3779,16 @@ static inline void schedule_debug(struct task_struct *prev)
 /*
  * Pick up the highest-prio task:
  */
+/*********************************************************************************************************
+** 函数名称: pick_next_task
+** 功能描述: 从当前系统内查找一个优先级最高的、待运行的任务
+** 注     释: 如果我们指定的调度任务 prev 仍然是系统内优先级最高的任务，则会重新选择并运行它
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : prev - 指定的将要被切换出去的任务指针
+** 输	 出: p - 优先级最高的、待运行的任务指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct task_struct *
 pick_next_task(struct rq *rq, struct task_struct *prev)
 {
@@ -3818,6 +3866,38 @@ again:
  * accordingly in case an event triggered the need for rescheduling (such as
  * an interrupt waking up a task) while preemption was disabled in __schedule().
  */
+/* __schedule() 函数是调度器的主要函数，我们可以通过这个函数来驱动调度子系统的运行
+   因此我们可以在以下几种情况中调用这个函数：
+   1. 显式的被阻塞，例如互斥锁、信号量和等待队列
+   2. 在中断返回或者从内核空间返回到用户空间时，检查到了 TIF_NEED_RESCHED 标志，例
+      如 arch/x86/entry_64.S 文件中的使用示例
+      为了实现任务间的抢占功能，调度器会在定时器中断处理函数 scheduler_tick() 中设
+      置 TIF_NEED_RESCHED 标志位 
+   3. 在唤醒一个任务时并没有执行任务调度操作，仅仅是把这个任务添加到其所属运行队列中
+      如果向当前运行队列添加的新任务会抢占当前正在运行的任务，那么在唤醒时会在当前任
+      务中设置 TIF_NEED_RESCHED 标志并且在离当前最近的调度点执行任务调度，具体调度点
+      情景如下：
+      a. 如果当前系统开启了内核抢占功能（CONFIG_PREEMPT=y），可能的最近调度点如下：
+         I.  在系统调用或者异常上下文中，在最外层的 preempt_enable() 函数位置处（例
+             如执行唤醒操作的任务在调用 spin_unlock() 函数时）
+         II. 在中断上下文中，从中断处理函数中返回到可抢占上下文中
+      b. 如果当前系统内核没开启内核抢占功能（CONFIG_PREEMPT=n）,可能的最近调度点如下：
+         I.  在调用 cond_resched() 函数的位置处
+         II. 显示的调用 schedule() 函数的位置处
+         III.从系统调用或者异常中返回到用户空间的位置处
+         IV. 从中断处理函数中返回到用户空间的位置处
+    需要注意的是，所有的调用者之后都需要通过 need_resched() 函数重新检查 TIF_NEED_RESCHED 
+    标志，来处理在关闭抢占的情况下触发的调度请求事件（例如在中断处理函数中唤醒一个任
+    务所触发的调度请求事件）*/
+/*********************************************************************************************************
+** 函数名称: __schedule
+** 功能描述: 当前调度子系统的任务调度操作函数，尝试从当前系统内找到一个优先级大于等于当前正在执行的
+**         : 任务并运行它
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void __sched __schedule(void)
 {
 	struct task_struct *prev, *next;
@@ -3846,11 +3926,21 @@ static void __sched __schedule(void)
 
 	rq->clock_skip_update <<= 1; /* promote REQ to ACT */
 
+    /* 默认情况下累加当前任务的“被”动切换上下文的次数 */
 	switch_count = &prev->nivcsw;
+
+	/* 如果当前正在运行的任务状态不是 TASK_RUNNING 并且当前调度操作不是在执行任务
+	   抢占调度逻辑，表示本次任务调度是当前正在运行的任务主动执行的，比如当前任务
+	   在被阻塞的时候进入睡眠态时执行的任务调度 */
 	if (prev->state && !(preempt_count() & PREEMPT_ACTIVE)) {
+
+	    /* 因为我们有可能在刚刚进入睡眠后就收到了其他任务的唤醒信号量，所以这个位
+	       置需要判断当前任务是否可以接收唤醒信号且接收到了一个唤醒信号， */
 		if (unlikely(signal_pending_state(prev->state, prev))) {
 			prev->state = TASK_RUNNING;
 		} else {
+
+		    /* 把指定的任务从指定的 cpu 运行队列中和这个任务匹配的运行队列类上移除 */
 			deactivate_task(rq, prev, DEQUEUE_SLEEP);
 			prev->on_rq = 0;
 
@@ -3867,23 +3957,33 @@ static void __sched __schedule(void)
 					try_to_wake_up_local(to_wakeup);
 			}
 		}
+
+		/* 在当前任务主动执行任务切换操作时，累加“主”动切换上下文的次数 */
 		switch_count = &prev->nvcsw;
 	}
 
 	if (task_on_rq_queued(prev))
 		update_rq_clock(rq);
 
+    /* 从当前系统内查找一个优先级最高的、待运行的任务
+       如果我们指定的调度任务 prev 仍然是系统内优先级最高的任务，则会重新选择并运行它 */
 	next = pick_next_task(rq, prev);
+
+	/* 清除想要被切换出的任务的调度请求标志信息 */
 	clear_tsk_need_resched(prev);
 	clear_preempt_need_resched();
+
 	rq->clock_skip_update = 0;
 
+    /* 如果重新选择的任务和当前正在运行的任务不一样，则开始执行任务上下文切换操作 */
 	if (likely(prev != next)) {
 		rq->nr_switches++;
 		rq->curr = next;
 		++*switch_count;
 
+        /* 在指定的 cpu 运行队列上从 prev 任务的上下文切换到 next 任务的上下文 */
 		rq = context_switch(rq, prev, next); /* unlocks the rq */
+		
 		cpu = cpu_of(rq);
 	} else
 		raw_spin_unlock_irq(&rq->lock);
@@ -3893,6 +3993,14 @@ static void __sched __schedule(void)
 	sched_preempt_enable_no_resched();
 }
 
+/*********************************************************************************************************
+** 函数名称: sched_submit_work
+** 功能描述: 在指定的任务主动执行任务调度操作之前，用来执行一些同步清理操作
+** 输	 入: tsk - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void sched_submit_work(struct task_struct *tsk)
 {
 	if (!tsk->state || tsk_is_pi_blocked(tsk))
@@ -3905,6 +4013,15 @@ static inline void sched_submit_work(struct task_struct *tsk)
 		blk_schedule_flush_plug(tsk);
 }
 
+/*********************************************************************************************************
+** 函数名称: schedule
+** 功能描述: 使当前正在运行的任务主动执行任务调度操作，尝试从当前系统内找到一个优先级大于等于当前
+**         : 正在执行的任务并运行它
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 asmlinkage __visible void __sched schedule(void)
 {
 	struct task_struct *tsk = current;
@@ -3940,6 +4057,16 @@ asmlinkage __visible void __sched schedule_user(void)
  *
  * Returns with preemption disabled. Note: preempt_count must be 1
  */
+/*********************************************************************************************************
+** 函数名称: schedule_preempt_disabled
+** 功能描述: 在关闭抢占的状态下使当前正在运行的任务主动执行任务调度操作，尝试从当前系统内找到一个
+**         : 优先级大于等于当前正在执行的任务并运行它
+** 注     释: 当前正在运行的任务的 preempt_count 必须是 1
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void __sched schedule_preempt_disabled(void)
 {
 	sched_preempt_enable_no_resched();
@@ -3947,11 +4074,24 @@ void __sched schedule_preempt_disabled(void)
 	preempt_disable();
 }
 
+/*********************************************************************************************************
+** 函数名称: preempt_schedule_common
+** 功能描述: 执行一次抢占当前正在运行任务的任务调度操作，尝试从当前系统内找到一个优先级大于等于
+**         : 当前正在执行的任务并运行它
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void __sched notrace preempt_schedule_common(void)
 {
 	do {
+		/* 表示调度子系统进入任务抢占调度临界区 */
 		__preempt_count_add(PREEMPT_ACTIVE);
+		
 		__schedule();
+
+		/* 表示调度子系统退出任务抢占调度临界区 */
 		__preempt_count_sub(PREEMPT_ACTIVE);
 
 		/*
@@ -3968,6 +4108,15 @@ static void __sched notrace preempt_schedule_common(void)
  * off of preempt_enable. Kernel preemptions off return from interrupt
  * occur there and call schedule directly.
  */
+/*********************************************************************************************************
+** 函数名称: preempt_schedule
+** 功能描述: 尝试执行一次抢占当前正在运行任务的任务调度操作，尝试从当前系统内找到一个优先级大于等于
+**         : 当前正在执行的任务并运行它
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 asmlinkage __visible void __sched notrace preempt_schedule(void)
 {
 	/*
@@ -4030,6 +4179,16 @@ EXPORT_SYMBOL_GPL(preempt_schedule_context);
  * Note, that this is called and return with irqs disabled. This will
  * protect us against recursive calling from irq.
  */
+/*********************************************************************************************************
+** 函数名称: preempt_schedule_irq
+** 功能描述: 在关中断且可抢占的中断上下文中执行一次抢占当前正在运行任务的任务调度操作，尝试从当前
+**         : 系统内找到一个优先级大于等于当前正在执行的任务并运行它
+** 注     释: 这个函数会在关中断状态下调用，这样可以避免在中断中出现递归调用的现象
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 asmlinkage __visible void __sched preempt_schedule_irq(void)
 {
 	enum ctx_state prev_state;
@@ -4056,6 +4215,18 @@ asmlinkage __visible void __sched preempt_schedule_irq(void)
 	exception_exit(prev_state);
 }
 
+/*********************************************************************************************************
+** 函数名称: default_wake_function
+** 功能描述: 尝试把和指定任务状态匹配的任务在其所属 cpu 运行队列中和其匹配的运行队列类上唤醒
+** 输	 入: curr - 指定的工作队列指针
+**         : mode - 指定的任务匹配状态
+**         : wake_flags - 指定的 wakeup flags，例如 WF_FORK
+**         : key - 未使用
+** 输	 出: true - 唤醒成功
+**         : false - 指定的任务已经是运行状态或者指定的任务状态不匹配
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int default_wake_function(wait_queue_t *curr, unsigned mode, int wake_flags,
 			  void *key)
 {
@@ -4076,6 +4247,15 @@ EXPORT_SYMBOL(default_wake_function);
  * Used by the rt_mutex code to implement priority inheritance
  * logic. Call site only calls if the priority of the task changed.
  */
+/*********************************************************************************************************
+** 函数名称: rt_mutex_setprio
+** 功能描述: 在 rt_mutex 中指定任务发生优先级继承时用来更新这个任务的调度类以及有效优先级
+** 输	 入: p - 指定的任务指针
+**         : prio - 指定的新的有效优先级
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void rt_mutex_setprio(struct task_struct *p, int prio)
 {
 	int oldprio, queued, running, enqueue_flag = 0;
@@ -4160,6 +4340,15 @@ out_unlock:
 }
 #endif
 
+/*********************************************************************************************************
+** 函数名称: set_user_nice
+** 功能描述: 根据指定的 nice 值更新指定任务的优先级
+** 输	 入: p - 指定的任务指针
+**         : nice - 指定的 nice 值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void set_user_nice(struct task_struct *p, long nice)
 {
 	int old_prio, delta, queued;
@@ -4193,6 +4382,8 @@ void set_user_nice(struct task_struct *p, long nice)
 	p->prio = effective_prio(p);
 	delta = p->prio - old_prio;
 
+    /* 如果优先级改变了，则判断是否需要执行任务调度操作，如果需要则设置  当前正在运行
+	   任务的 TIF_NEED_RESCHED 标志位 */
 	if (queued) {
 		enqueue_task(rq, p, 0);
 		/*
@@ -4212,6 +4403,16 @@ EXPORT_SYMBOL(set_user_nice);
  * @p: task
  * @nice: nice value
  */
+/*********************************************************************************************************
+** 函数名称: can_nice
+** 功能描述: 判断指定的任务是否可以把 nice 值设置成指定的值
+** 输	 入: p - 指定的任务指针
+**         : nice - 指定的 nice 值
+** 输	 出: 1 - 可以
+**         : 0 - 不可以
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int can_nice(const struct task_struct *p, const int nice)
 {
 	/* convert nice value [19,-20] to rlimit style value [1,40] */
@@ -4230,6 +4431,14 @@ int can_nice(const struct task_struct *p, const int nice)
  * sys_setpriority is a more generic, but much slower function that
  * does similar things.
  */
+/*********************************************************************************************************
+** 函数名称: nice
+** 功能描述: 把当前正在运行的任务的 nice 值调整指定的增量
+** 输	 入: increment - 指定的增量值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 SYSCALL_DEFINE1(nice, int, increment)
 {
 	long nice, retval;
@@ -4264,6 +4473,14 @@ SYSCALL_DEFINE1(nice, int, increment)
  * RT tasks are offset by -200. Normal tasks are centered
  * around 0, value goes from -16 to +15.
  */
+/*********************************************************************************************************
+** 函数名称: task_prio
+** 功能描述: 把指定任务的动态优先级转换成 /proc 文件系统显示的格式
+** 输	 入: p - 指定的任务指针
+** 输	 出: int - /proc 文件系统格式的优先级
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int task_prio(const struct task_struct *p)
 {
 	return p->prio - MAX_RT_PRIO;
@@ -4308,6 +4525,14 @@ int idle_cpu(int cpu)
  *
  * Return: The idle task for the cpu @cpu.
  */
+/*********************************************************************************************************
+** 函数名称: idle_task
+** 功能描述: 获取指定 cpu 上的 idle 任务指针
+** 输	 入: cpu - 指定的 cpu id 值
+** 输	 出: task_struct * - idle 任务指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct task_struct *idle_task(int cpu)
 {
 	return cpu_rq(cpu)->idle;
@@ -4319,6 +4544,14 @@ struct task_struct *idle_task(int cpu)
  *
  * The task of @pid, if found. %NULL otherwise.
  */
+/*********************************************************************************************************
+** 函数名称: find_process_by_pid
+** 功能描述: 尝试通过指定的 pid 偏移量查找在当前正在运行的进程的 namespace 中查找对应的任务结构指针
+** 输	 入: pid - 指定的 pid 值
+** 输	 出: task_struct * - 对应的任务结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static struct task_struct *find_process_by_pid(pid_t pid)
 {
 	return pid ? find_task_by_vpid(pid) : current;
@@ -4332,6 +4565,15 @@ static struct task_struct *find_process_by_pid(pid_t pid)
  * absolute deadline will be properly calculated when the task is enqueued
  * for the first time with its new policy.
  */
+/*********************************************************************************************************
+** 函数名称: __setparam_dl
+** 功能描述: 把指定 deadline 任务的调度参数设置为指定的值
+** 输	 入: p - 指定的 deadline 任务指针
+**         : attr - 指定的调度参数
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void
 __setparam_dl(struct task_struct *p, const struct sched_attr *attr)
 {
@@ -4370,6 +4612,15 @@ __setparam_dl(struct task_struct *p, const struct sched_attr *attr)
  */
 #define SETPARAM_POLICY	-1
 
+/*********************************************************************************************************
+** 函数名称: __setscheduler_params
+** 功能描述: 把指定任务的调度策略和调度优先级设置为指定参数指定的值
+** 输	 入: p - 指定的 deadline 任务指针
+**         : attr - 指定的调度参数
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void __setscheduler_params(struct task_struct *p,
 		const struct sched_attr *attr)
 {
@@ -4396,6 +4647,16 @@ static void __setscheduler_params(struct task_struct *p,
 }
 
 /* Actually do priority change: must hold pi & rq lock. */
+/*********************************************************************************************************
+** 函数名称: __setscheduler
+** 功能描述: 把指定任务的调度策略和调度优先级设置为指定参数指定的值并根据指定的有效优先级调整其调度类
+** 输	 入: rq - 未使用
+**         : p - 指定的 deadline 任务指针
+**         : attr - 指定的调度参数
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void __setscheduler(struct rq *rq, struct task_struct *p,
 			   const struct sched_attr *attr)
 {
@@ -4415,6 +4676,14 @@ static void __setscheduler(struct rq *rq, struct task_struct *p,
 		p->sched_class = &fair_sched_class;
 }
 
+/*********************************************************************************************************
+** 函数名称: __getparam_dl
+** 功能描述: 获取指定 deadline 任务的调度参数
+** 输	 入: p - 指定的 deadline 任务指针
+** 输	 出: attr - 对应的调度参数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void
 __getparam_dl(struct task_struct *p, struct sched_attr *attr)
 {
@@ -4437,6 +4706,15 @@ __getparam_dl(struct task_struct *p, struct sched_attr *attr)
  * below 2^63 ns (we have to check both sched_deadline and
  * sched_period, as the latter can be zero).
  */
+/*********************************************************************************************************
+** 函数名称: __checkparam_dl
+** 功能描述: 校验指定的 deadline 调度参数是否合法
+** 输	 入: attr - 指定的 deadline 调度参数
+** 输	 出: true - 合法
+**         : false - 不合法
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static bool
 __checkparam_dl(const struct sched_attr *attr)
 {
@@ -4471,6 +4749,15 @@ __checkparam_dl(const struct sched_attr *attr)
 /*
  * check the target process has a UID that matches the current process's
  */
+/*********************************************************************************************************
+** 函数名称: check_same_owner
+** 功能描述: 判断指定的任务和当前正在运行的任务的用户 id 信息是否相同
+** 输	 入: p - 指定的任务指针
+** 输	 出: true - 相同
+**         : false - 不相同
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static bool check_same_owner(struct task_struct *p)
 {
 	const struct cred *cred = current_cred(), *pcred;
@@ -4484,6 +4771,16 @@ static bool check_same_owner(struct task_struct *p)
 	return match;
 }
 
+/*********************************************************************************************************
+** 函数名称: dl_param_changed
+** 功能描述: 判断指定任务的 deadline 调度参数和指定的 deadline 调度参数是否发生变化
+** 输	 入: p - 指定的任务指针
+**         : attr - 指定的 deadline 调度参数
+** 输	 出: true - 发生了变化
+**         : false - 没发生变化
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static bool dl_param_changed(struct task_struct *p,
 		const struct sched_attr *attr)
 {
@@ -4498,12 +4795,25 @@ static bool dl_param_changed(struct task_struct *p,
 	return false;
 }
 
+/*********************************************************************************************************
+** 函数名称: __sched_setscheduler
+** 功能描述: 设置指定的实时任务的调度策略和调度优先级为指定调度参数指定的值
+** 输	 入: p - 指定的任务指针
+**         : attr - 指定的调度参数
+**         : user - 调用者是否在用户空间
+** 输	 出: 0 - 执行成功
+**         : other - 执行错误
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int __sched_setscheduler(struct task_struct *p,
 				const struct sched_attr *attr,
 				bool user)
 {
+    /*  newprio = dl_policy(attr->sched_policy) ? -1 : 99 - attr->sched_priority; */
 	int newprio = dl_policy(attr->sched_policy) ? MAX_DL_PRIO - 1 :
 		      MAX_RT_PRIO - 1 - attr->sched_priority;
+
 	int retval, oldprio, oldpolicy = -1, queued, running;
 	int policy = attr->sched_policy;
 	unsigned long flags;
@@ -4513,8 +4823,10 @@ static int __sched_setscheduler(struct task_struct *p,
 
 	/* may grab non-irq protected spin_locks */
 	BUG_ON(in_interrupt());
+	
 recheck:
 	/* double check policy once rq lock held */
+    /* 根据函数参数确定 policy 和 reset_on_fork 变量的值 */
 	if (policy < 0) {
 		reset_on_fork = p->sched_reset_on_fork;
 		policy = oldpolicy = p->policy;
@@ -4528,6 +4840,8 @@ recheck:
 			return -EINVAL;
 	}
 
+    /* 目前只支持 SCHED_FLAG_RESET_ON_FORK 标志值，如果还有其他标志位
+	   则表示指定的调度参数无效，直接返回 */
 	if (attr->sched_flags & ~(SCHED_FLAG_RESET_ON_FORK))
 		return -EINVAL;
 
@@ -4536,9 +4850,12 @@ recheck:
 	 * 1..MAX_USER_RT_PRIO-1, valid priority for SCHED_NORMAL,
 	 * SCHED_BATCH and SCHED_IDLE is 0.
 	 */
+	/* 校验指定的优先级参数是否在合法范围内 */
 	if ((p->mm && attr->sched_priority > MAX_USER_RT_PRIO-1) ||
 	    (!p->mm && attr->sched_priority > MAX_RT_PRIO-1))
 		return -EINVAL;
+
+    /* 校验指定的调度类参数是否合法 */
 	if ((dl_policy(policy) && !__checkparam_dl(attr)) ||
 	    (rt_policy(policy) != (attr->sched_priority != 0)))
 		return -EINVAL;
@@ -4546,33 +4863,39 @@ recheck:
 	/*
 	 * Allow unprivileged RT tasks to decrease priority:
 	 */
+	/* 如果调用者是用户级线程且用户级线程不具备 CAP_SYS_NICE 特权则执行括号内的逻辑 */
 	if (user && !capable(CAP_SYS_NICE)) {
+
+	    /* 如果指定的调度策略为非实时调度策略则校验指定的 nice 值是否合法 */
 		if (fair_policy(policy)) {
 			if (attr->sched_nice < task_nice(p) &&
 			    !can_nice(p, attr->sched_nice))
 				return -EPERM;
 		}
 
+        /* 如果指定的调度策略为实时调度策略则校验指定的调度参数是否合法 */
 		if (rt_policy(policy)) {
 			unsigned long rlim_rtprio =
 					task_rlimit(p, RLIMIT_RTPRIO);
 
 			/* can't set/change the rt policy */
+		    /* 因为用户级线程不具备 CAP_SYS_NICE 特权，所以不能调整调度策略 */
 			if (policy != p->policy && !rlim_rtprio)
 				return -EPERM;
 
 			/* can't increase priority */
+			/* 校验是否可以提高指定任务的实时优先级 */
 			if (attr->sched_priority > p->rt_priority &&
 			    attr->sched_priority > rlim_rtprio)
 				return -EPERM;
 		}
 
-		 /*
-		  * Can't set/change SCHED_DEADLINE policy at all for now
-		  * (safest behavior); in the future we would like to allow
-		  * unprivileged DL tasks to increase their relative deadline
-		  * or reduce their runtime (both ways reducing utilization)
-		  */
+		/*
+		 * Can't set/change SCHED_DEADLINE policy at all for now
+		 * (safest behavior); in the future we would like to allow
+		 * unprivileged DL tasks to increase their relative deadline
+		 * or reduce their runtime (both ways reducing utilization)
+		 */
 		if (dl_policy(policy))
 			return -EPERM;
 
@@ -4612,6 +4935,7 @@ recheck:
 	/*
 	 * Changing the policy of the stop threads its a very bad idea
 	 */
+	/* 我们不可以修改 stop 任务的调度参数 */
 	if (p == rq->stop) {
 		task_rq_unlock(rq, p, &flags);
 		return -EINVAL;
@@ -4621,6 +4945,7 @@ recheck:
 	 * If not changing anything there's no need to proceed further,
 	 * but store a possible modification of reset_on_fork.
 	 */
+	/* 判断指定的调度参数和指定任务现有调度参数是否发生了变化，如果没发生变化则直接返回 */
 	if (unlikely(policy == p->policy)) {
 		if (fair_policy(policy) && attr->sched_nice != task_nice(p))
 			goto change;
@@ -4635,12 +4960,15 @@ recheck:
 	}
 change:
 
+    /* 如果调用者是在用户级空间则执行下面括号内的逻辑 */
 	if (user) {
 #ifdef CONFIG_RT_GROUP_SCHED
 		/*
 		 * Do not allow realtime tasks into groups that have no runtime
 		 * assigned.
 		 */
+		/* 如果当前 cpu 运行队列没有分配实时带宽时间，则不允许将指定任务的
+		   调度策略修改成实时调度策略 */
 		if (rt_bandwidth_enabled() && rt_policy(policy) &&
 				task_group(p)->rt_bandwidth.rt_runtime == 0 &&
 				!task_group_is_autogroup(task_group(p))) {
@@ -4657,6 +4985,12 @@ change:
 			 * the entire root_domain to become SCHED_DEADLINE. We
 			 * will also fail if there's no bandwidth available.
 			 */
+			/* 1. 如果指定任务的 cpu 亲和力掩码是这个任务根调度域包含的 cpu 掩码的子集
+		          则不允许将这个任务调度策略设置为 deadline（deadline 任务的 cpu 亲
+		          和力掩码值要等于其根调度域包含的 cpu 掩码值，即 deadline 任务要允许在
+		          其根调度域内的每个 cpu 上运行）
+		       2. 如果当前 cpu 运行队列没有分配 deadline 带宽时间，则不允许将指定任务的
+		          调度策略修改成 deadline */
 			if (!cpumask_subset(span, &p->cpus_allowed) ||
 			    rq->rd->dl_bw.bw == 0) {
 				task_rq_unlock(rq, p, &flags);
@@ -4678,6 +5012,8 @@ change:
 	 * of a SCHED_DEADLINE task) we need to check if enough bandwidth
 	 * is available.
 	 */
+	/* 在将指定任务调度策略调整成 deadline 之前需要校验指定的调度参数是否会
+	   是当前系统的 deadline 带宽控制溢出，如果会溢出则直接返回 */
 	if ((dl_policy(policy) || dl_task(p)) && dl_overflow(p, policy, attr)) {
 		task_rq_unlock(rq, p, &flags);
 		return -EBUSY;
@@ -4696,6 +5032,7 @@ change:
 	 * itself.
 	 */
 	if (rt_mutex_check_prio(p, newprio)) {
+		/* 把指定任务的调度策略和调度优先级设置为指定参数指定的值 */
 		__setscheduler_params(p, attr);
 		task_rq_unlock(rq, p, &flags);
 		return 0;
@@ -4709,6 +5046,8 @@ change:
 		put_prev_task(rq, p);
 
 	prev_class = p->sched_class;
+
+	/* 把指定任务的调度策略和调度优先级设置为指定参数指定的值并根据指定的有效优先级调整其调度类 */
 	__setscheduler(rq, p, attr);
 
 	if (running)
@@ -4729,6 +5068,18 @@ change:
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: _sched_setscheduler
+** 功能描述: 设置指定的实时任务的调度策略和调度优先级为指定调度参数指定的值
+** 输	 入: p - 指定的任务指针
+**         : policy - 指定的调度策略
+**         : param - 指定的调度优先级参数
+**         : check - 修改参数时是否需要检查调用者权限
+** 输	 出: 0 - 执行成功
+**         : other - 执行错误
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int _sched_setscheduler(struct task_struct *p, int policy,
 			       const struct sched_param *param, bool check)
 {
@@ -4745,6 +5096,7 @@ static int _sched_setscheduler(struct task_struct *p, int policy,
 		attr.sched_policy = policy;
 	}
 
+    /* 设置指定任务的调度策略和调度优先级为指定调度参数指定的值 */
 	return __sched_setscheduler(p, &attr, check);
 }
 /**
@@ -4757,6 +5109,18 @@ static int _sched_setscheduler(struct task_struct *p, int policy,
  *
  * NOTE that the task may be already dead.
  */
+/*********************************************************************************************************
+** 函数名称: sched_setscheduler
+** 功能描述: 设置指定的实时任务的调度策略和调度优先级为指定调度参数指定的值
+** 注     释: 在修改指定任务优先级时“需要”进行权限检查
+** 输	 入: p - 指定的任务指针
+**         : policy - 指定的调度策略
+**         : param - 指定的调度优先级参数
+** 输	 出: 0 - 执行成功
+**         : other - 执行错误
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int sched_setscheduler(struct task_struct *p, int policy,
 		       const struct sched_param *param)
 {
@@ -4764,6 +5128,17 @@ int sched_setscheduler(struct task_struct *p, int policy,
 }
 EXPORT_SYMBOL_GPL(sched_setscheduler);
 
+/*********************************************************************************************************
+** 函数名称: sched_setattr
+** 功能描述: 设置指定的实时任务的调度策略和调度优先级为指定调度参数指定的值
+** 注     释: 在修改指定任务优先级时“需要”进行权限检查
+** 输	 入: p - 指定的任务指针
+**         : attr - 指定的调度参数
+** 输	 出: 0 - 执行成功
+**         : other - 执行错误
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int sched_setattr(struct task_struct *p, const struct sched_attr *attr)
 {
 	return __sched_setscheduler(p, attr, true);
@@ -4783,12 +5158,36 @@ EXPORT_SYMBOL_GPL(sched_setattr);
  *
  * Return: 0 on success. An error code otherwise.
  */
+/*********************************************************************************************************
+** 函数名称: sched_setscheduler_nocheck
+** 功能描述: 设置指定的实时任务的调度策略和调度优先级为指定调度参数指定的值
+** 注     释: 在修改指定任务优先级时“不需要”进行权限检查
+** 输	 入: p - 指定的任务指针
+**         : policy - 指定的调度策略
+**         : param - 指定的调度优先级参数
+** 输	 出: 0 - 执行成功
+**         : other - 执行错误
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int sched_setscheduler_nocheck(struct task_struct *p, int policy,
 			       const struct sched_param *param)
 {
 	return _sched_setscheduler(p, policy, param, false);
 }
 
+/*********************************************************************************************************
+** 函数名称: do_sched_setscheduler
+** 功能描述: 设置指定 pid 任务的实时的调度策略和调度优先级为指定调度参数指定的值
+** 注     释: 在修改指定任务优先级时“需要”进行权限检查
+** 输	 入: pid - 指定的任务 pid 值
+**         : policy - 指定的调度策略
+**         : param - 指定的调度优先级参数
+** 输	 出: 0 - 执行成功
+**         : other - 执行错误
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int
 do_sched_setscheduler(pid_t pid, int policy, struct sched_param __user *param)
 {
@@ -4814,6 +5213,16 @@ do_sched_setscheduler(pid_t pid, int policy, struct sched_param __user *param)
 /*
  * Mimics kernel/events/core.c perf_copy_attr().
  */
+/*********************************************************************************************************
+** 函数名称: sched_copy_attr
+** 功能描述: 把指定的用户空间调度参数复制到指定的内核空间数据结构中
+** 输	 入: uattr - 指定的用户空间调度参数指针
+** 输	 出: attr - 指定的内核空间数据结构指针
+**         : 0 - 执行成功
+**         : other - 执行失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int sched_copy_attr(struct sched_attr __user *uattr,
 			   struct sched_attr *attr)
 {
@@ -4890,6 +5299,18 @@ err_size:
  *
  * Return: 0 on success. An error code otherwise.
  */
+/*********************************************************************************************************
+** 函数名称: sched_setscheduler
+** 功能描述: 设置指定 pid 任务的实时的调度策略和调度优先级为指定调度参数指定的值
+** 注     释: 在修改指定任务优先级时“需要”进行权限检查
+** 输	 入: pid - 指定的任务 pid 值
+**         : policy - 指定的调度策略
+**         : param - 指定的调度优先级参数
+** 输	 出: 0 - 执行成功
+**         : other - 执行错误
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 SYSCALL_DEFINE3(sched_setscheduler, pid_t, pid, int, policy,
 		struct sched_param __user *, param)
 {
@@ -4907,6 +5328,18 @@ SYSCALL_DEFINE3(sched_setscheduler, pid_t, pid, int, policy,
  *
  * Return: 0 on success. An error code otherwise.
  */
+/*********************************************************************************************************
+** 函数名称: sched_setparam
+** 功能描述: 设置指定 pid 任务的实时的调度优先级为指定调度参数指定的值
+** 注     释: 在修改指定任务优先级时“需要”进行权限检查
+** 输	 入: pid - 指定的任务 pid 值
+**         : param - 指定的调度优先级参数
+** 输	 出: 0 - 执行成功
+**         : other - 执行错误
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
+ 
 SYSCALL_DEFINE2(sched_setparam, pid_t, pid, struct sched_param __user *, param)
 {
 	return do_sched_setscheduler(pid, SETPARAM_POLICY, param);
@@ -4918,6 +5351,18 @@ SYSCALL_DEFINE2(sched_setparam, pid_t, pid, struct sched_param __user *, param)
  * @uattr: structure containing the extended parameters.
  * @flags: for future extension.
  */
+/*********************************************************************************************************
+** 函数名称: sched_setattr
+** 功能描述: 设置指定的实时任务的调度策略和调度优先级为指定调度参数指定的值
+** 注     释: 在修改指定任务优先级时“需要”进行权限检查
+** 输	 入: pid - 指定的任务 pid 值
+**         : uattr - 指定的用户空间调度参数指针
+**         : flags - 指定的 flags 标志
+** 输	 出: 0 - 执行成功
+**         : other - 执行错误
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 SYSCALL_DEFINE3(sched_setattr, pid_t, pid, struct sched_attr __user *, uattr,
 			       unsigned int, flags)
 {
@@ -4952,6 +5397,15 @@ SYSCALL_DEFINE3(sched_setattr, pid_t, pid, struct sched_attr __user *, uattr,
  * Return: On success, the policy of the thread. Otherwise, a negative error
  * code.
  */
+/*********************************************************************************************************
+** 函数名称: sched_getscheduler
+** 功能描述: 获取指定任务的当前使用的调度策略
+** 输	 入: pid - 指定的任务 pid 值
+** 输	 出: >=0 - 当前使用的调度策略
+**         :  <0 - 执行错误
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 SYSCALL_DEFINE1(sched_getscheduler, pid_t, pid)
 {
 	struct task_struct *p;
@@ -4981,6 +5435,16 @@ SYSCALL_DEFINE1(sched_getscheduler, pid_t, pid)
  * Return: On success, 0 and the RT priority is in @param. Otherwise, an error
  * code.
  */
+/*********************************************************************************************************
+** 函数名称: sched_getparam
+** 功能描述: 获取指定实时任务的当前使用的调度优先级
+** 输	 入: pid - 指定实时任务的 pid 值
+** 输	 出: 0 - 获取成功
+**         : param - 当前使用的调度优先级
+**         : other - 执行错误码
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 SYSCALL_DEFINE2(sched_getparam, pid_t, pid, struct sched_param __user *, param)
 {
 	struct sched_param lp = { .sched_priority = 0 };
@@ -5016,6 +5480,17 @@ out_unlock:
 	return retval;
 }
 
+/*********************************************************************************************************
+** 函数名称: sched_read_attr
+** 功能描述: 把指定的调度参数数据复制到指定的用户空间缓冲区结构中
+** 输	 入: attr - 指定的调度参数结构指针
+**         : usize - 想要复制的数据字节数
+** 输	 出: uattr - 指定的用户空间缓冲区结构指针
+**         :  0 - 执行成功
+**         : <0 - 执行失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int sched_read_attr(struct sched_attr __user *uattr,
 			   struct sched_attr *attr,
 			   unsigned int usize)
@@ -5059,6 +5534,19 @@ static int sched_read_attr(struct sched_attr __user *uattr,
  * @size: sizeof(attr) for fwd/bwd comp.
  * @flags: for future extension.
  */
+/*********************************************************************************************************
+** 函数名称: sched_getattr
+** 功能描述: 获取指定 pid 任务的调度策略参数和调度优先级参数
+** 输	 入: pid_t - 指定的任务 pid 值
+**         : attr - 指定的调度参数结构指针
+**         : size - 想要复制的数据字节数
+**         : flags - 指定的 flags 标志
+** 输	 出: uattr - 指定的用户空间缓冲区结构指针
+**         :  0 - 执行成功
+**         : <0 - 执行失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 SYSCALL_DEFINE4(sched_getattr, pid_t, pid, struct sched_attr __user *, uattr,
 		unsigned int, size, unsigned int, flags)
 {
@@ -5102,6 +5590,16 @@ out_unlock:
 	return retval;
 }
 
+/*********************************************************************************************************
+** 函数名称: sched_setaffinity
+** 功能描述: 设置指定 pid 任务的 cpu 亲和力参数
+** 输	 入: pid_t - 指定的任务 pid 值
+**         : in_mask - 指定的 cpu 亲和力掩码值
+** 输	 出:   0 - 执行成功
+**         : <0 - 执行失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 long sched_setaffinity(pid_t pid, const struct cpumask *in_mask)
 {
 	cpumask_var_t cpus_allowed, new_mask;
@@ -5120,6 +5618,7 @@ long sched_setaffinity(pid_t pid, const struct cpumask *in_mask)
 	get_task_struct(p);
 	rcu_read_unlock();
 
+    /* 如果指定任务的 cpu 亲和力不允许被用户级程序修改则直接返回 */
 	if (p->flags & PF_NO_SETAFFINITY) {
 		retval = -EINVAL;
 		goto out_put_task;
@@ -5133,6 +5632,9 @@ long sched_setaffinity(pid_t pid, const struct cpumask *in_mask)
 		goto out_free_cpus_allowed;
 	}
 	retval = -EPERM;
+
+	/* 如果 cpu 亲和力的修改者和被修改者属于不同的用户组且指定的被修改者
+	   不具备 CAP_SYS_NICE 特权模式则直接返回 */
 	if (!check_same_owner(p)) {
 		rcu_read_lock();
 		if (!ns_capable(__task_cred(p)->user_ns, CAP_SYS_NICE)) {
@@ -5191,6 +5693,16 @@ out_put_task:
 	return retval;
 }
 
+/*********************************************************************************************************
+** 函数名称: get_user_cpu_mask
+** 功能描述: 获取用户空间指定的 cpu 亲和力掩码值并复制到指定的缓冲区中
+** 输	 入: user_mask_ptr - 用户空间指定的 cpu 亲和力掩码值数据指针
+**         : len - 指定的 cpu 亲和力掩码值数据字节数
+** 输	 出:  new_mask - 指定的缓冲区指针
+**         : int - 成功获取的数据字节数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int get_user_cpu_mask(unsigned long __user *user_mask_ptr, unsigned len,
 			     struct cpumask *new_mask)
 {
@@ -5210,6 +5722,17 @@ static int get_user_cpu_mask(unsigned long __user *user_mask_ptr, unsigned len,
  *
  * Return: 0 on success. An error code otherwise.
  */
+/*********************************************************************************************************
+** 函数名称: sched_setaffinity
+** 功能描述: 设置指定 pid 任务的 cpu 亲和力
+** 输	 入: pid_t - 指定的 pid 值
+**         : len - 指定的 cpu 亲和力掩码值数据字节数
+**         : user_mask_ptr - 用户空间指定的 cpu 亲和力掩码值数据指针
+** 输	 出:   0 - 执行成功
+**         : <0 - 执行失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 SYSCALL_DEFINE3(sched_setaffinity, pid_t, pid, unsigned int, len,
 		unsigned long __user *, user_mask_ptr)
 {
@@ -5226,6 +5749,16 @@ SYSCALL_DEFINE3(sched_setaffinity, pid_t, pid, unsigned int, len,
 	return retval;
 }
 
+/*********************************************************************************************************
+** 函数名称: sched_getaffinity
+** 功能描述: 获取指定 pid 任务的 cpu 亲和力
+** 输	 入: pid_t - 指定的 pid 值
+** 输	 出: mask - cpu 亲和力
+**         :  0 - 执行成功
+**         : <0 - 执行失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 long sched_getaffinity(pid_t pid, struct cpumask *mask)
 {
 	struct task_struct *p;
@@ -5261,6 +5794,17 @@ out_unlock:
  *
  * Return: 0 on success. An error code otherwise.
  */
+/*********************************************************************************************************
+** 函数名称: sched_getaffinity
+** 功能描述: 获取指定 pid 任务的 cpu 亲和力
+** 输	 入: pid_t - 指定的 pid 值
+**         : len - 用户空间指定的缓冲区字节长度
+** 输	 出: user_mask_ptr - cpu 亲和力
+**         :  0 - 执行成功
+**         : <0 - 执行失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 SYSCALL_DEFINE3(sched_getaffinity, pid_t, pid, unsigned int, len,
 		unsigned long __user *, user_mask_ptr)
 {
@@ -5297,6 +5841,18 @@ SYSCALL_DEFINE3(sched_getaffinity, pid_t, pid, unsigned int, len,
  *
  * Return: 0.
  */
+/*********************************************************************************************************
+** 函数名称: sched_yield
+** 功能描述: 使当前正在运行的任务主动执行任务调度操作，尝试从当前系统内找到一个优先级大于等于当前
+**         : 正在执行的任务并运行它
+** 注     释: 在资源竞争严重的情况下可以用来提高系统性能，比如在一个优先级低任务持有锁过程中，另外一个
+**         : 高优先级任务因为想要获取这个锁而进入睡眠等待状态，所以如果低优先级任务在释放锁后调用了这
+**         : 个函数，高优先级任务就可以立即运行并获取锁
+** 输	 入: 
+** 输	 出: 0 - 执行成功
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 SYSCALL_DEFINE0(sched_yield)
 {
 	struct rq *rq = this_rq_lock();
@@ -5318,6 +5874,16 @@ SYSCALL_DEFINE0(sched_yield)
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: _cond_resched
+** 功能描述: 尝试执行一次抢占当前正在运行任务的任务调度操作，尝试从当前系统内找到一个优先级大于等于
+**         : 当前正在执行的任务并运行它
+** 输	 入: 
+** 输	 出: 1 - 当前正在运行的任务设置了 TIF_NEED_RESCHED 标志并执行了任务抢占调度操作
+**         : 0 - 当前正在运行的任务没设置 TIF_NEED_RESCHED 且没执行任务抢占调度操作
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int __sched _cond_resched(void)
 {
 	if (should_resched()) {
@@ -5336,6 +5902,16 @@ EXPORT_SYMBOL(_cond_resched);
  * operations here to prevent schedule() from being called twice (once via
  * spin_unlock(), once by hand).
  */
+/*********************************************************************************************************
+** 函数名称: __cond_resched_lock
+** 功能描述: 在持有指定锁的情况下先释放持有的锁，然后尝试从当前系统内找到一个优先级大于等于当前
+**         : 正在执行的任务并运行它，在函数返回前重新获取指定的锁
+** 输	 入: lock - 指定的锁指针
+** 输	 出: 1 - 当前正在运行的任务设置了 TIF_NEED_RESCHED 标志并执行了任务抢占调度操作
+**         : 0 - 当前正在运行的任务没设置 TIF_NEED_RESCHED 且没执行任务抢占调度操作
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int __cond_resched_lock(spinlock_t *lock)
 {
 	int resched = should_resched();
@@ -5356,6 +5932,15 @@ int __cond_resched_lock(spinlock_t *lock)
 }
 EXPORT_SYMBOL(__cond_resched_lock);
 
+/*********************************************************************************************************
+** 函数名称: __cond_resched_softirq
+** 功能描述: 尝试在关闭中断下半部的情况下从当前系统内找到一个优先级大于等于当前正在执行的任务并运行它
+** 输	 入: lock - 指定的锁指针
+** 输	 出: 1 - 当前正在运行的任务设置了 TIF_NEED_RESCHED 标志并执行了任务抢占调度操作
+**         : 0 - 当前正在运行的任务没设置 TIF_NEED_RESCHED 且没执行任务抢占调度操作
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int __sched __cond_resched_softirq(void)
 {
 	BUG_ON(!in_softirq());
@@ -5392,6 +5977,14 @@ EXPORT_SYMBOL(__cond_resched_softirq);
  * If you want to use yield() to be 'nice' for others, use cond_resched().
  * If you still want to use yield(), do not!
  */
+/*********************************************************************************************************
+** 函数名称: yield
+** 功能描述: 
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void __sched yield(void)
 {
 	set_current_state(TASK_RUNNING);
@@ -5414,6 +6007,17 @@ EXPORT_SYMBOL(yield);
  *	false (0) if we failed to boost the target.
  *	-ESRCH if there's no task to yield to.
  */
+/*********************************************************************************************************
+** 函数名称: yield_to
+** 功能描述: 尝试在当前正在运行的 cpu 上运行指定的任务
+** 输	 入: p - 指定的想要执行的任务指针
+**         : preempt - 表示是否支持抢占
+** 输	 出: >0 - 运行成功
+**         :  0 - 运行失败
+**         : -3 - 不需要执行 yield_to 操作
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int __sched yield_to(struct task_struct *p, bool preempt)
 {
 	struct task_struct *curr = current;
@@ -5430,26 +6034,34 @@ again:
 	 * If we're the only runnable task on the rq and target rq also
 	 * has only one task, there's absolutely no point in yielding.
 	 */
+	/* 如果当前正在运行的 cpu 运行队列上和指定任务所属 cpu 运行队列上都只有一个任务
+	   表示没有必要执行 yield_to 操作，则直接返回 */
 	if (rq->nr_running == 1 && p_rq->nr_running == 1) {
 		yielded = -ESRCH;
 		goto out_irq;
 	}
 
 	double_rq_lock(rq, p_rq);
+	/* 如果刚刚发生了任务迁移操作，则重新尝试 */
 	if (task_rq(p) != p_rq) {
 		double_rq_unlock(rq, p_rq);
 		goto again;
 	}
 
+    /* 如果当前正在运行的任务所属调度类没有 yield_to_task 函数，则退出返回 */
 	if (!curr->sched_class->yield_to_task)
 		goto out_unlock;
 
+    /* 如果当前正在运行的任务所属调度类和指定的任务所属调度类不相同，则退出返回 */
 	if (curr->sched_class != p->sched_class)
 		goto out_unlock;
 
+    /* 如果指定的任务当前正在其所属 cpu 上运行或者指定的任务当前不是就绪态，则退出返回 */
 	if (task_running(p_rq, p) || p->state)
 		goto out_unlock;
 
+    /* 把指定的任务设置为指定的 cpu 运行队列中其所属运行队列的 next 成员，并把当前正在
+       运行的任务设置为这个运行队列的 skip 成员 */
 	yielded = curr->sched_class->yield_to_task(rq, p, preempt);
 	if (yielded) {
 		schedstat_inc(rq, yld_count);
@@ -5466,6 +6078,7 @@ out_unlock:
 out_irq:
 	local_irq_restore(flags);
 
+    /* 使当前正在运行的任务主动执行任务调度，使当前 cpu 运行指定的任务 */
 	if (yielded > 0)
 		schedule();
 
@@ -5477,6 +6090,15 @@ EXPORT_SYMBOL_GPL(yield_to);
  * This task is about to go to sleep on IO. Increment rq->nr_iowait so
  * that process accounting knows that this is a task in IO wait state.
  */
+/*********************************************************************************************************
+** 函数名称: io_schedule_timeout
+** 功能描述: 在当前任务等待 IO 资源时调用，进入睡眠状态等待 IO 资源
+** 输	 入: timeout - 指定的睡眠时间，单位是 jiffies
+** 输	 出: 0  - 等待超时
+**         : >0 - 提前唤醒的 jiffies 个数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 long __sched io_schedule_timeout(long timeout)
 {
 	int old_iowait = current->in_iowait;
@@ -5509,6 +6131,15 @@ EXPORT_SYMBOL(io_schedule_timeout);
  * rt_priority that can be used by a given scheduling class.
  * On failure, a negative error code is returned.
  */
+/*********************************************************************************************************
+** 函数名称: sched_get_priority_max
+** 功能描述: 获取当前系统内指定调度策略支持的最“大”优先级
+** 输	 入: policy - 指定的调度策略
+** 输	 出: >0  - 支持的最大优先级
+**         : EINVAL - 参数错误
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 SYSCALL_DEFINE1(sched_get_priority_max, int, policy)
 {
 	int ret = -EINVAL;
@@ -5536,6 +6167,15 @@ SYSCALL_DEFINE1(sched_get_priority_max, int, policy)
  * rt_priority that can be used by a given scheduling class.
  * On failure, a negative error code is returned.
  */
+/*********************************************************************************************************
+** 函数名称: sched_get_priority_min
+** 功能描述: 获取当前系统内指定调度策略支持的最“小”优先级
+** 输	 入: policy - 指定的调度策略
+** 输	 出: >0  - 支持的最大优先级
+**         : EINVAL - 参数错误
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 SYSCALL_DEFINE1(sched_get_priority_min, int, policy)
 {
 	int ret = -EINVAL;
@@ -5565,6 +6205,16 @@ SYSCALL_DEFINE1(sched_get_priority_min, int, policy)
  * Return: On success, 0 and the timeslice is in @interval. Otherwise,
  * an error code.
  */
+/*********************************************************************************************************
+** 函数名称: sched_rr_get_interval
+** 功能描述: 获取指定 pid 的任务的默认时间片
+** 输	 入: pid - 指定的 pid 值
+** 输	 出: interval - 默认时间片
+**         :  0 - 执行成功
+**         : <0 - 错误码
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 SYSCALL_DEFINE2(sched_rr_get_interval, pid_t, pid,
 		struct timespec __user *, interval)
 {
@@ -5606,6 +6256,14 @@ out_unlock:
 
 static const char stat_nam[] = TASK_STATE_TO_CHAR_STR;
 
+/*********************************************************************************************************
+** 函数名称: sched_show_task
+** 功能描述: 打印指定任务的调度状态信息
+** 输	 入: p - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void sched_show_task(struct task_struct *p)
 {
 	unsigned long free = 0;
@@ -5643,6 +6301,14 @@ void sched_show_task(struct task_struct *p)
 	show_stack(p, NULL);
 }
 
+/*********************************************************************************************************
+** 函数名称: show_state_filter
+** 功能描述: 打印当前系统内和指定状态匹配的任务的调度状态信息
+** 输	 入: state_filter - 指定的要匹配的状态，0 表示打印所有任务
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void show_state_filter(unsigned long state_filter)
 {
 	struct task_struct *g, *p;
@@ -5678,6 +6344,14 @@ void show_state_filter(unsigned long state_filter)
 		debug_show_all_locks();
 }
 
+/*********************************************************************************************************
+** 函数名称: init_idle_bootup_task
+** 功能描述: 设置指定的 idle 任务的调度类为 idle_sched_class 
+** 输	 入: p - 指定的 idle 任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void init_idle_bootup_task(struct task_struct *idle)
 {
 	idle->sched_class = &idle_sched_class;
@@ -5693,7 +6367,7 @@ void init_idle_bootup_task(struct task_struct *idle)
  */
 /*********************************************************************************************************
 ** 函数名称: init_idle
-** 功能描述: 把指定的 idle 进程设置到指定的 cpu 上
+** 功能描述: 初始化指定 cpu 上的 idle 任务到默认状态
 ** 输	 入: idle - 指定的 idle 进程指针
 **         : cpu - 指定的 cpu 号
 ** 输	 出: 
@@ -5747,6 +6421,16 @@ void init_idle(struct task_struct *idle, int cpu)
 #endif
 }
 
+/*********************************************************************************************************
+** 函数名称: cpuset_cpumask_can_shrink
+** 功能描述: 根据 deadline 带宽判断指定的当前 cpu 掩码值是否可以收缩成指定的 cpu 掩码值
+** 输	 入: cur - 指定的当前 cpu 掩码值
+**         : trial - 指定的收缩后的 cpu 掩码值
+** 输	 出: 1 - 可以
+**         : 0 - 不可以
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int cpuset_cpumask_can_shrink(const struct cpumask *cur,
 			      const struct cpumask *trial)
 {
@@ -5771,6 +6455,16 @@ int cpuset_cpumask_can_shrink(const struct cpumask *cur,
 	return ret;
 }
 
+/*********************************************************************************************************
+** 函数名称: task_can_attach
+** 功能描述: 判断指定的任务是否可以添加到指定的 cpuset 中
+** 输	 入: p - 指定的任务指针
+**         : cs_cpus_allowed - 指定 cpuset 的 cpus_allowed 变量值
+** 输	 出:   0 - 可以
+**         : <0 - 错误码
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int task_can_attach(struct task_struct *p,
 		    const struct cpumask *cs_cpus_allowed)
 {
@@ -5791,8 +6485,12 @@ int task_can_attach(struct task_struct *p,
 	}
 
 #ifdef CONFIG_SMP
+    /* 如果指定的任务是 deadline 任务并且这个任务的根调度域包含的 cpu 和指定的
+       cpuset->cpus_allowed 没有重叠区，则执行括号内的逻辑 */
 	if (dl_task(p) && !cpumask_intersects(task_rq(p)->rd->span,
 					      cs_cpus_allowed)) {
+
+		/* 获取 cpuset->cpus_allowed 掩码值中的第一个处于 active 状态的 cpu id 值 */
 		unsigned int dest_cpu = cpumask_any_and(cpu_active_mask,
 							cs_cpus_allowed);
 		struct dl_bw *dl_b;
@@ -5831,6 +6529,16 @@ out:
  *
  * Returns (locked) new rq. Old rq's lock is released.
  */
+/*********************************************************************************************************
+** 函数名称: move_queued_task
+** 功能描述: 把指定的处于 TASK_ON_RQ_QUEUED 状态的任务迁移到指定的 cpu 上并尝试执行一个任务抢占调度
+** 注     释: 在执行完这个函数后，任务之前所属 cpu 运行队列锁被释放持有新的 cpu 运行队列的锁
+** 输	 入: p - 指定的任务指针
+**         : new_cpu - 指定的 cpu id 值
+** 输	 出: rq - 新的 cpu 运行队列指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static struct rq *move_queued_task(struct task_struct *p, int new_cpu)
 {
 	struct rq *rq = task_rq(p);
@@ -5856,7 +6564,7 @@ static struct rq *move_queued_task(struct task_struct *p, int new_cpu)
 /*********************************************************************************************************
 ** 函数名称: do_set_cpus_allowed
 ** 功能描述: 设置指定的任务的 cpus_allowed 字段值
-** 输	 入: p - 指定的 task_struct 结构指针
+** 输	 入: p - 指定的任务指针
 **         : new_mask - 指定的新位图掩码值
 ** 输	 出: 
 ** 全局变量: 
@@ -5894,6 +6602,16 @@ void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
  * task must not exit() & deallocate itself prematurely. The
  * call is not atomic; no spinlocks may be held.
  */
+/*********************************************************************************************************
+** 函数名称: set_cpus_allowed_ptr
+** 功能描述: 设置指定任务的 cpus_allowed 为指定的掩码值并尝试迁移到新掩码值指定的 cpu 上
+** 输	 入: p - 指定的任务指针
+**         : new_mask - 指定的新 cpu 掩码值
+** 输	 出:   0 - 设置成功
+**         : <0 - 错误码
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int set_cpus_allowed_ptr(struct task_struct *p, const struct cpumask *new_mask)
 {
 	unsigned long flags;
@@ -5906,6 +6624,7 @@ int set_cpus_allowed_ptr(struct task_struct *p, const struct cpumask *new_mask)
 	if (cpumask_equal(&p->cpus_allowed, new_mask))
 		goto out;
 
+    /* 如果新指定的 cpu 掩码值表示的所有 cpu 都不是 active 状态则直接返回 */
 	if (!cpumask_intersects(new_mask, cpu_active_mask)) {
 		ret = -EINVAL;
 		goto out;
@@ -5917,6 +6636,8 @@ int set_cpus_allowed_ptr(struct task_struct *p, const struct cpumask *new_mask)
 	if (cpumask_test_cpu(task_cpu(p), new_mask))
 		goto out;
 
+    /* 如果指定的任务为当前正在运行的任务且新的掩码值不包含当前正在运行的 cpu
+       则将这个任务迁移到新指定的 cpu 掩码值中处于 active 状态的第一个 cpu 上 */
 	dest_cpu = cpumask_any_and(cpu_active_mask, new_mask);
 	if (task_running(rq, p) || p->state == TASK_WAKING) {
 		struct migration_arg arg = { p, dest_cpu };
@@ -5945,6 +6666,16 @@ EXPORT_SYMBOL_GPL(set_cpus_allowed_ptr);
  *
  * Returns non-zero if task was successfully migrated.
  */
+/*********************************************************************************************************
+** 函数名称: __migrate_task
+** 功能描述: 把指定的任务从指定的源 cpu 上迁移到指定的目的 cpu 上
+** 输	 入: p - 指定的任务指针
+**         : src_cpu - 指定的源 cpu id 值
+**         : dest_cpu - 指目的 cpu id 值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int __migrate_task(struct task_struct *p, int src_cpu, int dest_cpu)
 {
 	struct rq *rq;
@@ -5981,6 +6712,15 @@ fail:
 
 #ifdef CONFIG_NUMA_BALANCING
 /* Migrate current task p to target_cpu */
+/*********************************************************************************************************
+** 函数名称: migrate_task_to
+** 功能描述: 把指定的任务迁移到指定的目的 cpu 上
+** 输	 入: p - 指定的任务指针
+**         : target_cpu - 指目的 cpu id 值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int migrate_task_to(struct task_struct *p, int target_cpu)
 {
 	struct migration_arg arg = { p, target_cpu };
@@ -6041,6 +6781,14 @@ void sched_setnuma(struct task_struct *p, int nid)
  * and performs thread migration by bumping thread off CPU then
  * 'pushing' onto another runqueue.
  */
+/*********************************************************************************************************
+** 函数名称: migration_cpu_stop
+** 功能描述: 在 cpu_stop 线程中按照指定的参数执行任务迁移操作
+** 输	 入: data - 指定的参数指针
+** 输	 出:   0 - 执行完成
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int migration_cpu_stop(void *data)
 {
 	struct migration_arg *arg = data;
@@ -6067,6 +6815,14 @@ static int migration_cpu_stop(void *data)
  * Ensures that the idle task is using init_mm right before its cpu goes
  * offline.
  */
+/*********************************************************************************************************
+** 函数名称: idle_task_exit
+** 功能描述: 在 idle 任务退出时调用，保证 idle 任务退出前使用的内存是 init_mm
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void idle_task_exit(void)
 {
 	struct mm_struct *mm = current->active_mm;

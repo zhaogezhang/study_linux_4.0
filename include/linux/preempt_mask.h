@@ -22,10 +22,27 @@
  *     NMI_MASK:	0x00100000
  * PREEMPT_ACTIVE:	0x00200000
  */
-/* 表示不同的 flags 在 preempt_count 变量中占用的 bit 数 */
+/* 在中断上下文中，调度是关闭的，不会发生进程的切换，这属于一种隐式的禁止调度，而在
+   代码中，也可以使用 preempt_disable() 来显示地关闭调度，关闭次数由第 0 到 7 个 bits
+   组成的 preemption count（注意不是 preempt count）来记录。每使用一次 preempt_disable()
+   preemption count 的值就会加 1，使用 preempt_enable() 则会让 preemption count 的值减 1
+   preemption count 占 8 个 bits，因此一共可以表示最多 256 层调度关闭的嵌套 */
 #define PREEMPT_BITS	8
+
+/* 由于 softirq 在单个 CPU 上是不会嵌套执行的，因此实际只需要一个 bit（bit 8）就可以了
+   但这里多出的 7 个 bits 并不是因为历史原因多出来的，而是另有他用。这个“他用”就是表示
+   在进程上下文中，为了防止进程被 softirq 所抢占，关闭/禁止 softirq 的次数，比如每使用
+   一次 local_bh_disable()，softirq count 高 7 个 bits（bit 9 到 bit 15）的值就会加 1
+   使用 local_bh_enable() 则会让 softirq count 高 7 个 bits 的的值减 1 */
 #define SOFTIRQ_BITS	8
+
+/* hardirq count占据 4 个 bits，理论上可以表示 16 层嵌套，但现在 Linux 系统并不支持 
+   hardirq 的嵌套执行，所以实际使用的只有 1 个 bit。之所以采用 4 个 bits 是历史原因
+   因为早期 Linux 并不是将中断处理的过程分为 top half 和 bottom half，而是将中断分为
+   fast interrupt handler 和 slow interrupt handler，而 slow interrupt handler是可以
+   嵌套执行的 */
 #define HARDIRQ_BITS	4
+
 #define NMI_BITS	    1 /* NMI - non mask interrupt */
 
 /* 表示不同的 flags 在 preempt_count 变量中的位置的 bit 偏移量 */
@@ -47,11 +64,13 @@
 #define HARDIRQ_OFFSET	(1UL << HARDIRQ_SHIFT)  /* 65535   */
 #define NMI_OFFSET	    (1UL << NMI_SHIFT)      /* ‭1048576‬ */
 
-/* 表示我们在执行关闭软中断是需要对 preempt_count 执行的增量值 */
+/* 表示我们在执行关闭软中断时需要对 preempt_count 执行的增量值 */
 #define SOFTIRQ_DISABLE_OFFSET	(2 * SOFTIRQ_OFFSET)  /* 512 */
 
 #define PREEMPT_ACTIVE_BITS	1
 #define PREEMPT_ACTIVE_SHIFT	(NMI_SHIFT + NMI_BITS)   /* 21 */
+
+/* 表示调度子系统当前执行的任务调度是否为任务抢占调度，详情见 preempt_schedule_common 函数 */
 #define PREEMPT_ACTIVE	(__IRQ_MASK(PREEMPT_ACTIVE_BITS) << PREEMPT_ACTIVE_SHIFT)  /* 0x00200000 */
 
 /*********************************************************************************************************
@@ -181,6 +200,8 @@
 /*********************************************************************************************************
 ** 函数名称: in_atomic
 ** 功能描述: 判断当前是否在原子操作上下文中
+** 注     释: 处于中断上下文，或者显示地禁止了调度，preempt_count() 的值都不为 0，都不允许睡眠和调度的
+**         : 发生，这两种场景被统称为 atomic 上下文
 ** 输	 入: 
 ** 输	 出: 1 - 在原子操作上下文中
 **         : 0 - 不在原子操作上下文中
@@ -195,7 +216,7 @@
  */
 /*********************************************************************************************************
 ** 函数名称: in_atomic_preempt_off
-** 功能描述: 在执行关闭抢占操作之前判断当前是否在原子操作上下文中，由调度器代码使用
+** 功能描述: 在执行关闭抢占操作之前判断当前是否在已经在原子操作上下文中，由调度器代码使用
 ** 输	 入: 
 ** 输	 出: 1 - 在原子操作上下文中
 **         : 0 - 不在原子操作上下文中
@@ -206,8 +227,26 @@
 		((preempt_count() & ~PREEMPT_ACTIVE) != PREEMPT_CHECK_OFFSET)
 
 #ifdef CONFIG_PREEMPT_COUNT
+/*********************************************************************************************************
+** 函数名称: preemptible
+** 功能描述: 判断当前正在运行的任务是否可以被抢占
+** 输	 入: 
+** 输	 出: 1 - 可以被抢占
+**         : 0 - 不可以被抢占
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 # define preemptible()	(preempt_count() == 0 && !irqs_disabled())
 #else
+/*********************************************************************************************************
+** 函数名称: preemptible
+** 功能描述: 判断当前正在运行的任务是否可以被抢占
+** 输	 入: 
+** 输	 出: 1 - 可以被抢占
+**         : 0 - 不可以被抢占
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 # define preemptible()	0
 #endif
 

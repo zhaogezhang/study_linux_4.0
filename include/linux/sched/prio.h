@@ -17,8 +17,10 @@
  * priority to a value higher than any user task. Note:
  * MAX_RT_PRIO must not be smaller than MAX_USER_RT_PRIO.
  */
-
+/* 表示“用户”级 RT 任务可以设置的最大优先级 */
 #define MAX_USER_RT_PRIO	100
+
+/* 表示“内核”级 RT 任务可以设置的最大优先级 */
 #define MAX_RT_PRIO		MAX_USER_RT_PRIO                    /* 100 */
 
 #define MAX_PRIO		(MAX_RT_PRIO + NICE_WIDTH)          /* 140 */
@@ -82,6 +84,14 @@
 /*
  * Convert nice value [19,-20] to rlimit style value [1,40].
  */
+/*********************************************************************************************************
+** 函数名称: nice_to_rlimit
+** 功能描述: 把范围是 [19,-20] 的 nice 值转换成与其对应的 [1,40] 范围的 rlimit 值
+** 输	 入: nice - 指定的 nice 值
+** 输	 出: long - 与其对应的 rlimit 值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline long nice_to_rlimit(long nice)
 {
 	return (MAX_NICE - nice + 1);
@@ -90,6 +100,14 @@ static inline long nice_to_rlimit(long nice)
 /*
  * Convert rlimit style value [1,40] to nice value [-20, 19].
  */
+/*********************************************************************************************************
+** 函数名称: nice_to_rlimit
+** 功能描述: 把范围是 [1,40] 的 rlimit 值转换成与其对应的 [19,-20] 范围的 nice 值
+** 输	 入: nice - 指定的 rlimit 值
+** 输	 出: long - 与其对应的 nice 值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline long rlimit_to_nice(long prio)
 {
 	return (MAX_NICE - prio + 1);

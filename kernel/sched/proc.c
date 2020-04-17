@@ -21,7 +21,7 @@
  *
  *   nr_active = 0;
  *   for_each_possible_cpu(cpu)
- *	nr_active += cpu_of(cpu)->nr_running + cpu_of(cpu)->nr_uninterruptible;
+ *	     nr_active += cpu_rq(cpu)->nr_running + cpu_rq(cpu)->nr_uninterruptible;
  *
  *   avenrun[n] = avenrun[0] * exp_n + nr_active * (1 - exp_n)
  *
@@ -52,11 +52,16 @@
  *    did the wakeup. This means that only the sum of nr_uninterruptible over
  *    all cpus yields the correct result.
  *
- *  This covers the NO_HZ=n code, for extra head-aches, see the comment below.
+ * This covers the NO_HZ=n code, for extra head-aches, see the comment below.
  */
+/* 系统全局平均负载的计算：
+   为了减少开销，我们通过分布式和异步的方式计算系统全局平均负载
+   系统全局平均负载是 nr_running + nr_uninterruptible 的指数衰减平均值 */
 
 /* Variables and functions for calc_load */
+/* 表示当前系统指定 cpu 运行队列上处于 active 状态的任务数，等于 cpu_rq(cpu)->nr_running + cpu_rq(cpu)->nr_uninterruptible; */
 atomic_long_t calc_load_tasks;
+
 unsigned long calc_load_update;
 unsigned long avenrun[3];
 EXPORT_SYMBOL(avenrun); /* should be removed */
@@ -69,6 +74,15 @@ EXPORT_SYMBOL(avenrun); /* should be removed */
  *
  * These values are estimates at best, so no need for locking.
  */
+/*********************************************************************************************************
+** 函数名称: get_avenrun
+** 功能描述: 根据指定参数计算并获取当前系统的平均负载数组数据
+** 输	 入: offset - 指定的“偏移”增量值
+**         : shift - 指定的“位移”增量值
+** 输	 出: loads - 根据指定参数计算到的系统的平均负载数组数据
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void get_avenrun(unsigned long *loads, unsigned long offset, int shift)
 {
 	loads[0] = (avenrun[0] + offset) << shift;
@@ -76,6 +90,14 @@ void get_avenrun(unsigned long *loads, unsigned long offset, int shift)
 	loads[2] = (avenrun[2] + offset) << shift;
 }
 
+/*********************************************************************************************************
+** 函数名称: calc_load_fold_active
+** 功能描述: 计算指定的 cpu 运行队列上用来计算全局平均负载贡献任务数的增量值
+** 输	 入: this_rq - 指定的 cpu 运行队列指针
+** 输	 出: delta - 用来计算全局平均负载贡献任务数的增量值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 long calc_load_fold_active(struct rq *this_rq)
 {
 	long nr_active, delta = 0;
@@ -94,6 +116,16 @@ long calc_load_fold_active(struct rq *this_rq)
 /*
  * a1 = a0 * e + a * (1 - e)
  */
+/*********************************************************************************************************
+** 函数名称: calc_load
+** 功能描述: 根据函数指定的参数更新指定的负载贡献值
+** 输	 入: load - 指定的旧的负载贡献值
+**         : exp - 指定的乘积指数
+**         : active - 指定 cpu 运行队列上处于 avtive 状态的任务数
+** 输	 出: unsigned long - 更新后的负载贡献值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static unsigned long
 calc_load(unsigned long load, unsigned long exp, unsigned long active)
 {
@@ -146,9 +178,24 @@ calc_load(unsigned long load, unsigned long exp, unsigned long active)
  *
  * When making the ILB scale, we should try to pull this in as well.
  */
+/* 因为上面描述的计算系统全局负载平均值的分布式算法依赖于对 tick 的每 cpu 采样，所以在 
+   cpu 进入 NO_HZ 工作模式时会受到影响，我们在进入 NO_HZ 模式之前通过把 nr_active 增量
+   存储到全局变量中，然后从全局变量中获取这个信息来避免这种现象的影响 */
+   
+/* 通过乒乓缓冲的方式实现读写异步，即读写不会同时操作同一个地址的变量，使读写操作互斥 */
 static atomic_long_t calc_load_idle[2];
+
+/* 表示当前读操作的数据在 calc_load_idle 中的索引值 */
 static int calc_load_idx;
 
+/*********************************************************************************************************
+** 函数名称: calc_load_write_idx
+** 功能描述: 根据当前系统时间计算当前写负载使用的数组索引值
+** 输	 入: 
+** 输	 出: int - 写负载使用的数组索引值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int calc_load_write_idx(void)
 {
 	int idx = calc_load_idx;
@@ -169,11 +216,27 @@ static inline int calc_load_write_idx(void)
 	return idx & 1;
 }
 
+/*********************************************************************************************************
+** 函数名称: calc_load_read_idx
+** 功能描述: 获取当前读负载使用的数组索引值
+** 输	 入: 
+** 输	 出: int - 读负载使用的数组索引值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int calc_load_read_idx(void)
 {
 	return calc_load_idx & 1;
 }
 
+/*********************************************************************************************************
+** 函数名称: calc_load_enter_idle
+** 功能描述: 在当前正在运行的 cpu 进入 NOHZ 模式时调用，详情见 tick_nohz_stop_sched_tick 函数
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void calc_load_enter_idle(void)
 {
 	struct rq *this_rq = this_rq();
@@ -183,6 +246,7 @@ void calc_load_enter_idle(void)
 	 * We're going into NOHZ mode, if there's any pending delta, fold it
 	 * into the pending idle delta.
 	 */
+	/* 计算指定的 cpu 运行队列上用来计算全局平均负载贡献任务数的增量值 */
 	delta = calc_load_fold_active(this_rq);
 	if (delta) {
 		int idx = calc_load_write_idx();
@@ -190,6 +254,14 @@ void calc_load_enter_idle(void)
 	}
 }
 
+/*********************************************************************************************************
+** 函数名称: calc_load_exit_idle
+** 功能描述: 在当前正在运行的 cpu 退出 NOHZ 模式时调用，详情见 tick_nohz_restart_sched_tick 函数
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void calc_load_exit_idle(void)
 {
 	struct rq *this_rq = this_rq();
@@ -210,6 +282,14 @@ void calc_load_exit_idle(void)
 		this_rq->calc_load_update += LOAD_FREQ;
 }
 
+/*********************************************************************************************************
+** 函数名称: calc_load_fold_idle
+** 功能描述: 
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static long calc_load_fold_idle(void)
 {
 	int idx = calc_load_read_idx();

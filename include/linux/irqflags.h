@@ -117,6 +117,15 @@
 		raw_irqs_disabled_flags(flags);		\
 	})
 
+/*********************************************************************************************************
+** 函数名称: irqs_disabled
+** 功能描述: 判断当前系统中断是否处于关中断状态
+** 输	 入: 
+** 输	 出: 1 - 处于关中断状态
+**         : 0 - 没处于关中断状态
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define irqs_disabled()					\
 	({						\
 		unsigned long _flags;			\
@@ -141,7 +150,18 @@
 	} while (0)
 #define local_irq_restore(flags) do { raw_local_irq_restore(flags); } while (0)
 #define local_save_flags(flags)	do { raw_local_save_flags(flags); } while (0)
+
+/*********************************************************************************************************
+** 函数名称: irqs_disabled
+** 功能描述: 判断当前系统中断是否处于关中断状态
+** 输	 入: 
+** 输	 出: 1 - 处于关中断状态
+**         : 0 - 没处于关中断状态
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define irqs_disabled()		(raw_irqs_disabled())
+
 #define irqs_disabled_flags(flags) (raw_irqs_disabled_flags(flags))
 #define safe_halt()		do { raw_safe_halt(); } while (0)
 

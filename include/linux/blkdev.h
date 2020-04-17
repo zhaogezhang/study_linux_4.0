@@ -1118,6 +1118,14 @@ static inline void blk_flush_plug(struct task_struct *tsk)
 		blk_flush_plug_list(plug, false);
 }
 
+/*********************************************************************************************************
+** 函数名称: blk_needs_flush_plug
+** 功能描述: 尝试 flush 指定任务的 IO 热插拔队列
+** 输	 入: tsk - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void blk_schedule_flush_plug(struct task_struct *tsk)
 {
 	struct blk_plug *plug = tsk->plug;
@@ -1126,6 +1134,15 @@ static inline void blk_schedule_flush_plug(struct task_struct *tsk)
 		blk_flush_plug_list(plug, true);
 }
 
+/*********************************************************************************************************
+** 函数名称: blk_needs_flush_plug
+** 功能描述: 判断指定的任务是否需要 flush IO 热插拔队列
+** 输	 入: tsk - 指定的任务指针
+** 输	 出: true - 需要
+**         : false - 不需要
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline bool blk_needs_flush_plug(struct task_struct *tsk)
 {
 	struct blk_plug *plug = tsk->plug;
@@ -1654,11 +1671,27 @@ static inline void blk_flush_plug(struct task_struct *task)
 {
 }
 
+/*********************************************************************************************************
+** 函数名称: blk_needs_flush_plug
+** 功能描述: 尝试 flush 指定任务的 IO 热插拔队列
+** 输	 入: tsk - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void blk_schedule_flush_plug(struct task_struct *task)
 {
 }
 
-
+/*********************************************************************************************************
+** 函数名称: blk_needs_flush_plug
+** 功能描述: 判断指定的任务是否需要 flush IO 热插拔队列
+** 输	 入: tsk - 指定的任务指针
+** 输	 出: true - 需要
+**         : false - 不需要
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline bool blk_needs_flush_plug(struct task_struct *tsk)
 {
 	return false;

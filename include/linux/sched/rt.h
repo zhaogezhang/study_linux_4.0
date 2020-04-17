@@ -39,6 +39,16 @@ extern void rt_mutex_setprio(struct task_struct *p, int prio);
 extern int rt_mutex_check_prio(struct task_struct *task, int newprio);
 extern struct task_struct *rt_mutex_get_top_task(struct task_struct *task);
 extern void rt_mutex_adjust_pi(struct task_struct *p);
+
+/*********************************************************************************************************
+** 函数名称: tsk_is_pi_blocked
+** 功能描述: 判断是否存在正在等待指定任务持有的 rt_mutex 的任务
+** 输	 入: tsk - 指定的任务指针
+** 输	 出: 1 - 有
+**         : 0 - 没有
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline bool tsk_is_pi_blocked(struct task_struct *tsk)
 {
 	return tsk->pi_blocked_on != NULL;
@@ -59,6 +69,15 @@ static inline struct task_struct *rt_mutex_get_top_task(struct task_struct *task
 	return NULL;
 }
 # define rt_mutex_adjust_pi(p)		do { } while (0)
+/*********************************************************************************************************
+** 函数名称: tsk_is_pi_blocked
+** 功能描述: 判断是否存在正在等待指定任务持有的 rt_mutex 的任务
+** 输	 入: tsk - 指定的任务指针
+** 输	 出: 1 - 有
+**         : 0 - 没有
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline bool tsk_is_pi_blocked(struct task_struct *tsk)
 {
 	return false;
