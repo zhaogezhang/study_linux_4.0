@@ -951,6 +951,7 @@ struct rq {
 #endif
 
 	/* calc_load related fields */
+    /* 单位是一个 tick 周期 */
 	unsigned long calc_load_update;
 
     /* 表示当前 cpu 运行队列上次统计系统全局平均负载使用的实时调度实例和 cfs 调度实例数

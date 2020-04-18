@@ -62,7 +62,14 @@
 /* 表示当前系统指定 cpu 运行队列上处于 active 状态的任务数，等于 cpu_rq(cpu)->nr_running + cpu_rq(cpu)->nr_uninterruptible; */
 atomic_long_t calc_load_tasks;
 
+/* 表示当前统计系统全局平均负载的窗口结束边界，单位是一个 tick 周期，一个统计窗口目前是 5S
+   如果系统 jiffies 到达了这个值，表示我们一个统计周期已经完成，即将进入下一个统计窗口周期 */
 unsigned long calc_load_update;
+
+/* 分别存储不同时间长度的系统全局平均负载信息，对应关系如下：
+   avenrun[0] - EXP_1 表示最近一分钟内的系统全局平均负载
+   avenrun[1] - EXP_5 表示最近五分钟内的系统全局平均负载
+   avenrun[2] - EXP_15 表示最近十五分钟内的系统全局平均负载 */
 unsigned long avenrun[3];
 EXPORT_SYMBOL(avenrun); /* should be removed */
 
@@ -182,7 +189,6 @@ calc_load(unsigned long load, unsigned long exp, unsigned long active)
    cpu 进入 NO_HZ 工作模式时会受到影响，我们在进入 NO_HZ 模式之前通过把 nr_active 增量
    存储到全局变量中，然后从全局变量中获取这个信息来避免这种现象的影响 */
    
-/* 通过乒乓缓冲的方式实现读写异步，即读写不会同时操作同一个地址的变量，使读写操作互斥 */
 static atomic_long_t calc_load_idle[2];
 
 /* 表示当前读操作的数据在 calc_load_idle 中的索引值 */
@@ -284,9 +290,9 @@ void calc_load_exit_idle(void)
 
 /*********************************************************************************************************
 ** 函数名称: calc_load_fold_idle
-** 功能描述: 
+** 功能描述: 获取当前系统全局平均负载统计窗口中的 idle 任务数，详情见 calc_load_fold_active 函数
 ** 输	 入: 
-** 输	 出: 
+** 输	 出: delta - 当前窗口中的 idle 任务数
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -316,6 +322,16 @@ static long calc_load_fold_idle(void)
  * of course trivially computable in O(log_2 n), the length of our binary
  * vector.
  */
+/*********************************************************************************************************
+** 函数名称: fixed_power_int
+** 功能描述: 计算 x 的 n 次幂函数实现
+** 输	 入: x - 指定的 x 变量
+**         : frac_bits - 指定的需要保留的精度 bit 数
+**         : n - 指定的幂次变量
+** 输	 出: result - 计算结果
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static unsigned long
 fixed_power_int(unsigned long x, unsigned int frac_bits, unsigned int n)
 {
@@ -361,11 +377,26 @@ fixed_power_int(unsigned long x, unsigned int frac_bits, unsigned int n)
  *     S_n := \Sum x^i = -------------
  *             i=0          1 - x
  */
+/*********************************************************************************************************
+** 函数名称: calc_load_n
+** 功能描述: 根据函数指定的参数计算 an = a0 * e^n + a * (1 - e^n) 公式结果
+** 输	 入: load - 指定的 a0 变量
+**         : exp - 指定的 e 变量
+**         : active - 指定的 a 变量
+**         : n - 指定的 n 变量
+** 输	 出: result - 计算结果 an
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static unsigned long
 calc_load_n(unsigned long load, unsigned long exp,
 	    unsigned long active, unsigned int n)
 {
-
+    /* 由 calc_load : a1 = a0 * e + a * (1 - e) 
+          fixed_power_int : x^n
+       得出   calc_load_n : a1 = a0 * (exp ^ n) + a * (1 - (exp ^ n)) 
+                             = load * (exp ^ n) + a * (1 - (exp ^ n)) 
+                             = load * (exp ^ n) + active * (1 - (exp ^ n)) */
 	return calc_load(load, fixed_power_int(exp, FSHIFT, n), active);
 }
 
@@ -378,6 +409,15 @@ calc_load_n(unsigned long load, unsigned long exp,
  * Once we've updated the global active value, we need to apply the exponential
  * weights adjusted to the number of cycles missed.
  */
+/*********************************************************************************************************
+** 函数名称: calc_global_nohz
+** 功能描述: 如果当前正在运行的 cpu 连续处于 idle 状态多个窗口周期，则对当前系统全局负载统计信息进行
+**         : 多个周期的负载衰减计算
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void calc_global_nohz(void)
 {
 	long delta, active, n;
@@ -411,7 +451,25 @@ static void calc_global_nohz(void)
 }
 #else /* !CONFIG_NO_HZ_COMMON */
 
+/*********************************************************************************************************
+** 函数名称: calc_load_fold_idle
+** 功能描述: 获取当前系统全局平均负载统计窗口中的 idle 任务数，详情见 calc_load_fold_active 函数
+** 输	 入: 
+** 输	 出: delta - 当前窗口中的 idle 任务数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline long calc_load_fold_idle(void) { return 0; }
+
+/*********************************************************************************************************
+** 函数名称: calc_global_nohz
+** 功能描述: 如果当前正在运行的 cpu 连续处于 idle 状态多个窗口周期，则对当前系统全局负载统计信息进行
+**         : 多个周期的负载衰减计算
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void calc_global_nohz(void) { }
 
 #endif /* CONFIG_NO_HZ_COMMON */
@@ -420,6 +478,15 @@ static inline void calc_global_nohz(void) { }
  * calc_load - update the avenrun load estimates 10 ticks after the
  * CPUs have updated calc_load_tasks.
  */
+/*********************************************************************************************************
+** 函数名称: calc_global_load
+** 功能描述: 在系统 cpu 开始更新 calc_load_update 后的 10 个 ticks 周期时调用这个函数来更新当前系统
+**         : 全局平均负载贡献值信息
+** 输	 入: ticks - 未使用
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void calc_global_load(unsigned long ticks)
 {
 	long active, delta;
@@ -453,6 +520,15 @@ void calc_global_load(unsigned long ticks)
  * Called from update_cpu_load() to periodically update this CPU's
  * active count.
  */
+/*********************************************************************************************************
+** 函数名称: calc_load_account_active
+** 功能描述: 在每个系统全局负载统计周期内通过调用这个函数把当前正在运行的 cpu 的运行队列上
+**         : 用来计算全局平均负载贡献任务数同步到 calc_load_tasks 中
+** 输	 入: ticks - 未使用
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void calc_load_account_active(struct rq *this_rq)
 {
 	long delta;
@@ -516,7 +592,7 @@ static const unsigned char
  */
 /*********************************************************************************************************
 ** 函数名称: decay_load_missed
-** 功能描述: 
+** 功能描述: 对指定的 cpu 负载贡献值进行指定周期数的衰减操作
 ** 输	 入: load - 指定的 cpu 负载贡献值
 **         : missed_updates - 指定的衰减的周期数
 **         : idx - 指定的 cpu 负载贡献数据索引值
@@ -558,7 +634,7 @@ decay_load_missed(unsigned long load, unsigned long missed_updates, int idx)
 ** 功能描述: 更新指定的 cpu 运行队列的负载贡献值
 ** 输	 入: this_rq - 指定的 cpu 运行队列指针
 **         : this_load - 当前统计周期内的负载贡献值
-**         : pending_updates - 需要执行的负载衰减周期数，周期等于一个 tick 周期
+**         : pending_updates - 需要执行的负载衰减周期数，单位是一个 tick 周期
 ** 输	 出: 
 ** 全局变量: 
 ** 调用模块: 

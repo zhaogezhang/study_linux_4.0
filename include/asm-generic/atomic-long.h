@@ -133,6 +133,16 @@ static inline long atomic_long_add_unless(atomic_long_t *l, long a, long u)
 
 #define atomic_long_cmpxchg(l, old, new) \
 	(atomic64_cmpxchg((atomic64_t *)(l), (old), (new)))
+
+/*********************************************************************************************************
+** 函数名称: atomic_long_xchg
+** 功能描述: 将指定的原子变量设置为指定的新值并返回原来的旧值
+** 输	 入: v - 指定的原子变量指针
+**         : new - 指定的新值
+** 输	 出: return - 原来的旧值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define atomic_long_xchg(v, new) \
 	(atomic64_xchg((atomic64_t *)(v), (new)))
 
@@ -250,6 +260,16 @@ static inline long atomic_long_add_unless(atomic_long_t *l, long a, long u)
 
 #define atomic_long_cmpxchg(l, old, new) \
 	(atomic_cmpxchg((atomic_t *)(l), (old), (new)))
+
+/*********************************************************************************************************
+** 函数名称: atomic_long_xchg
+** 功能描述: 将指定的原子变量设置为指定的新值并返回原来的旧值
+** 输	 入: v - 指定的原子变量指针
+**         : new - 指定的新值
+** 输	 出: return - 原来的旧值
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define atomic_long_xchg(v, new) \
 	(atomic_xchg((atomic_t *)(v), (new)))
 
