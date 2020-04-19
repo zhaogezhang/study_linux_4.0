@@ -131,6 +131,15 @@ extern phys_addr_t per_cpu_ptr_to_phys(void *addr);
 #define alloc_percpu_gfp(type, gfp)					\
 	(typeof(type) __percpu *)__alloc_percpu_gfp(sizeof(type),	\
 						__alignof__(type), gfp)
+
+/*********************************************************************************************************
+** 函数名称: alloc_percpu
+** 功能描述: 申请指定类型的 per cpu 变量
+** 输	 入:  type - 指定的变量类型
+** 输	 出: return - per cpu 变量的地址
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define alloc_percpu(type)						\
 	(typeof(type) __percpu *)__alloc_percpu(sizeof(type),		\
 						__alignof__(type))

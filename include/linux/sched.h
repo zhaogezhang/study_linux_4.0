@@ -986,10 +986,11 @@ enum cpu_idle_type {
 
 #define SD_PREFER_SIBLING	0x1000	/* Prefer to place tasks in a sibling domain */
 
-/* 表当前层级的调度域之间的 cpu 有重叠部分，即同一个 cpu 可能存在多个调度域中 */
+/* 1. 前层级的调度域之间的 cpu 有重叠部分，即同一个 cpu 可能存在多个调度域中
+   2. 当前调度域包含了多个调度组，详情见 free_sched_domain 函数 */
 #define SD_OVERLAP		0x2000	/* sched_domains of this level overlap */
 
-/* 表示当前调度域是否可以在 numa node 之间执行负载均衡任务迁移 */
+/* 表示当前调度域可以在 numa node 之间执行负载均衡任务迁移 */
 #define SD_NUMA			0x4000	/* cross-node balancing */
 
 #ifdef CONFIG_SCHED_SMT
@@ -1365,18 +1366,27 @@ typedef int (*sched_domain_flags_f)(void);
 
 #define SDTL_OVERLAP	0x01
 
+/* 定义了当前系统调度域拓扑结构的私有数据结构 */
 struct sd_data {
 	struct sched_domain **__percpu sd;
 	struct sched_group **__percpu sg;
 	struct sched_group_capacity **__percpu sgc;
 };
 
-struct sched_domain_topology_level {
+/* 定义了当前系统用来描述调度域拓扑结构的数据结构 */
+struct sched_domain_topology_level { 
+    /* 表示获取当前调度域内包含的 cpu 位图掩码值的函数指针 */
 	sched_domain_mask_f mask;
+
+	/* 表示获取当前调度域资源共享属性的函数指针，例如 SD_SHARE_PKG_RESOURCES 属性 */
 	sched_domain_flags_f sd_flags;
+	
 	int		    flags;
 	int		    numa_level;
+
+	/* 表示当前调度域拓扑结构的私有数据 */
 	struct sd_data      data;
+
 #ifdef CONFIG_SCHED_DEBUG
 	char                *name;
 #endif
@@ -3218,6 +3228,14 @@ extern struct mm_struct * mm_alloc(void);
 
 /* mmdrop drops the mm and the page tables */
 extern void __mmdrop(struct mm_struct *);
+/*********************************************************************************************************
+** 函数名称: mmdrop
+** 功能描述: 尝试释放指定的 mm_struct 结构
+** 输	 入: mm - 指定的 mm_struct 数据结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void mmdrop(struct mm_struct * mm)
 {
 	if (unlikely(atomic_dec_and_test(&mm->mm_count)))

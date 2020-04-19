@@ -731,13 +731,18 @@ struct dl_rq {
  * fully partitioning the member cpus from any other cpuset. Whenever a new
  * exclusive cpuset is created, we also create and attach a new root-domain
  * object.
- *
  */
 struct root_domain {
+    /* 表示当前根调度域的引用计数 */
 	atomic_t refcount;
+	
 	atomic_t rto_count;
 	struct rcu_head rcu;
+
+	/* 表示当前根调度域内包含的 cpu 的位图掩码值，详情见 rq_attach_root 函数 */
 	cpumask_var_t span;
+
+	/* 表示当前调度域内处于 online 状态的 cpu 运行队列位图掩码值，详情见 set_rq_online 函数 */
 	cpumask_var_t online;
 
 	/* Indicate more than one runnable task for any CPU */
@@ -886,9 +891,10 @@ struct rq {
 	atomic_t nr_iowait;
 
 #ifdef CONFIG_SMP
+    /* 表示当前 cpu 运行队列所属根调度域指针，详情见 rq_attach_root 函数 */
 	struct root_domain *rd;
 
-    /* 表示当前 cpu 运行队列的 base 调度域指针 */
+    /* 表示当前 cpu 运行队列的调度域指针，详情见 cpu_attach_domain 函数 */
 	struct sched_domain *sd;
 
 	/* 表示当前 cpu 运行队列在减去实时调度实例运行的时间后，给 cfs 调度实例
@@ -913,7 +919,8 @@ struct rq {
 
 	/* cpu of this runqueue: */
 	int cpu;
-	
+
+	/* 表示当前 cpu 运行队列状态，1 表示 online，0 表示 offline，详情见 set_rq_online 函数 */
 	int online;
 
     /* 把属于当前 cpu 运行队列的所有任务通过链表链接起来 */
@@ -923,8 +930,8 @@ struct rq {
 	   详情见 sched_rt_avg_update 函数和 sched_avg_update 函数 */
 	u64 rt_avg;
 
-	/* 表示当前 cpu 运行队列一共运行了的时间统计值，单位是 ns，更新粒度为 sched_avg_period
-	   详情见 sched_avg_update 函数 */
+	/* 表示当前 cpu 运行队列的调度时间轴信息，单位是 ns，更新粒度为 sched_avg_period
+	   详情见 sched_avg_update 函数和 scale_rt_capacity 函数 */
 	u64 age_stamp;
 
     /* 表示当前 cpu 运行队列在进入 idle 状态下开始执行负载均衡操作时的 cpu 运行队列时钟，详情见 idle_balance 函数 */
@@ -1098,10 +1105,11 @@ static inline void rq_clock_skip_update(struct rq *rq, bool skip)
 }
 
 #ifdef CONFIG_NUMA
+/* 定义当前系统支持的节点拓扑结构类型，详情见 init_numa_topology_type 函数 */
 enum numa_topology_type {
-	NUMA_DIRECT,        /* 表示所有的 numa 节点是直接连接在一起的，所以他们之间的距离相等 */
-	NUMA_GLUELESS_MESH,
-	NUMA_BACKPLANE,
+	NUMA_DIRECT,        /* 表示所有节点是直接连接在一起活着不是 NUMA 系统，他们之间可以直接通信 */
+	NUMA_GLUELESS_MESH, /* 表示当前系统有的节点间通信需要经过一个中间节点才可以完成 */
+	NUMA_BACKPLANE,     /* 表示当前系统有的节点间通信需要通过专有控制器才可以完成 */
 };
 extern enum numa_topology_type sched_numa_topology_type;
 extern int sched_max_numa_distance;
@@ -1180,6 +1188,15 @@ static inline struct sched_domain *highest_flag_domain(int cpu, int flag)
 	return hsd;
 }
 
+/**
+ * highest_flag_domain - Return lowest sched_domain containing flag.
+ * @cpu:	The cpu whose lowest level of sched domain is to
+ *		be returned.
+ * @flag:	The flag to check for the lowest sched_domain
+ *		for the given cpu.
+ *
+ * Returns the lowest sched_domain of a cpu which contains the given flag.
+ */
 static inline struct sched_domain *lowest_flag_domain(int cpu, int flag)
 {
 	struct sched_domain *sd;
@@ -1227,11 +1244,14 @@ struct sched_group_capacity {
 	 */
 	atomic_t nr_busy_cpus;
 
+    /* 详情见 build_group_mask 函数 */
 	unsigned long cpumask[0]; /* iteration mask */
 };
 
 struct sched_group {
 	struct sched_group *next;	/* Must be a circular list */
+
+	/* 表示当前调度组的引用计数值 */
 	atomic_t ref;
 
 	/* 表示当前调度组的负载权重信息 */
@@ -1247,15 +1267,15 @@ struct sched_group {
 	 * by attaching extra space to the end of the structure,
 	 * depending on how many CPUs the kernel has booted up with)
 	 */
-	/* 表示当前调度组内包含的 cpu 位图 */
+	/* 表示当前调度组内包含的 cpu 位图，详情见 build_overlap_sched_groups 函数 */
 	unsigned long cpumask[0];
 };
 
 /*********************************************************************************************************
 ** 函数名称: sched_group_cpus
-** 功能描述: 获取指定的调度组内包含的 cpu 位图变量值
+** 功能描述: 获取指定的调度组内包含的 cpu 位图变量指针
 ** 输	 入: sg - 指定的调度组指针
-** 输	 出: struct cpumask - cpu 位图变量值
+** 输	 出: struct cpumask * - cpu 位图变量指针
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
