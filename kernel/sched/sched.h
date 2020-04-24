@@ -317,7 +317,8 @@ struct cfs_bandwidth {
     /* quota - 表示在指定的周期内为当前带宽控制池分配的时间额度，RUNTIME_INF 不表示不限制带宽
        runtime - 表示在指定的周期内当前带宽控制池剩余的可运行时间额度 */
 	u64 quota, runtime;
-	
+
+	/* 表示当前带宽控制池的时间额度占其统计周期的比例值（乘以了精度因子），详情见 tg_cfs_schedulable_down 函数 */
 	s64 hierarchical_quota;
 
 	/* 表示当前带宽控制池所属任务组当前统计周期的到期时间的运行队列时钟，单位是 ns
@@ -361,11 +362,11 @@ struct task_group {
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* schedulable entities of this group on each cpu */
-    /* 这是一个二维数组指针，表示的是当前任务组在每一个 cpu 上的任务组实例结构指针 */
+    /* 这是一个二维数组指针，表示的是当前任务组在每一个 cpu 上的任务组实例结构指针，详情见 sched_init 函数 */
 	struct sched_entity **se;
 
 	/* runqueue "owned" by this group on each cpu */
-    /* 这是一个二维数组指针，表示的是当前任务组在每一个 cpu 上拥有的 cfs 运行队列指针 */
+    /* 这是一个二维数组指针，表示的是当前任务组在每一个 cpu 上拥有的 cfs 运行队列指针，详情见 sched_init 函数 */
 	struct cfs_rq **cfs_rq;
 
 	/* 表示当前任务组由其父节点看到的权重值，在计算这个任务组树的总权重时使用 */
@@ -389,7 +390,10 @@ struct task_group {
 #endif
 
 #ifdef CONFIG_RT_GROUP_SCHED
+    /* 详情见 sched_init 函数 */
 	struct sched_rt_entity **rt_se;
+
+    /* 详情见 sched_init 函数 */
 	struct rt_rq **rt_rq;
 
 	struct rt_bandwidth rt_bandwidth;
@@ -1242,9 +1246,11 @@ struct sched_group_capacity {
 	/*
 	 * Number of busy cpus in this group.
 	 */
+	/* 详情见 init_sched_groups_capacity 函数 */
 	atomic_t nr_busy_cpus;
 
-    /* 详情见 build_group_mask 函数 */
+    /* 表示当前调度组的向上遍历迭代使用的 cpu 位图掩码值，包含了其所属父调度域包含的
+       所有 cpu 位图掩码值，详情见 build_group_mask 函数和 build_sched_groups 函数 */
 	unsigned long cpumask[0]; /* iteration mask */
 };
 
@@ -1254,7 +1260,7 @@ struct sched_group {
 	/* 表示当前调度组的引用计数值 */
 	atomic_t ref;
 
-	/* 表示当前调度组的负载权重信息 */
+	/* 表示当前调度组的负载权重信息（包含的 cpu 个数），详情见 init_sched_groups_capacity 函数 */
 	unsigned int group_weight;
 
 	/* 表示当前调度组的负载计算能力信息 */
@@ -1267,7 +1273,7 @@ struct sched_group {
 	 * by attaching extra space to the end of the structure,
 	 * depending on how many CPUs the kernel has booted up with)
 	 */
-	/* 表示当前调度组内包含的 cpu 位图，详情见 build_overlap_sched_groups 函数 */
+	/* 表示当前调度组内包含的 cpu 位图，详情见 build_overlap_sched_groups 函数和 build_sched_groups 函数 */
 	unsigned long cpumask[0];
 };
 
@@ -1290,7 +1296,7 @@ static inline struct cpumask *sched_group_cpus(struct sched_group *sg)
  */
 /*********************************************************************************************************
 ** 函数名称: sched_group_mask
-** 功能描述: 获取指定的调度组内包含的 cpu 的位图掩码值
+** 功能描述: 获取指定的调度组向上遍历迭代使用的 cpu 位图掩码变量指针
 ** 输	 入: group - 指定的调度组指针
 ** 输	 出: cpumask - cpu 的位图掩码值
 ** 全局变量: 

@@ -969,7 +969,9 @@ enum cpu_idle_type {
 #define SD_BALANCE_EXEC		0x0004	/* Balance on exec */
 #define SD_BALANCE_FORK		0x0008	/* Balance on fork, clone */
 #define SD_BALANCE_WAKE		0x0010  /* Balance on wakeup */
-#define SD_WAKE_AFFINE		0x0020	/* Wake task to waking CPU */
+
+#define SD_WAKE_AFFINE		    0x0020	/* Wake task to waking CPU */
+
 #define SD_SHARE_CPUCAPACITY	0x0080	/* Domain members share cpu power */
 #define SD_SHARE_POWERDOMAIN	0x0100	/* Domain members share power domain */
 #define SD_SHARE_PKG_RESOURCES	0x0200	/* Domain members share cpu pkg resources */
@@ -987,7 +989,7 @@ enum cpu_idle_type {
 #define SD_PREFER_SIBLING	0x1000	/* Prefer to place tasks in a sibling domain */
 
 /* 1. 前层级的调度域之间的 cpu 有重叠部分，即同一个 cpu 可能存在多个调度域中
-   2. 当前调度域包含了多个调度组，详情见 free_sched_domain 函数 */
+   2. 当前调度域包含了多个调度组，详情见 free_sched_domain 函数 */   
 #define SD_OVERLAP		0x2000	/* sched_domains of this level overlap */
 
 /* 表示当前调度域可以在 numa node 之间执行负载均衡任务迁移 */
@@ -1234,12 +1236,14 @@ struct sched_domain {
 	/* 因为 sched_domain 的类型为 per_cpu，即每个 cpu 上会维护自己的调度域树
 	   形结构信息，这些信息只保存了当前 cpu 到调度域树形结构根节点之间的路径
 	   信息，所以在当前调度域数据结构中只有一个 child 和一个 parent 指针成员
-	   我们把所有 cpu 的调度域树形结构信息拼接在一起，就是一颗完整的树了 */
+	   我们把所有 cpu 的调度域树形结构信息拼接在一起，就是一颗完整的树了，详
+	   情见 build_sched_domain 函数 */
 	struct sched_domain *parent;	/* top domain must be null terminated */
 	struct sched_domain *child;	/* bottom domain must be null terminated */
 
 	/* 表示当前调度域中包含的负载均衡调度组，通过单向链表连接在一起，最后一个调度组的
-	   next 成员指向 sched_domain.groups，即这是一个环形单向链表 */
+	   next 成员指向 sched_domain.groups，即这是一个环形单向链表，这个调度组挂接在当前
+	   调度域包含的 cpu 集中 cpu id 值最小的 cpu 上，详情见 build_sched_groups 函数 */
 	struct sched_group *groups;	/* the balancing groups of the domain */
 	
 	unsigned long min_interval;	/* Minimum balance interval ms */
@@ -1321,6 +1325,7 @@ struct sched_domain {
 	char *name;
 #endif
 	union {
+	    /* *per_cpu_ptr(tl->data.sd, cpu)->private = &tl->data，详情见 sd_init 函数 */
 		void *private;		/* used during construction */
 		struct rcu_head rcu;	/* used during destruction */
 	};
@@ -1335,7 +1340,7 @@ struct sched_domain {
 	 * by attaching extra space to the end of the structure,
 	 * depending on how many CPUs the kernel has booted up with)
 	 */
-    /* 表示当前调度域内包含的 cpu 的掩码值 */
+    /* 表示当前调度域内包含的 cpu 的掩码值，详情见 build_sched_domain 函数 */
 	unsigned long span[0];
 };
 
@@ -1366,19 +1371,45 @@ typedef int (*sched_domain_flags_f)(void);
 
 #define SDTL_OVERLAP	0x01
 
-/* 定义了当前系统调度域拓扑结构的私有数据结构 */
+/* 定义了当前系统调度域拓扑结构层级的私有数据结构，用来表示指定的 cpu 在不同的调度域拓扑结构
+   层级上调度域结构指针、调度组结构指针以及调度组算计结构指针
+   根据这个结构可以看出，在每一个调度域拓扑结构层级上为每个 cpu 都分配了一组 struct sd_data 
+   数据，另外因为多个 cpu 可能属于同一个调度组，所以多个 cpu 在同一个调度域拓扑结构层级上可
+   能会有相同的 struct sd_data 结构数据，示意图如下：
+
+   sd.a(cpu0 sd)       sd.a(cpu1 sd)       sd.b(cpu2 sd)       sd.b(cpu3 sd)
+   sg.a(cpu0 sg)       sg.a(cpu1 sg)       sg.b(cpu2 sg)       sg.b(cpu3 sg)
+   sgc.a(cpu0 sgc)     sgc.a(cpu1 sgc)     sgc.b(cpu2 sgc)     sgc.b(cpu3 sgc)
+
+   它们的等效图如下：
+
+         sga.sgc.cpumask=0xFFFFFFFF      sgb.sgc.cpumask=0xFFFFFFFF
+           sda.span(cpu0,cpu1)             sdb.span(cpu2,cpu3)
+             sda.groups(cpu0)                sdb.groups(cpu2)
+                 sd.a                             sd.b
+                 sg.a                             sg.b
+                 sgc.a                            sgc.b
+                   |                                |
+            /------------\                   /-------------\
+           |              |                 |               |
+         cpu0            cpu1              cpu2            cpu3 */
 struct sd_data {
+    /* 表示每一个 cpu 在当前调度域拓扑结构层级上的调度域结构指针 */
 	struct sched_domain **__percpu sd;
+	
+    /* 表示每一个 cpu 在当前调度域拓扑结构层级上的调度组结构指针 */
 	struct sched_group **__percpu sg;
+	
+    /* 表示每一个 cpu 在当前调度域拓扑结构层级上的调度组算力信息结构指针 */
 	struct sched_group_capacity **__percpu sgc;
 };
 
 /* 定义了当前系统用来描述调度域拓扑结构的数据结构 */
 struct sched_domain_topology_level { 
-    /* 表示获取当前调度域内包含的 cpu 位图掩码值的函数指针 */
+    /* 用来获取当前调度域层级在指定 cpu 所属区域内包含的 cpu 位图掩码值的函数指针 */
 	sched_domain_mask_f mask;
 
-	/* 表示获取当前调度域资源共享属性的函数指针，例如 SD_SHARE_PKG_RESOURCES 属性 */
+	/* 用来获取当前调度域层级的资源共享属性的函数指针，例如 SD_SHARE_PKG_RESOURCES 属性 */
 	sched_domain_flags_f sd_flags;
 	
 	int		    flags;

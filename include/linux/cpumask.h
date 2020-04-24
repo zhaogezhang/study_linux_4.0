@@ -11,6 +11,7 @@
 #include <linux/bitmap.h>
 #include <linux/bug.h>
 
+/* 定义当前系统 cpu 位图掩码变量类型 */
 typedef struct cpumask { DECLARE_BITMAP(bits, NR_CPUS); } cpumask_t;
 
 /**

@@ -2801,7 +2801,7 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 ** 功能描述: 计算指定的运行时间占指定的周期比例
 ** 输	 入: period - 指定的周期
 **         : runtime - 指定的运行时间
-** 输	 出: long - 计算的比例值
+** 输	 出: long - 计算的比例值，乘以了精度因子
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -7435,6 +7435,8 @@ early_initcall(migration_init);
 
 #ifdef CONFIG_SMP
 
+/* 用来存储当前系统正在操作的调度域中每一个调度组的 cpu id 掩码值
+   详情见 build_sched_groups 函数和 build_overlap_sched_groups 函数 */
 static cpumask_var_t sched_domains_tmpmask; /* sched_domains_mutex */
 
 #ifdef CONFIG_SCHED_DEBUG
@@ -7598,10 +7600,11 @@ static inline bool sched_debug(void)
 
 /*********************************************************************************************************
 ** 函数名称: sd_degenerate
-** 功能描述: 判断指定的调度域的资源是否可以被回收释放
+** 功能描述: 判断指定的调度域中是否包含多个调度组，如果只包含一个调度组，表示这个调度域资源可以
+**         : 被释放并和其调度组合并在一起
 ** 输	 入: sd - 指定的调度域指针
-** 输	 出: 1 - 可以
-**         : 0 - 不可以
+** 输	 出: 1 - 可以释放并合并
+**         : 0 - 不可以释放并合并
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -7631,11 +7634,12 @@ static int sd_degenerate(struct sched_domain *sd)
 
 /*********************************************************************************************************
 ** 函数名称: sd_parent_degenerate
-** 功能描述: 判断指定调度域的父调度域的资源是否可以被回收释放
+** 功能描述: 判断指定调度域的父调度域是否包含多个调度组，如果只包含一个调度组，表示这个父调度域资源可以
+**         : 被释放并和当前调度域合并在一起
 ** 输	 入: sd - 指定的调度域指针
 **         : parent - 指定的父调度域指针
-** 输	 出: 1 - 可以
-**         : 0 - 不可以
+** 输	 出: 1 - 可以释放并合并
+**         : 0 - 不可以释放并合并
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -7651,6 +7655,7 @@ sd_parent_degenerate(struct sched_domain *sd, struct sched_domain *parent)
 		return 0;
 
 	/* Flags needing groups don't count if only 1 group in parent */
+	/* 如果父调度域只包含一个调度组，那么将父调度域 flags 中的不相关标志位清除 */
 	if (parent->groups == parent->groups->next) {
 		pflags &= ~(SD_LOAD_BALANCE |
 				SD_BALANCE_NEWIDLE |
@@ -7663,6 +7668,7 @@ sd_parent_degenerate(struct sched_domain *sd, struct sched_domain *parent)
 		if (nr_node_ids == 1)
 			pflags &= ~SD_SERIALIZE;
 	}
+	
 	if (~cflags & pflags)
 		return 0;
 
@@ -8041,11 +8047,13 @@ static int __init isolated_cpu_setup(char *str)
 
 __setup("isolcpus=", isolated_cpu_setup);
 
+/* 这个数据结构变量存储了 build_sched_domains[0] 调度域层级在每个 cpu 上的调度域信息，详情见 build_sched_domains 函数 */
 struct s_data {
 	struct sched_domain ** __percpu sd;
 	struct root_domain	*rd;
 };
 
+/* 定义了当前系统 struct s_data 结构申请内存的几种状态，详情见 __visit_domain_allocation_hell 函数 */
 enum s_alloc {
 	sa_rootdomain,
 	sa_sd,
@@ -8066,11 +8074,16 @@ enum s_alloc {
  * cpu they're built on, so check that.
  *
  */
+/* 构建一个迭代掩码，这样在我们向上方向的域遍历的时候可以排除一些 cpu
+   非对称节点的设置可能出现调度域树深度不相等的情况，我们需要确保跳过已经覆盖过的调
+   度域，在这种情况下，build_sched_domains() 函数将提前终止迭代并且我们的兄弟调度域
+   的 sd.span 将为空（因为调度域应该总是包括它们所覆盖的 cpu），所以需要检查一下，跳
+   过 cpu 位图掩码值为空的调度域 */
 /*********************************************************************************************************
 ** 函数名称: build_group_mask
-** 功能描述: 
+** 功能描述: 构建指定调度域内指定调度组的迭代 cpu 位图掩码值
 ** 输	 入: sd - 指定的调度域指针
-**         : sg - 指定的调度组指针
+**         : sg - 指定调度域的调度组指针
 ** 输	 出: 
 ** 全局变量: 
 ** 调用模块: 
@@ -8085,9 +8098,13 @@ static void build_group_mask(struct sched_domain *sd, struct sched_group *sg)
     /* 遍历指定的调度域内的每一个 cpu */
 	for_each_cpu(i, span) {
 
-	    /* 获取遍历到的每一个 cpu 所属调度域指针 */
+	    /* 获取指定调度域包含的每一个 cpu 在当前调度域拓扑结构层级上的调度域指针
+	      （可能存在多个 cpu 同属于同一个调度域，详情见 struct sd_data）*/
 		sibling = *per_cpu_ptr(sdd->sd, i);
-		
+
+		/* 因为在非对称节点中可能出现调度域树深度不相等的情况，在这种情况下 build_sched_domains() 
+		   函数将提前终止迭代并且我们的兄弟调度域的 sd.span 将为空（因为调度域应该总是包括它们所覆
+		   盖的 cpu）所以这个地方需要检查一下，跳过 cpu 位图掩码值为空的调度域 */
 		if (!cpumask_test_cpu(i, sched_domain_span(sibling)))
 			continue;
 
@@ -8101,9 +8118,9 @@ static void build_group_mask(struct sched_domain *sd, struct sched_group *sg)
  */
 /*********************************************************************************************************
 ** 函数名称: group_balance_cpu
-** 功能描述: 返回指定的调度组内用来负载均衡的 cpu id
+** 功能描述: 返回指定调度组内最小的 cpu id 值
 ** 输	 入: sg - 指定的调度组指针
-** 输	 出: int - 用来负载均衡的 cpu id
+** 输	 出: int - 最小的 cpu id 值
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -8114,7 +8131,8 @@ int group_balance_cpu(struct sched_group *sg)
 
 /*********************************************************************************************************
 ** 函数名称: build_overlap_sched_groups
-** 功能描述: 
+** 功能描述: 初始化指定的 cpu 在指定的调度域拓扑结构层级上的调度域的调度组结构
+** 注     释: 在指定的调度域的 sd->flags & SD_OVERLAP 为 1 的时候调用这个函数来构建调度组
 ** 输	 入: sd - 指定的调度域指针
 **         : cpu - 指定的 cpu id 值
 ** 输	 出: 0 - 执行成功
@@ -8134,20 +8152,26 @@ build_overlap_sched_groups(struct sched_domain *sd, int cpu)
 
 	cpumask_clear(covered);
 
-    /* 遍历指定调度域内包含的每一个 cpu */
+    /* 遍历当前调度域包含的每一个 cpu 找到当前调度域内包含的每一个调度组 */
 	for_each_cpu(i, span) {
 		struct cpumask *sg_span;
 
+        /* 为了过滤掉 span 中重复的、已经处理过的 cpu id 值 */
 		if (cpumask_test_cpu(i, covered))
 			continue;
 
+        /* 获取指定调度域包含的每一个 cpu 在当前调度域拓扑结构层级上的调度域指针
+          （可能存在多个 cpu 同属于同一个调度域，详情见 struct sd_data）*/
 		sibling = *per_cpu_ptr(sdd->sd, i);
 
-		/* See the comment near build_group_mask(). */
+		/* See the comment near build_group_mask(). */		
+		/* 因为在非对称节点中可能出现调度域树深度不相等的情况，在这种情况下 build_sched_domains() 
+		   函数将提前终止迭代并且我们的兄弟调度域的 sd.span 将为空（因为调度域应该总是包括它们所覆
+		   盖的 cpu）所以这个地方需要检查一下，跳过 cpu 位图掩码值为空的调度域 */
 		if (!cpumask_test_cpu(i, sched_domain_span(sibling)))
 			continue;
 
-        /* 为指定的调度域申请调度组信息结构 */
+        /* 在当前调度域拓扑结构层级上为遍历到的每个 cpu 分配一个调度组结构 */
 		sg = kzalloc_node(sizeof(struct sched_group) + cpumask_size(),
 				GFP_KERNEL, cpu_to_node(cpu));
 		if (!sg)
@@ -8171,7 +8195,7 @@ build_overlap_sched_groups(struct sched_domain *sd, int cpu)
 		 * domains and no possible iteration will get us here, we won't
 		 * die on a /0 trap.
 		 */
-		/* 为指定调度域的调度组初始化 sg->sgc->capacity 字段值 */
+		/* 为指定调度域的调度组算计结构初始化算力信息 */
 		sg->sgc->capacity = SCHED_CAPACITY_SCALE * cpumask_weight(sg_span);
 		sg->sgc->capacity_orig = sg->sgc->capacity;
 
@@ -8184,6 +8208,7 @@ build_overlap_sched_groups(struct sched_domain *sd, int cpu)
 		    group_balance_cpu(sg) == cpu)
 			groups = sg;
 
+	    /* 把当前调度域内的调度组的单向链表构成一个闭环链表 */
 		if (!first)
 			first = sg;
 		if (last)
@@ -8203,11 +8228,12 @@ fail:
 
 /*********************************************************************************************************
 ** 函数名称: get_group
-** 功能描述: 
+** 功能描述: 获取指定的 cpu 在指定的调度域拓扑结构层级上的调度域的调度组结构指针
+** 注     释: 获取到的调度组指针是指定调度域包含的子调度域 cpu 集中 cpu id 值最小的 cpu 对应的调度组指针 
 ** 输	 入: cpu - 指定的 cpu id 值
-**         : sdd - 指定的调度域数据指针
-** 输	 出: sg - 
-**         : cpu - 
+**         : sdd - 指定的调度域拓扑结构层级私有数据指针
+** 输	 出: sg - 调度组结构指针
+**         : cpu - 指定调度域内 cpu id 值最小的 cpu id 值
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -8237,7 +8263,7 @@ static int get_group(int cpu, struct sd_data *sdd, struct sched_group **sg)
  */
 /*********************************************************************************************************
 ** 函数名称: build_sched_groups
-** 功能描述: 
+** 功能描述: 初始化指定的 cpu 在指定的调度域拓扑结构层级上的调度域的调度组结构
 ** 输	 入: sd - 指定的调度域指针
 **         : cpu - 指定的 cpu id 值
 ** 输	 出: 0 - 执行完成
@@ -8253,9 +8279,11 @@ build_sched_groups(struct sched_domain *sd, int cpu)
 	struct cpumask *covered;
 	int i;
 
+    /* 获取指定的 cpu 在指定的调度域拓扑结构层级上的调度域的调度组结构指针 */
 	get_group(cpu, sdd, &sd->groups);
 	atomic_inc(&sd->groups->ref);
 
+    /* 我们只在指定调度域包含的 cpu 集中 cpu id 值最小的 cpu 上构建调度组结构 */
 	if (cpu != cpumask_first(span))
 		return 0;
 
@@ -8264,24 +8292,34 @@ build_sched_groups(struct sched_domain *sd, int cpu)
 
 	cpumask_clear(covered);
 
+    /* 遍历当前调度域包含的每一个 cpu 找到当前调度域内包含的每一个调度组 */
 	for_each_cpu(i, span) {
 		struct sched_group *sg;
 		int group, j;
 
+        /* 为了过滤掉 span 中重复的、已经处理过的 cpu id 值 */
 		if (cpumask_test_cpu(i, covered))
 			continue;
 
+		/* 分别获取当前调度域内每一个调度组的指针，详情见 struct sd_data 描述 */
 		group = get_group(i, sdd, &sg);
+
+        /* 将每一个调度组的 sg->sgc->cpumask 所有有效 cpu 掩码位都置为 1 */
 		cpumask_setall(sched_group_mask(sg));
 
+		/* 遍历当前调度域包含的每一个 cpu */
 		for_each_cpu(j, span) {
 			if (get_group(j, sdd, NULL) != group)
 				continue;
 
+            /* 将当前调度域内的每一个 cpu 位图添加到 sched_domains_tmpmask 位图掩码变量中 */
 			cpumask_set_cpu(j, covered);
+
+			/* 将当前 cpu id 的位图添加到其所属调度组的 cpu 位图掩码值中 */
 			cpumask_set_cpu(j, sched_group_cpus(sg));
 		}
 
+        /* 把当前调度域内的调度组的单向链表构成一个闭环链表 */
 		if (!first)
 			first = sg;
 		if (last)
@@ -8303,9 +8341,13 @@ build_sched_groups(struct sched_domain *sd, int cpu)
  * group having more cpu_capacity will pickup more load compared to the
  * group having less cpu_capacity.
  */
+/* cpu_capacity 表示的是调度组的算力，用于在调度域中将负载分配给不同的调度组。通常
+   除非调度域拓扑结构中存在不对称的情况，否则调度域中所有调度组的 cpu_capacity 都
+   是相同的。如果存在不对称的情况，那么具有更多 cpu_capacity 的调度组将比具有较少 
+   cpu_capacity 的调度组获得更多负载 */
 /*********************************************************************************************************
 ** 函数名称: init_sched_groups_capacity
-** 功能描述: 
+** 功能描述: 初始化指定的 cpu 在指定调度域上的调度组的算力信息
 ** 输	 入: cpu - 指定的 cpu id 值
 **         : sd - 指定的调度域指针
 ** 输	 出: 
@@ -8318,11 +8360,13 @@ static void init_sched_groups_capacity(int cpu, struct sched_domain *sd)
 
 	WARN_ON(!sg);
 
+    /* 根据指定调度域中每个调度组包含的 cpu 位图掩码值初始化它的负载权重信息 */
 	do {
 		sg->group_weight = cpumask_weight(sched_group_cpus(sg));
 		sg = sg->next;
 	} while (sg != sd->groups);
 
+    /* 只在 cpu id 值等于 sd->groups 调度组包含的 cpu 集中最小值时执行下面逻辑 */
 	if (cpu != group_balance_cpu(sg))
 		return;
 
@@ -8349,7 +8393,7 @@ __setup("relax_domain_level=", setup_relax_domain_level);
 
 /*********************************************************************************************************
 ** 函数名称: set_domain_attribute
-** 功能描述: 根据指定的调度域树形初始化指定的调度域中和这个树形相关的参数
+** 功能描述: 根据指定的调度域属性初始化指定的调度域中和这个属性相关的参数
 ** 输	 入: sd - 指定的调度域指针
 **         : attr - 指定的调度域属性指针
 ** 输	 出: 
@@ -8383,9 +8427,9 @@ static int __sdt_alloc(const struct cpumask *cpu_map);
 
 /*********************************************************************************************************
 ** 函数名称: __free_domain_allocs
-** 功能描述: 释放指定类型的数据占用的内存资源
+** 功能描述: 释放指定的调度域私有数据中指定类型的内存资源
 ** 输	 入: d - 指定的参数数据指针
-**         : what - 指定的需要释放的数据类型
+**         : what - 指定的资源类型
 **         : cpu_map - 指定的 cpu 位图掩码值
 ** 输	 出: 
 ** 全局变量: 
@@ -8407,6 +8451,15 @@ static void __free_domain_allocs(struct s_data *d, enum s_alloc what,
 	}
 }
 
+/*********************************************************************************************************
+** 函数名称: __visit_domain_allocation_hell
+** 功能描述: 根据指定的 cpu 位图掩码值为指定的 struct s_data 分配内存资源
+** 输	 入: d - 指定的参数数据指针
+**         : cpu_map - 指定的 cpu 位图掩码值
+** 输	 出: enum s_alloc - 指定 struct s_data 申请内存的状态
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static enum s_alloc __visit_domain_allocation_hell(struct s_data *d,
 						   const struct cpumask *cpu_map)
 {
@@ -8428,6 +8481,16 @@ static enum s_alloc __visit_domain_allocation_hell(struct s_data *d,
  * sched_group structure so that the subsequent __free_domain_allocs()
  * will not free the data we're using.
  */
+/*********************************************************************************************************
+** 函数名称: claim_allocations
+** 功能描述: 将指定 cpu 在指定调度域层级上的私有数据结构成员指针设置为 NULL，这样可以避免在调用
+**         : __free_domain_allocs 函数时被释放掉
+** 输	 入: cpu - 指定的 cpu id 值
+**         : sd - 指定的调度域指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void claim_allocations(int cpu, struct sched_domain *sd)
 {
 	struct sd_data *sdd = sd->private;
@@ -8457,6 +8520,8 @@ int sched_max_numa_distance;
 
 /* 表示在不同距离等级下，每个节点的 cpu 位图掩码值，详情见 sched_init_numa 函数 */
 static struct cpumask ***sched_domains_numa_masks;
+
+/* 表示当前正处于的调度域拓扑结构层级，详情见 sd_init 函数 */
 static int sched_domains_curr_level;
 #endif
 
@@ -8480,10 +8545,10 @@ static int sched_domains_curr_level;
 
 /*********************************************************************************************************
 ** 函数名称: sd_init
-** 功能描述: 
+** 功能描述: 初始化指定层级的调度域拓扑结构在指定 cpu 上的调度域成员为默认状态
 ** 输	 入: tl - 指定的调度域拓扑结构指针
 **         : cpu - 指定的 cpu id 值
-** 输	 出: 
+** 输	 出: sd - 初始化后的调度域指针
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -8521,7 +8586,7 @@ sd_init(struct sched_domain_topology_level *tl, int cpu)
 		.wake_idx		= 0,
 		.forkexec_idx		= 0,
 
-		.flags			= 1*SD_LOAD_BALANCE
+		.flags	    = 1*SD_LOAD_BALANCE
 					| 1*SD_BALANCE_NEWIDLE
 					| 1*SD_BALANCE_EXEC
 					| 1*SD_BALANCE_FORK
@@ -8579,6 +8644,7 @@ sd_init(struct sched_domain_topology_level *tl, int cpu)
 		sd->idle_idx = 1;
 	}
 
+    /* *per_cpu_ptr(tl->data.sd, cpu)->private = &tl->data */
 	sd->private = &tl->data;
 
 	return sd;
@@ -8587,6 +8653,7 @@ sd_init(struct sched_domain_topology_level *tl, int cpu)
 /*
  * Topology list, bottom-up.
  */
+/* 定义了当前调度子系统默认使用的调度域拓扑结构，这些调度域拓扑层级按照硬件从下往上的顺序排列 */
 static struct sched_domain_topology_level default_topology[] = {
 #ifdef CONFIG_SCHED_SMT
 	{ cpu_smt_mask, cpu_smt_flags, SD_INIT_NAME(SMT) },
@@ -8601,7 +8668,7 @@ static struct sched_domain_topology_level default_topology[] = {
 /* 表示当前系统使用的调度域拓扑结构指针 */
 struct sched_domain_topology_level *sched_domain_topology = default_topology;
 
-/* 遍历当前系统内每一个有效的调度域拓扑结构信息 */
+/* 遍历当前系统内每一个有效的调度域拓扑结构信息，在硬件结构上，是从下往上的顺序遍历 */
 #define for_each_sd_topology(tl)			\
 	for (tl = sched_domain_topology; tl->mask; tl++)
 
@@ -8664,7 +8731,7 @@ static void sched_numa_warn(const char *str)
 
 /*********************************************************************************************************
 ** 函数名称: find_numa_distance
-** 功能描述: 判断当前系统内是否包含指定的距离等级
+** 功能描述: 判断当前系统内是否包含指定的距离等级信息
 ** 输	 入: distance - 指定的距离信息
 ** 输	 出: true - 包含
 **         : false - 不包含
@@ -8841,7 +8908,7 @@ static void sched_init_numa(void)
 	 * Now for each level, construct a mask per node which contains all
 	 * cpus of nodes that are that many hops away from us.
 	 */
-	/* 根据当前系统节点间的具体，初始化在不同距离等级下，每个节点的 cpu 位图掩码值 */
+	/* 根据当前系统节点间的距离，初始化在不同距离等级下，每个节点包含的 cpu 的位图掩码值 */
 	for (i = 0; i < level; i++) {
 		sched_domains_numa_masks[i] =
 			kzalloc(nr_node_ids * sizeof(void *), GFP_KERNEL);
@@ -9109,6 +9176,18 @@ static void __sdt_free(const struct cpumask *cpu_map)
 	}
 }
 
+/*********************************************************************************************************
+** 函数名称: build_sched_domain
+** 功能描述: 根据函数指定的参数初始化指定层级的调度域拓扑结构在指定 cpu 上的调度域成员
+** 输	 入:  tl - 指定的调度域拓扑结构指针
+**         : cpu_map - 指定调度域的 cpu 位图掩码值
+**         : attr - 指定调度域的属性指针
+**         : child - 指定调度域的子调度域指针
+**         : cpu - 指定的 cpu id 值
+** 输	 出: sd - 初始化后的调度域指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct sched_domain *build_sched_domain(struct sched_domain_topology_level *tl,
 		const struct cpumask *cpu_map, struct sched_domain_attr *attr,
 		struct sched_domain *child, int cpu)
@@ -9117,7 +9196,9 @@ struct sched_domain *build_sched_domain(struct sched_domain_topology_level *tl,
 	if (!sd)
 		return child;
 
+    /* 初始化指定调度域的 sd->span 字段值 */
 	cpumask_and(sched_domain_span(sd), cpu_map, tl->mask(cpu));
+	
 	if (child) {
 		sd->level = child->level + 1;
 		sched_domain_level_max = max(sched_domain_level_max, sd->level);
@@ -9138,6 +9219,8 @@ struct sched_domain *build_sched_domain(struct sched_domain_topology_level *tl,
 		}
 
 	}
+
+	/* 根据指定的调度域属性初始化指定的调度域中和这个属性相关的参数 */
 	set_domain_attribute(sd, attr);
 
 	return sd;
@@ -9147,6 +9230,16 @@ struct sched_domain *build_sched_domain(struct sched_domain_topology_level *tl,
  * Build sched domains for a given set of cpus and attach the sched domains
  * to the individual cpus
  */
+/*********************************************************************************************************
+** 函数名称: build_sched_domains
+** 功能描述: 根据指定的调度域属性为指定 cpu 位图掩码值指定的 cpu 构建调度域结构
+** 输	 入:  cpu_map - 指定调度域的 cpu 位图掩码值
+**         : attr - 指定调度域的属性指针
+** 输	 出: 0 - 构建成功
+**         : ENOMEM - 系统内存不足
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int build_sched_domains(const struct cpumask *cpu_map,
 			       struct sched_domain_attr *attr)
 {
@@ -9160,22 +9253,28 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 		goto error;
 
 	/* Set up domains for cpus specified by the cpu_map. */
+	/* 根据指定的调度域属性在每一个调度域层级上为每个指定的 cpu 构建并初始化一个调度域结构 */
 	for_each_cpu(i, cpu_map) {
 		struct sched_domain_topology_level *tl;
 
 		sd = NULL;
+		/* 遍历当前每一个有效的调度域结构，构建调度域树形结构关系 */
 		for_each_sd_topology(tl) {
 			sd = build_sched_domain(tl, cpu_map, attr, sd, i);
 			if (tl == sched_domain_topology)
 				*per_cpu_ptr(d.sd, i) = sd;
 			if (tl->flags & SDTL_OVERLAP || sched_feat(FORCE_SD_OVERLAP))
 				sd->flags |= SD_OVERLAP;
+
+			/* 因为在非对称节点中可能出现调度域树深度不相等的情况，所以在我们遍历的调度域
+			   的 sd.span 等于我们指定的 cpu 位图掩码值时需要提前终止迭代 */
 			if (cpumask_equal(cpu_map, sched_domain_span(sd)))
 				break;
 		}
 	}
 
 	/* Build the groups for the domains */
+	/* 从每个指定的 cpu 调度域开始遍历到根调度域，构建每个调度域的调度组结构 */
 	for_each_cpu(i, cpu_map) {
 		for (sd = *per_cpu_ptr(d.sd, i); sd; sd = sd->parent) {
 			sd->span_weight = cpumask_weight(sched_domain_span(sd));
@@ -9190,12 +9289,19 @@ static int build_sched_domains(const struct cpumask *cpu_map,
 	}
 
 	/* Calculate CPU capacity for physical packages and nodes */
+	/* 初始化和指定 cpu 相关的调度域算力信息 */
 	for (i = nr_cpumask_bits-1; i >= 0; i--) {
 		if (!cpumask_test_cpu(i, cpu_map))
 			continue;
 
+        /* 从指定 cpu 的调度域遍历到根调度域路径中的每一个成员 */
 		for (sd = *per_cpu_ptr(d.sd, i); sd; sd = sd->parent) {
+			
+			/* 将指定 cpu 在指定调度域层级上的私有数据结构成员指针设置为 NULL，这样可以
+               避免在调用 __free_domain_allocs 函数时被释放掉 */
 			claim_allocations(i, sd);
+
+		    /* 初始化指定的 cpu 在指定调度域上的调度组的算力信息 */
 			init_sched_groups_capacity(i, sd);
 		}
 	}
@@ -9215,7 +9321,10 @@ error:
 }
 
 static cpumask_var_t *doms_cur;	/* current sched domains */
+
+/* 详情见 init_sched_domains 函数 */
 static int ndoms_cur;		/* number of sched domains in 'doms_cur' */
+
 static struct sched_domain_attr *dattr_cur;
 				/* attribues of custom domains in 'doms_cur' */
 
@@ -9224,6 +9333,7 @@ static struct sched_domain_attr *dattr_cur;
  * cpumask) fails, then fallback to a single sched domain,
  * as determined by the single cpumask fallback_doms.
  */
+/* fallback_doms = cpu_active_mask & ~cpu_isolated_map，详情见 partition_sched_domains 函数 */
 static cpumask_var_t fallback_doms;
 
 /*
@@ -9236,6 +9346,15 @@ int __weak arch_update_cpu_topology(void)
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: alloc_sched_domains
+** 功能描述: 申请指定个数的调度域 cpu 位图掩码值
+** 输	 入:  ndoms - 指定的调度域个数
+** 输	 出: doms - 成功申请的调度域 cpu 位图掩码变量指针
+**         : NULL - 申请失败
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 cpumask_var_t *alloc_sched_domains(unsigned int ndoms)
 {
 	int i;
@@ -9253,6 +9372,15 @@ cpumask_var_t *alloc_sched_domains(unsigned int ndoms)
 	return doms;
 }
 
+/*********************************************************************************************************
+** 函数名称: alloc_sched_domains
+** 功能描述: 释放指定个数的调度域 cpu 位图掩码值
+** 输	 入:  doms - 指定的调度域 cpu 位图掩码变量指针
+**         : ndoms - 指定的个数
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void free_sched_domains(cpumask_var_t doms[], unsigned int ndoms)
 {
 	unsigned int i;
@@ -9268,7 +9396,7 @@ void free_sched_domains(cpumask_var_t doms[], unsigned int ndoms)
  */
 /*********************************************************************************************************
 ** 函数名称: init_sched_domains
-** 功能描述: 初始化调度域和调度组信息
+** 功能描述: 初始化调度域和调度组功能模块
 ** 输	 入: cpu_map - 当前系统内处于 active 状态的 cpu 位图掩码值
 ** 输	 出: err - 执行状态
 ** 全局变量: 
@@ -9294,6 +9422,14 @@ static int init_sched_domains(const struct cpumask *cpu_map)
  * Detach sched domains from a group of cpus specified in cpu_map
  * These cpus will now be attached to the NULL domain
  */
+/*********************************************************************************************************
+** 函数名称: detach_destroy_domains
+** 功能描述: 把指定的 cpu 位图掩码值指定的 cpu 从其所属调度域上移除并添加到 NULL 调度域中
+** 输	 入: cpu_map - 指定的 cpu 位图掩码值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void detach_destroy_domains(const struct cpumask *cpu_map)
 {
 	int i;
@@ -9305,6 +9441,18 @@ static void detach_destroy_domains(const struct cpumask *cpu_map)
 }
 
 /* handle null as "default" */
+/*********************************************************************************************************
+** 函数名称: dattrs_equal
+** 功能描述: 判断指定的两个调度域属性是否相等
+** 输	 入: cur - 指定的第一个调度域属性数组指针
+**         : idx_cur - 指定的第一个调度域属性数组索引
+**         : new - 指定的第二个调度域属性数组指针
+**         : idx_new - 指定的第二个调度域属性数组索引
+** 输	 出: 1 - 相等
+**         : 0 - 不相等
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int dattrs_equal(struct sched_domain_attr *cur, int idx_cur,
 			struct sched_domain_attr *new, int idx_new)
 {
@@ -9346,6 +9494,16 @@ static int dattrs_equal(struct sched_domain_attr *cur, int idx_cur,
  *
  * Call with hotplug lock held
  */
+/*********************************************************************************************************
+** 函数名称: partition_sched_domains
+** 功能描述: 在发生 cpu 热插拔时根据函数指定的参数更新并构建调度域结构
+** 输	 入: ndoms_new - 指定的调度域 cpu 掩码数组索引值
+**         : doms_new - 指定的调度域 cpu 掩码数组指针
+**         : dattr_new - 指定的调度域属性指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void partition_sched_domains(int ndoms_new, cpumask_var_t doms_new[],
 			     struct sched_domain_attr *dattr_new)
 {
@@ -9379,6 +9537,8 @@ match1:
 	if (doms_new == NULL) {
 		n = 0;
 		doms_new = &fallback_doms;
+
+		/* doms_new[0] = cpu_active_mask & ~cpu_isolated_map */
 		cpumask_andnot(doms_new[0], cpu_active_mask, cpu_isolated_map);
 		WARN_ON_ONCE(dattr_new);
 	}
@@ -9400,6 +9560,7 @@ match2:
 	if (doms_cur != &fallback_doms)
 		free_sched_domains(doms_cur, ndoms_cur);
 	kfree(dattr_cur);	/* kfree(NULL) is safe */
+	
 	doms_cur = doms_new;
 	dattr_cur = dattr_new;
 	ndoms_cur = ndoms_new;
@@ -9419,6 +9580,16 @@ static int num_cpus_frozen;	/* used to mark begin/end of suspend/resume */
  * If we come here as part of a suspend/resume, don't touch cpusets because we
  * want to restore it back to its original state upon resume anyway.
  */
+/*********************************************************************************************************
+** 函数名称: cpuset_cpu_active
+** 功能描述: 用来处理 CPU_PRI_CPUSET_ACTIVE 热插拔事件
+** 输	 入: nfb - 未使用
+**         : action - 指定的热插拔事件
+**         : hcpu - 未使用
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int cpuset_cpu_active(struct notifier_block *nfb, unsigned long action,
 			     void *hcpu)
 {
@@ -9454,6 +9625,16 @@ static int cpuset_cpu_active(struct notifier_block *nfb, unsigned long action,
 	return NOTIFY_OK;
 }
 
+/*********************************************************************************************************
+** 函数名称: cpuset_cpu_inactive
+** 功能描述: 用来处理 CPU_PRI_CPUSET_INACTIVE 热插拔事件
+** 输	 入: nfb - 未使用
+**         : action - 指定的热插拔事件
+**         : hcpu - 未使用
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int cpuset_cpu_inactive(struct notifier_block *nfb, unsigned long action,
 			       void *hcpu)
 {
@@ -9473,7 +9654,7 @@ static int cpuset_cpu_inactive(struct notifier_block *nfb, unsigned long action,
 
 /*********************************************************************************************************
 ** 函数名称: sched_init_smp
-** 功能描述: 初始化调度子系统模块
+** 功能描述: 初始化 smp 调度子系统模块
 ** 输	 入: 
 ** 输	 出: 
 ** 全局变量: 
@@ -9516,6 +9697,14 @@ void __init sched_init_smp(void)
 	init_sched_dl_class();
 }
 #else
+/*********************************************************************************************************
+** 函数名称: sched_init_smp
+** 功能描述: 初始化 smp 调度子系统模块
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void __init sched_init_smp(void)
 {
 	sched_init_granularity();
@@ -9524,6 +9713,15 @@ void __init sched_init_smp(void)
 
 const_debug unsigned int sysctl_timer_migration = 1;
 
+/*********************************************************************************************************
+** 函数名称: in_sched_functions
+** 功能描述: 判断指定的代码段地址是否属于调度子系统
+** 输	 入: addr - 指定的代码段地址
+** 输	 出: 1 - 是
+**         : 0 - 不是
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int in_sched_functions(unsigned long addr)
 {
 	return in_lock_functions(addr) ||
@@ -9542,6 +9740,14 @@ LIST_HEAD(task_groups);
 
 DECLARE_PER_CPU(cpumask_var_t, load_balance_mask);
 
+/*********************************************************************************************************
+** 函数名称: sched_init
+** 功能描述: 初始化调度子系统模块
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void __init sched_init(void)
 {
 	int i, j;
@@ -9553,6 +9759,7 @@ void __init sched_init(void)
 #ifdef CONFIG_RT_GROUP_SCHED
 	alloc_size += 2 * nr_cpu_ids * sizeof(void **);
 #endif
+
 	if (alloc_size) {
 		ptr = (unsigned long)kzalloc(alloc_size, GFP_NOWAIT);
 
@@ -9564,6 +9771,7 @@ void __init sched_init(void)
 		ptr += nr_cpu_ids * sizeof(void **);
 
 #endif /* CONFIG_FAIR_GROUP_SCHED */
+
 #ifdef CONFIG_RT_GROUP_SCHED
 		root_task_group.rt_se = (struct sched_rt_entity **)ptr;
 		ptr += nr_cpu_ids * sizeof(void **);
@@ -9573,6 +9781,7 @@ void __init sched_init(void)
 
 #endif /* CONFIG_RT_GROUP_SCHED */
 	}
+	
 #ifdef CONFIG_CPUMASK_OFFSTACK
 	for_each_possible_cpu(i) {
 		per_cpu(load_balance_mask, i) = (cpumask_var_t)kzalloc_node(
@@ -9613,6 +9822,7 @@ void __init sched_init(void)
 		init_cfs_rq(&rq->cfs);
 		init_rt_rq(&rq->rt, rq);
 		init_dl_rq(&rq->dl, rq);
+		
 #ifdef CONFIG_FAIR_GROUP_SCHED
 		root_task_group.shares = ROOT_TASK_GROUP_LOAD;
 		INIT_LIST_HEAD(&rq->leaf_cfs_rq_list);
@@ -9712,6 +9922,7 @@ void __init sched_init(void)
 	idle_thread_set_boot_cpu();
 	set_cpu_rq_start_time();
 #endif
+
 	init_sched_fair_class();
 
 	scheduler_running = 1;
@@ -9748,12 +9959,15 @@ void ___might_sleep(const char *file, int line, int preempt_offset)
 	static unsigned long prev_jiffy;	/* ratelimiting */
 
 	rcu_sleep_check(); /* WARN_ON_ONCE() by default, no rate limit reqd. */
+	
 	if ((preempt_count_equals(preempt_offset) && !irqs_disabled() &&
 	     !is_idle_task(current)) ||
 	    system_state != SYSTEM_RUNNING || oops_in_progress)
 		return;
+	
 	if (time_before(jiffies, prev_jiffy + HZ) && prev_jiffy)
 		return;
+	
 	prev_jiffy = jiffies;
 
 	printk(KERN_ERR
@@ -9768,8 +9982,10 @@ void ___might_sleep(const char *file, int line, int preempt_offset)
 		printk(KERN_EMERG "Thread overran stack, or stack corrupted\n");
 
 	debug_show_held_locks(current);
+	
 	if (irqs_disabled())
 		print_irqtrace_events(current);
+	
 #ifdef CONFIG_DEBUG_PREEMPT
 	if (!preempt_count_equals(preempt_offset)) {
 		pr_err("Preemption disabled at:");
@@ -9777,12 +9993,22 @@ void ___might_sleep(const char *file, int line, int preempt_offset)
 		pr_cont("\n");
 	}
 #endif
+
 	dump_stack();
 }
 EXPORT_SYMBOL(___might_sleep);
 #endif
 
 #ifdef CONFIG_MAGIC_SYSRQ
+/*********************************************************************************************************
+** 函数名称: normalize_task
+** 功能描述: 将指定 cpu 运行队列上指定的实时任务按照优先级序列化到 cfs 运行队列上
+** 输	 入: rq - 指定的 cpu 运行队列指针
+**         : p - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void normalize_task(struct rq *rq, struct task_struct *p)
 {
 	const struct sched_class *prev_class = p->sched_class;
@@ -9795,7 +10021,9 @@ static void normalize_task(struct rq *rq, struct task_struct *p)
 	queued = task_on_rq_queued(p);
 	if (queued)
 		dequeue_task(rq, p, 0);
+	
 	__setscheduler(rq, p, &attr);
+	
 	if (queued) {
 		enqueue_task(rq, p, 0);
 		resched_curr(rq);
@@ -9804,6 +10032,14 @@ static void normalize_task(struct rq *rq, struct task_struct *p)
 	check_class_changed(rq, p, prev_class, old_prio);
 }
 
+/*********************************************************************************************************
+** 函数名称: normalize_rt_tasks
+** 功能描述: 将当前系统内所有的实时任务按照优先级序列化到对应 cpu 运行队列的 cfs 运行队列上
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void normalize_rt_tasks(void)
 {
 	struct task_struct *g, *p;
@@ -9830,13 +10066,17 @@ void normalize_rt_tasks(void)
 			 * Renice negative nice level userspace
 			 * tasks back to 0:
 			 */
+			/* 在序列化实时任务到 cfs 运行队列上时，会将之前所有的 cfs 任务划分到 [0 ... 20] 范围内的 nice 优先级 */
 			if (task_nice(p) < 0)
 				set_user_nice(p, 0);
 			continue;
 		}
 
 		rq = task_rq_lock(p, &flags);
+		
+		/* 将指定 cpu 运行队列上指定的实时任务按照优先级序列化到 cfs 运行队列上 */
 		normalize_task(rq, p);
+		
 		task_rq_unlock(rq, p, &flags);
 	}
 	read_unlock(&tasklist_lock);
@@ -9863,6 +10103,14 @@ void normalize_rt_tasks(void)
  *
  * Return: The current task for @cpu.
  */
+/*********************************************************************************************************
+** 函数名称: curr_task
+** 功能描述: 获取指定 cpu 上当前正在运行的任务指针
+** 输	 入: cpu - 指定的 cpu id 值
+** 输	 出: task_struct * - 当前正在运行的任务指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct task_struct *curr_task(int cpu)
 {
 	return cpu_curr(cpu);
@@ -9886,6 +10134,15 @@ struct task_struct *curr_task(int cpu)
  *
  * ONLY VALID WHEN THE WHOLE SYSTEM IS STOPPED!
  */
+/*********************************************************************************************************
+** 函数名称: set_curr_task
+** 功能描述: 将指定 cpu 上当前正在运行的任务设置为指定的值
+** 输	 入: cpu - 指定的 cpu id 值
+**         : p - 指定的新的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void set_curr_task(int cpu, struct task_struct *p)
 {
 	cpu_curr(cpu) = p;
@@ -9897,6 +10154,14 @@ void set_curr_task(int cpu, struct task_struct *p)
 /* task_group_lock serializes the addition/removal of task groups */
 static DEFINE_SPINLOCK(task_group_lock);
 
+/*********************************************************************************************************
+** 函数名称: free_sched_group
+** 功能描述: 释放指定的任务组结构
+** 输	 入: tg - 指定的任务组指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void free_sched_group(struct task_group *tg)
 {
 	free_fair_sched_group(tg);
@@ -9906,6 +10171,15 @@ static void free_sched_group(struct task_group *tg)
 }
 
 /* allocate runqueue etc for a new task group */
+/*********************************************************************************************************
+** 函数名称: sched_create_group
+** 功能描述: 为指定的父任务组创建一个新的子任务组结构
+** 输	 入: parent- 指定的父任务组指针
+** 输	 出: tg - 子任务组结构指针
+**         : ENOMEM - 系统内存不足
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 struct task_group *sched_create_group(struct task_group *parent)
 {
 	struct task_group *tg;
@@ -9927,6 +10201,15 @@ err:
 	return ERR_PTR(-ENOMEM);
 }
 
+/*********************************************************************************************************
+** 函数名称: sched_online_group
+** 功能描述: 将指定的任务组挂接到指定的父任务组下
+** 输	 入: tg - 指定的任务组指针
+**         : parent - 指定的父任务组指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void sched_online_group(struct task_group *tg, struct task_group *parent)
 {
 	unsigned long flags;
@@ -9943,6 +10226,14 @@ void sched_online_group(struct task_group *tg, struct task_group *parent)
 }
 
 /* rcu callback to free various structures associated with a task group */
+/*********************************************************************************************************
+** 函数名称: free_sched_group_rcu
+** 功能描述: 释放指定 rcu 所属的任务组结构
+** 输	 入: rhp - 指定任务组的 rcu 头指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void free_sched_group_rcu(struct rcu_head *rhp)
 {
 	/* now it should be safe to free those cfs_rqs */
@@ -9950,12 +10241,28 @@ static void free_sched_group_rcu(struct rcu_head *rhp)
 }
 
 /* Destroy runqueue etc associated with a task group */
+/*********************************************************************************************************
+** 函数名称: sched_destroy_group
+** 功能描述: 释放指定的任务组结构
+** 输	 入: tg - 指定的任务组指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void sched_destroy_group(struct task_group *tg)
 {
 	/* wait for possible concurrent references to cfs_rqs complete */
 	call_rcu(&tg->rcu, free_sched_group_rcu);
 }
 
+/*********************************************************************************************************
+** 函数名称: sched_offline_group
+** 功能描述: 将指定的任务组成员从其所属任务组树上移除
+** 输	 入: tg - 指定的任务组指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void sched_offline_group(struct task_group *tg)
 {
 	unsigned long flags;
@@ -9976,6 +10283,15 @@ void sched_offline_group(struct task_group *tg)
  *	by now. This function just updates tsk->se.cfs_rq and tsk->se.parent to
  *	reflect its new group.
  */
+/*********************************************************************************************************
+** 函数名称: sched_move_task
+** 功能描述: 在将指定任务从一个任务组迁移到另一个任务组上之后调用这个函数，用来把这个任务的
+**         : tsk->se.cfs_rq 和 tsk->se.parent 同步更新到新任务组上
+** 输	 入: tsk - 指定的任务指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void sched_move_task(struct task_struct *tsk)
 {
 	struct task_group *tg;
@@ -10027,6 +10343,15 @@ void sched_move_task(struct task_struct *tsk)
 static DEFINE_MUTEX(rt_constraints_mutex);
 
 /* Must be called with tasklist_lock held */
+/*********************************************************************************************************
+** 函数名称: tg_has_rt_tasks
+** 功能描述: 判断指定的任务组中是否包含实时任务
+** 输	 入: tg - 指定的任务组指针
+** 输	 出: 1 - 包含
+**         : 0 - 不包含
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int tg_has_rt_tasks(struct task_group *tg)
 {
 	struct task_struct *g, *p;
@@ -10512,6 +10837,17 @@ const u64 min_cfs_quota_period = 1 * NSEC_PER_MSEC; /* 1ms */
 
 static int __cfs_schedulable(struct task_group *tg, u64 period, u64 runtime);
 
+/*********************************************************************************************************
+** 函数名称: tg_set_cfs_bandwidth
+** 功能描述: 设置指定任务组的带宽控制参数为指定的值
+** 输	 入: tg - 指定的任务组指针
+**         : period - 指定的带宽统计周期
+**         : quota - 指定的带宽时间额度，单位是 ns，RUNTIME_INF 不表示不限制带宽
+** 输	 出:  0 - 执行成功 
+**         : EINVAL - 参数无效
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int tg_set_cfs_bandwidth(struct task_group *tg, u64 period, u64 quota)
 {
 	int i, ret = 0, runtime_enabled, runtime_was_enabled;
@@ -10554,6 +10890,7 @@ static int tg_set_cfs_bandwidth(struct task_group *tg, u64 period, u64 quota)
 	 */
 	if (runtime_enabled && !runtime_was_enabled)
 		cfs_bandwidth_usage_inc();
+	
 	raw_spin_lock_irq(&cfs_b->lock);
 	cfs_b->period = ns_to_ktime(period);
 	cfs_b->quota = quota;
@@ -10587,6 +10924,16 @@ out_unlock:
 	return ret;
 }
 
+/*********************************************************************************************************
+** 函数名称: tg_set_cfs_quota
+** 功能描述: 设置指定任务组的带宽控制参数的时间额度为指定的值
+** 输	 入: tg - 指定的任务组指针
+**         : cfs_quota_us - 指定的带宽时间额度，单位是 us，RUNTIME_INF 不表示不限制带宽
+** 输	 出:  0 - 执行成功 
+**         : EINVAL - 参数无效
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int tg_set_cfs_quota(struct task_group *tg, long cfs_quota_us)
 {
 	u64 quota, period;
@@ -10600,6 +10947,14 @@ int tg_set_cfs_quota(struct task_group *tg, long cfs_quota_us)
 	return tg_set_cfs_bandwidth(tg, period, quota);
 }
 
+/*********************************************************************************************************
+** 函数名称: tg_set_cfs_quota
+** 功能描述: 获取指定任务组的带宽控制参数的时间额度值
+** 输	 入: tg - 指定的任务组指针
+** 输	 出:  quota_us - 时间额度值，单位是 us
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 long tg_get_cfs_quota(struct task_group *tg)
 {
 	u64 quota_us;
@@ -10613,6 +10968,16 @@ long tg_get_cfs_quota(struct task_group *tg)
 	return quota_us;
 }
 
+/*********************************************************************************************************
+** 函数名称: tg_set_cfs_period
+** 功能描述: 获取指定任务组的带宽控制参数的统计周期为指定的值
+** 输	 入: tg - 指定的任务组指针
+**         : cfs_period_us - 指定的带宽统计周期，单位是 us
+** 输	 出:  0 - 执行成功 
+**         : EINVAL - 参数无效
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int tg_set_cfs_period(struct task_group *tg, long cfs_period_us)
 {
 	u64 quota, period;
@@ -10623,6 +10988,14 @@ int tg_set_cfs_period(struct task_group *tg, long cfs_period_us)
 	return tg_set_cfs_bandwidth(tg, period, quota);
 }
 
+/*********************************************************************************************************
+** 函数名称: tg_get_cfs_period
+** 功能描述: 获取指定任务组的带宽控制参数的统计周期值
+** 输	 入: tg - 指定的任务组指针
+** 输	 出:  cfs_period_us - 统计周期值，单位是 us
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 long tg_get_cfs_period(struct task_group *tg)
 {
 	u64 cfs_period_us;
@@ -10666,6 +11039,16 @@ struct cfs_schedulable_data {
  * normalize group quota/period to be quota/max_period
  * note: units are usecs
  */
+/*********************************************************************************************************
+** 函数名称: normalize_cfs_quota
+** 功能描述: 计算指定任务组的带宽控制参数的时间额度占其统计周期的比例值
+** 输	 入: tg - 指定的任务组指针
+**         : d - 指定的带宽控制参数指针
+** 输	 出: u64 - 计算的比例值
+**         : RUNTIME_INF - 全部占用
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static u64 normalize_cfs_quota(struct task_group *tg,
 			       struct cfs_schedulable_data *d)
 {
@@ -10686,6 +11069,16 @@ static u64 normalize_cfs_quota(struct task_group *tg,
 	return to_ratio(period, quota);
 }
 
+/*********************************************************************************************************
+** 函数名称: tg_cfs_schedulable_down
+** 功能描述: 在设置指定任务组的带宽控制参数时使用的 down 函数
+** 输	 入: tg - 指定的任务组指针
+**         : data - 指定的带宽控制参数指针
+** 输	 出: 0 - 执行完成
+**         : EINVAL - 参数无效
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int tg_cfs_schedulable_down(struct task_group *tg, void *data)
 {
 	struct cfs_schedulable_data *d = data;
@@ -10709,11 +11102,22 @@ static int tg_cfs_schedulable_down(struct task_group *tg, void *data)
 		else if (parent_quota != RUNTIME_INF && quota > parent_quota)
 			return -EINVAL;
 	}
+	
 	cfs_b->hierarchical_quota = quota;
 
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: __cfs_schedulable
+** 功能描述: 设置指定任务组的带宽控制参数为指定的值
+** 输	 入: tg - 指定的任务组指针
+**         : period - 指定的带宽统计周期
+**         : quota - 指定的带宽时间额度，单位是 ns，RUNTIME_INF 不表示不限制带宽
+** 输	 出: ret - tg_cfs_schedulable_down 函数的操作结果
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int __cfs_schedulable(struct task_group *tg, u64 period, u64 quota)
 {
 	int ret;
@@ -10735,6 +11139,15 @@ static int __cfs_schedulable(struct task_group *tg, u64 period, u64 quota)
 	return ret;
 }
 
+/*********************************************************************************************************
+** 函数名称: cpu_stats_show
+** 功能描述: 打印和指定的 seq_file 文件相关的带宽控制参数
+** 输	 入: sf - 指定的 seq_file 文件指针
+**         : v - 未使用
+** 输	 出: 0 - 执行完成
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int cpu_stats_show(struct seq_file *sf, void *v)
 {
 	struct task_group *tg = css_tg(seq_css(sf));
