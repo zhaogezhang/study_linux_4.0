@@ -88,17 +88,42 @@ __read_mostly int sched_clock_running;
 static struct static_key __sched_clock_stable = STATIC_KEY_INIT;
 static int __sched_clock_stable_early;
 
+/*********************************************************************************************************
+** 函数名称: sched_clock_stable
+** 功能描述: 获取当前调度时钟的稳定状态
+** 输	 入: 
+** 输	 出: 1 - 已经稳定
+**         : 0 - 没稳定
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int sched_clock_stable(void)
 {
 	return static_key_false(&__sched_clock_stable);
 }
 
+/*********************************************************************************************************
+** 函数名称: __set_sched_clock_stable
+** 功能描述: 设置当前调度时钟为稳定状态
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void __set_sched_clock_stable(void)
 {
 	if (!sched_clock_stable())
 		static_key_slow_inc(&__sched_clock_stable);
 }
 
+/*********************************************************************************************************
+** 函数名称: set_sched_clock_stable
+** 功能描述: 设置当前调度时钟为稳定状态
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void set_sched_clock_stable(void)
 {
 	__sched_clock_stable_early = 1;
@@ -111,6 +136,14 @@ void set_sched_clock_stable(void)
 	__set_sched_clock_stable();
 }
 
+/*********************************************************************************************************
+** 函数名称: __clear_sched_clock_stable
+** 功能描述: 设置当前调度时钟为不稳定状态
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void __clear_sched_clock_stable(struct work_struct *work)
 {
 	/* XXX worry about clock continuity */
@@ -120,6 +153,14 @@ static void __clear_sched_clock_stable(struct work_struct *work)
 
 static DECLARE_WORK(sched_clock_work, __clear_sched_clock_stable);
 
+/*********************************************************************************************************
+** 函数名称: clear_sched_clock_stable
+** 功能描述: 设置当前调度时钟为不稳定状态
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void clear_sched_clock_stable(void)
 {
 	__sched_clock_stable_early = 0;
@@ -133,23 +174,52 @@ void clear_sched_clock_stable(void)
 }
 
 struct sched_clock_data {
+    /* 表示上次发生调度时钟 tick 时的 sched_clock() 值，详情见 sched_clock_tick 函数 */
 	u64			tick_raw;
-	u64			tick_gtod;
+
+	/* 表示上次发生调度时钟 tick 时的 timekeeping 时钟值，详情见 sched_clock_tick 函数 */
+	u64			tick_gtod; /* gtod - get time of day */
+
+	/* 表示当前 cpu 上的调度时钟值，详情见 sched_clock_local 函数 */
 	u64			clock;
 };
 
 static DEFINE_PER_CPU_SHARED_ALIGNED(struct sched_clock_data, sched_clock_data);
 
+/*********************************************************************************************************
+** 函数名称: this_scd
+** 功能描述: 获取当前 cpu 上的调度时钟数据结构指针
+** 输	 入: 
+** 输	 出: struct sched_clock_data * - 调度时钟数据结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct sched_clock_data *this_scd(void)
 {
 	return this_cpu_ptr(&sched_clock_data);
 }
 
+/*********************************************************************************************************
+** 函数名称: this_scd
+** 功能描述: 获取指定 cpu 上的调度时钟数据结构指针
+** 输	 入: cpu - 指定的 cpu id 值
+** 输	 出: struct sched_clock_data * - 调度时钟数据结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline struct sched_clock_data *cpu_sdc(int cpu)
 {
 	return &per_cpu(sched_clock_data, cpu);
 }
 
+/*********************************************************************************************************
+** 函数名称: sched_clock_init
+** 功能描述: 为当前系统内每一个 cpu 初始化一个调度时钟数据结构信息
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void sched_clock_init(void)
 {
 	u64 ktime_now = ktime_to_ns(ktime_get());
@@ -183,12 +253,29 @@ void sched_clock_init(void)
 /*
  * min, max except they take wrapping into account
  */
-
+/*********************************************************************************************************
+** 函数名称: wrap_min
+** 功能描述: 获取指定二者中的小数
+** 输	 入: x - 指定的第一个数
+**         : y - 指定的第二个数
+** 输	 出: u64 - 二者中的小数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline u64 wrap_min(u64 x, u64 y)
 {
 	return (s64)(x - y) < 0 ? x : y;
 }
 
+/*********************************************************************************************************
+** 函数名称: wrap_max
+** 功能描述: 获取指定二者中的大数
+** 输	 入: x - 指定的第一个数
+**         : y - 指定的第二个数
+** 输	 出: u64 - 二者中的大数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline u64 wrap_max(u64 x, u64 y)
 {
 	return (s64)(x - y) > 0 ? x : y;
@@ -200,6 +287,15 @@ static inline u64 wrap_max(u64 x, u64 y)
  *  - filter out backward motion
  *  - use the GTOD tick value to create a window to filter crazy TSC values
  */
+/*********************************************************************************************************
+** 函数名称: sched_clock_local
+** 功能描述: 根据指定的本地 scd->tick_raw 和本地 scd->tick_gtod 以及当前系统的 sched_clock 更新
+**         : 指定的本地 scd->clock 并返回更新后的时间
+** 输	 入: scd - 指定的本地 scd->tick_XXX 数据
+** 输	 出: clock - 更新后的本地 scd->clock
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static u64 sched_clock_local(struct sched_clock_data *scd)
 {
 	u64 now, clock, old_clock, min_clock, max_clock;
@@ -215,8 +311,8 @@ again:
 
 	/*
 	 * scd->clock = clamp(scd->tick_gtod + delta,
-	 *		      max(scd->tick_gtod, scd->clock),
-	 *		      scd->tick_gtod + TICK_NSEC);
+	 *		              max(scd->tick_gtod, scd->clock),
+	 *		              scd->tick_gtod + TICK_NSEC);
 	 */
 
 	clock = scd->tick_gtod + delta;
@@ -232,6 +328,15 @@ again:
 	return clock;
 }
 
+/*********************************************************************************************************
+** 函数名称: sched_clock_remote
+** 功能描述: 将指定的对端 cpu 的调度时钟数据信息和本地调度时钟数据进行同步，使它们指向相同的最新时间
+**         : 并返回更新后的时间
+** 输	 入: scd - 指定的对端调度时钟数据指针
+** 输	 出: val - 更新后的 scd->clock
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static u64 sched_clock_remote(struct sched_clock_data *scd)
 {
 	struct sched_clock_data *my_scd = this_scd();
@@ -301,7 +406,7 @@ again:
  */
 /*********************************************************************************************************
 ** 函数名称: sched_clock_cpu
-** 功能描述: 获取指定 cpu 上的调度系统时间，单位是纳秒
+** 功能描述: 更新并获取指定 cpu 上的调度系统时间，单位是纳秒
 ** 输	 入: cpu - 指定的 cpu id 值
 ** 输	 出: u64 - 调度系统时间
 ** 全局变量: 
@@ -330,6 +435,14 @@ u64 sched_clock_cpu(int cpu)
 	return clock;
 }
 
+/*********************************************************************************************************
+** 函数名称: sched_clock_tick
+** 功能描述: 当前系统的调度时钟 tick 处理函数，用来更新发生 tick 的 cpu 上的调度时钟信息
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void sched_clock_tick(void)
 {
 	struct sched_clock_data *scd;
@@ -355,6 +468,14 @@ void sched_clock_tick(void)
 /*
  * We are going deep-idle (irqs are disabled):
  */
+/*********************************************************************************************************
+** 函数名称: sched_clock_idle_sleep_event
+** 功能描述: 更新并获取当前 cpu 上的调度系统时间，单位是纳秒
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void sched_clock_idle_sleep_event(void)
 {
 	sched_clock_cpu(smp_processor_id());
@@ -364,6 +485,14 @@ EXPORT_SYMBOL_GPL(sched_clock_idle_sleep_event);
 /*
  * We just idled delta nanoseconds (called with irqs disabled):
  */
+/*********************************************************************************************************
+** 函数名称: sched_clock_idle_wakeup_event
+** 功能描述: 在指定的 cpu 只睡眠 ns 级时间就被唤醒时调用这个函数用来同步更新这个 cpu 的调度时钟信息
+** 输	 入: delta_ns - 未使用
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void sched_clock_idle_wakeup_event(u64 delta_ns)
 {
 	if (timekeeping_suspended)

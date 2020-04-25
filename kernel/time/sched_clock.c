@@ -24,7 +24,7 @@ struct clock_data {
 	u64 epoch_cyc;
 	seqcount_t seq;
 	unsigned long rate;
-	u32 mult;
+	u32 mult;           /* 表示一个 HZ 对应多少个 ns */
 	u32 shift;
 	bool suspended;
 };
@@ -34,6 +34,7 @@ static int irqtime = -1;
 
 core_param(irqtime, irqtime, int, 0400);
 
+/* 表示和当前调度时钟相关的数据 */
 static struct clock_data cd = {
 	.mult	= NSEC_PER_SEC / HZ,
 };

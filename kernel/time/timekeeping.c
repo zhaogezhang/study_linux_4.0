@@ -566,6 +566,14 @@ void getnstimeofday64(struct timespec64 *ts)
 }
 EXPORT_SYMBOL(getnstimeofday64);
 
+/*********************************************************************************************************
+** 函数名称: ktime_get
+** 功能描述: 获取当前时间子系统 timekeeper 的时间信息
+** 输	 入: 
+** 输	 出: ktime_t - timekeeper 的时间信息
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 ktime_t ktime_get(void)
 {
 	struct timekeeper *tk = &tk_core.timekeeper;
