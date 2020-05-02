@@ -23,7 +23,10 @@
  * DECLARE_COMPLETION_ONSTACK().
  */
 struct completion {
+    /* 表示当前已经触发的，可以被获取的有效条件变量次数 */
 	unsigned int done;
+
+	/* 表示当前条件变量的等待队列，用来挂接等到当前条件变量的任务 */
 	wait_queue_head_t wait;
 };
 

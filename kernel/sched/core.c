@@ -4219,7 +4219,7 @@ asmlinkage __visible void __sched preempt_schedule_irq(void)
 ** 函数名称: default_wake_function
 ** 功能描述: 尝试把和指定任务状态匹配的任务在其所属 cpu 运行队列中和其匹配的运行队列类上唤醒
 ** 输	 入: curr - 指定的工作队列指针
-**         : mode - 指定的任务匹配状态
+**         : mode - 指定的任务匹配状态，例如 TASK_NORMAL
 **         : wake_flags - 指定的 wakeup flags，例如 WF_FORK
 **         : key - 未使用
 ** 输	 出: true - 唤醒成功
