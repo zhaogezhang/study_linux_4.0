@@ -1580,10 +1580,10 @@ static inline unsigned long task_faults(struct task_struct *p, int nid)
 
 /*********************************************************************************************************
 ** 函数名称: task_faults
-** 功能描述: 计算指定的任务在指定的 node 节点上发生过 numa_pte faults 的物理内存页个数
+** 功能描述: 计算指定的任务在指定的 node 节点上发生过 numa_group_pte faults 的物理内存页个数
 ** 输	 入: p - 指定的任务指针
 **         : nid - 指定的 node id
-** 输	 出: int - 发生过 numa_pte faults 的物理内存页个数
+** 输	 出: int - 发生过 numa_group_pte faults 的物理内存页个数
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -1730,11 +1730,11 @@ static inline unsigned long task_weight(struct task_struct *p, int nid,
 /*********************************************************************************************************
 ** 函数名称: group_weight
 ** 功能描述: 计算指定的任务组在指定的 node 节点上的 numa_group_pte faults 占这个任务在指定距离内的
-**         : 所有 node 上的 numa_pte faults 的比例值
+**         : 所有 node 上的 numa_group_pte faults 的比例值
 ** 输	 入: p - 指定的任务组指针
 **         : nid - 指定的 node id
 **         : maxdist - 为 NUMA_BACKPLANE 拓扑类型指定的最大统计范围距离
-** 输	 出: unsigned long - 计算到的 numa_pte faults 权重信息值
+** 输	 出: unsigned long - 计算到的 numa_group_pte faults 权重信息值
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -1927,6 +1927,7 @@ struct task_numa_env {
 	/* 为 NUMA_BACKPLANE 拓扑类型指定的最大统计范围距离 */
 	int dist;
 
+    /* 详情见 task_numa_compare 函数和 task_numa_assign 函数 */
 	struct task_struct *best_task;
 
     /* "imp" is the numa_pte fault differential for the source task between the
@@ -2034,10 +2035,10 @@ static bool load_too_imbalanced(long src_load, long dst_load,
  */
 /*********************************************************************************************************
 ** 函数名称: task_numa_compare
-** 功能描述: 根据指定的 task_numa_env 计算任务迁移前后是否会提高系统性能
+** 功能描述: 根据指定的 task_numa_env 计算指定的任务迁移前后是否会提高系统性能
 ** 输	 入: env - 指定的 task_numa_env 结构指针
-**         : taskimp - 指定的源任务在源 node 和 目的 node 上的 numa pte faults 差值
-**         : groupimp - 指定的源任务组在源 node 和 目的 node 上的 numa pte faults 差值
+**         : taskimp - 指定的源任务在源 node 和目的 node 上的 numa_pte faults 差值
+**         : groupimp - 指定的源任务组在源 node 和目的 node 上的 numa_group_pte faults 差值
 ** 输	 出: env - 如果迁移后会有性能提高，则把目标地址信息保存在这里，详细看函数结尾的 task_numa_assign
 ** 全局变量: 
 ** 调用模块: 
@@ -2092,8 +2093,8 @@ static void task_numa_compare(struct task_numa_env *env,
 		 * If dst and source tasks are in the same NUMA group, or not
 		 * in any group then look only at task weights.
 		 */
-		/* 表示两个任务的 numa 组相同，所以直接对比迁移前后的任务权重信息
-		   否则对他迁移前后的任务组权重信息 */
+		/* 表示两个任务在相同的 numa 组内或者都不属于任何 numa 组，则直接对比迁移前后
+		   的任务权重信息，否则对他迁移前后的任务组权重信息 */
 		if (cur->numa_group == env->p->numa_group) {
 			imp = taskimp + task_weight(cur, env->src_nid, dist) -
 			      task_weight(cur, env->dst_nid, dist);
@@ -2186,8 +2187,8 @@ unlock:
 ** 函数名称: task_numa_compare
 ** 功能描述: 根据指定的 task_numa_env 计算指定的任务如果执行任务迁移，在指定的目标 numa 节点上的最优 cpu 位置
 ** 输	 入: env - 指定的 task_numa_env 结构指针
-**         : taskimp - 指定的源任务在源 node 和 目的 node 上的 numa pte faults 差值
-**         : groupimp - 指定的源任务组在源 node 和 目的 node 上的 numa pte faults 差值
+**         : taskimp - 指定的源任务在源 node 和目的 node 上的 numa pte faults 差值
+**         : groupimp - 指定的源任务组在源 node 和目的 node 上的 numa pte faults 差值
 ** 输	 出: env - 把目标节点上的最优 cpu 地址信息存储在这里，详细看 task_numa_compare 函数
 ** 全局变量: 
 ** 调用模块: 
@@ -2800,7 +2801,7 @@ static inline void put_numa_group(struct numa_group *grp)
 
 /*********************************************************************************************************
 ** 函数名称: task_numa_group
-** 功能描述: 尝试把指定的任务添加到当前 cpu 正在运行的任务所属的 numa 任务组内并更新相关数据
+** 功能描述: 尝试把指定的任务迁移到指定 cpu 上正在运行的任务所属的 numa 任务组内并更新相关数据
 ** 输	 入: p - 指定的任务指针
 **         : cpupid - 指定的任务的 cpupid 标志数据
 **         : flags - 指定的 task numa flags
@@ -2817,7 +2818,7 @@ static void task_numa_group(struct task_struct *p, int cpupid, int flags,
 	int cpu = cpupid_to_cpu(cpupid);
 	int i;
 
-    /* 如果当前任务没有 numa 组，则根据当前任务状态为其创建并初始化一个 numa 组 */
+    /* 如果当前任务没有 numa 组，则根据指定的任务状态为其创建并初始化一个 numa 组 */
 	if (unlikely(!p->numa_group)) {
 		unsigned int size = sizeof(struct numa_group) +
 				    4*nr_node_ids*sizeof(unsigned long);
@@ -2893,6 +2894,7 @@ static void task_numa_group(struct task_struct *p, int cpupid, int flags,
 	BUG_ON(irqs_disabled());
 	double_lock_irq(&my_grp->lock, &grp->lock);
 
+    /* 把指定任务的 numa_pte_faults 信息从原来的 numa 组中更新到新的 numa 组中 */
 	for (i = 0; i < NR_NUMA_HINT_FAULT_STATS * nr_node_ids; i++) {
 		my_grp->faults[i] -= p->numa_faults[i];
 		grp->faults[i] += p->numa_faults[i];
@@ -3438,7 +3440,8 @@ static inline int throttled_hierarchy(struct cfs_rq *cfs_rq);
 
 /*********************************************************************************************************
 ** 函数名称: update_cfs_shares
-** 功能描述: 更新指定的 cfs 运行队列所属任务组的 tg->shares 字段值
+** 功能描述: 更新指定任务组的 cfs 运行队列在其所属 cpu 上的 shares 字段值
+**         : shares - 在任务组树形结构中，shares 表示的是由其父节点看到的权重比例信息
 ** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
 ** 输	 出: 
 ** 全局变量: 
@@ -5078,7 +5081,7 @@ static int assign_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 ** 函数名称: expire_cfs_rq_runtime
 ** 功能描述: 在本地 cfs 运行队列的带宽控制周期超时时调用，用来处理本地 cfs 运行队列的 runtime_expires 
 **         : 和 runtime_remaining 字段变量值
-** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
 ** 输	 出: 
 ** 全局变量: 
 ** 调用模块: 
@@ -5395,7 +5398,7 @@ void unthrottle_cfs_rq(struct cfs_rq *cfs_rq)
 **         : 并对这些 cfs 运行队列执行 unthrottled 操作
 ** 输	 入: cfs_b - 指定的带宽控制池指针
 **         : remaining - 指定的一共可分配运行时间
-**         : expires - 
+**         : expires - 指定的带宽控制统计周期超时时间
 ** 输	 出: u64 - 表示本次分配出去的可运行时间长度
 ** 全局变量: 
 ** 调用模块: 
@@ -9788,7 +9791,7 @@ static int should_we_balance(struct lb_env *env)
 **         : this_rq - 指定的当前 cpu 运行队列指针
 **         : sd - 指定的调度域指针
 **         : idle - 指定的当前 cpu 的 idle 类型
-** 输	 出: continue_balancing - 表示当前函数返回后是否需要继续指定负载均衡操作
+** 输	 出: continue_balancing - 表示当前函数返回后是否需要继续执行负载均衡操作
 **         : ld_moved - 成功迁移的任务数
 ** 全局变量: 
 ** 调用模块: 

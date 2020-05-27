@@ -1122,6 +1122,7 @@ extern bool find_numa_distance(int distance);
 
 #ifdef CONFIG_NUMA_BALANCING
 /* The regions in numa_faults array from task_struct */
+/* 详情见 task_numa_fault 函数 */
 enum numa_faults_stats {
 	NUMA_MEM = 0,
 	NUMA_CPU,

@@ -963,7 +963,7 @@ enum cpu_idle_type {
 /* 表示当前调度域是否可以执行负载均衡操作 */
 #define SD_LOAD_BALANCE		0x0001	/* Do load balancing on this domain. */
 
-/* 表示当前调度域中的 cpu 在编程 idle 状态时是否执行负载均衡操作，详情见 idle_balance 函数 */
+/* 表示当前调度域中的 cpu 在变成 idle 状态时是否执行负载均衡操作，详情见 idle_balance 函数 */
 #define SD_BALANCE_NEWIDLE	0x0002	/* Balance when about to become idle */
 
 #define SD_BALANCE_EXEC		0x0004	/* Balance on exec */
@@ -988,7 +988,7 @@ enum cpu_idle_type {
 
 #define SD_PREFER_SIBLING	0x1000	/* Prefer to place tasks in a sibling domain */
 
-/* 1. 前层级的调度域之间的 cpu 有重叠部分，即同一个 cpu 可能存在多个调度域中
+/* 1. 当前层级的调度域之间的 cpu 有重叠部分，即同一个 cpu 可能存在多个调度域中
    2. 当前调度域包含了多个调度组，详情见 free_sched_domain 函数 */   
 #define SD_OVERLAP		0x2000	/* sched_domains of this level overlap */
 
@@ -2122,7 +2122,7 @@ struct task_struct {
 
 	/* 表示当前任务所属 numa_group 指针，当前系统会把访问共享内存的多个任务放到同一个
 	   numa 组内，并且把之前基于单独任务的 muna_pte faults 统计信息上升到基于 numa 组
-	   的 numa_pte faults 统计
+	   的 numa_group_pte faults 统计
 	   
 	   那么我们是怎么在发生的 numa_pte faults 中判断是否有多个进程访问同一个物理内存页
 	   呢？我们通过在 struct page.flags 中添加了 cpupid 标志位，表示上一次访问这个物理
@@ -2221,7 +2221,7 @@ struct task_struct {
 	/* 用来统计当前任务在指定的扫描周期内发生过的 numa_pte faults 次数，并根据类型
 	   分别存储在不同的位置，具体如下：
 	   remote numa_pte faults - numa_faults_locality[0]
-	   local numa_pte - numa_faults_locality[1]
+	   local  numa_pte faults - numa_faults_locality[1]
 	   failed to migrate - numa_faults_locality[2]
 	   这个数组的数据在每一个 numa 内存扫描周期执行完之后都会清零，详情见 update_task_scan_period */
 	unsigned long numa_faults_locality[3];
