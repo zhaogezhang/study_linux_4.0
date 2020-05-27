@@ -40,8 +40,12 @@ struct cpu_stopper {
 	struct list_head	works;		/* list of pending works */
 };
 
+/* 在每个 cpu 上用来记录待执行的 cpu stop 工作信息 */
 static DEFINE_PER_CPU(struct cpu_stopper, cpu_stopper);
+
+/* 定义了每个 cpu 上用来执行 cpu stop 工作的任务指针，即实际的 cpu stop 任务 */
 static DEFINE_PER_CPU(struct task_struct *, cpu_stopper_task);
+
 static bool stop_machine_initialized = false;
 
 /*
@@ -52,6 +56,14 @@ static bool stop_machine_initialized = false;
  */
 DEFINE_STATIC_LGLOCK(stop_cpus_lock);
 
+/*********************************************************************************************************
+** 函数名称: cpu_stop_init_done
+** 功能描述: 根据函数参数初始化指定的 cpu stop done 结构
+** 输	 入: nr_todo - 指定需要执行 stop 工作的 cpu 个数
+** 输	 出: done - 初始化完的 cpu stop done 结构指针
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void cpu_stop_init_done(struct cpu_stop_done *done, unsigned int nr_todo)
 {
 	memset(done, 0, sizeof(*done));
@@ -60,17 +72,37 @@ static void cpu_stop_init_done(struct cpu_stop_done *done, unsigned int nr_todo)
 }
 
 /* signal completion unless @done is NULL */
+/*********************************************************************************************************
+** 函数名称: cpu_stop_signal_done
+** 功能描述: 在某个 cpu 执行完指定的 cpu stop 工作后调用这个函数用来同步更新执行状态
+** 输	 入: done - 指定的 cpu stop done 结构指针
+**         : executed - 是否成功执行
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void cpu_stop_signal_done(struct cpu_stop_done *done, bool executed)
 {
 	if (done) {
 		if (executed)
 			done->executed = true;
+
+		/* 如果所有的 cpu 都执行完了指定的 cpu stop 工作，则发送指定的条件变量 */
 		if (atomic_dec_and_test(&done->nr_todo))
 			complete(&done->completion);
 	}
 }
 
 /* queue @work to @stopper.  if offline, @work is completed immediately */
+/*********************************************************************************************************
+** 函数名称: cpu_stop_queue_work
+** 功能描述: 尝试把指定的 cpu stop 工作添加到指定 cpu 上并唤醒对应的 stop 任务去执行这个工作
+** 输	 入: cpu - 指定的 cpu id 值
+**         : work - 指定的 cpu stop 工作
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void cpu_stop_queue_work(unsigned int cpu, struct cpu_stop_work *work)
 {
 	struct cpu_stopper *stopper = &per_cpu(cpu_stopper, cpu);
@@ -113,6 +145,17 @@ static void cpu_stop_queue_work(unsigned int cpu, struct cpu_stop_work *work)
  * -ENOENT if @fn(@arg) was not executed because @cpu was offline;
  * otherwise, the return value of @fn.
  */
+/*********************************************************************************************************
+** 函数名称: stop_one_cpu
+** 功能描述: 把指定的 stop 工作添加到指定 cpu 上并通过条件变量等待其运行完成
+** 输	 入: cpu - 指定的 cpu id 值
+**         : fn - 指定的 stop 工作函数指针
+**         : arg - 指定的 stop 工作函数参数指针
+** 输	 出: done.ret - stop 工作返回值
+**         : -ENOENT - 指定 cpu 上的 stop 任务没启动
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int stop_one_cpu(unsigned int cpu, cpu_stop_fn_t fn, void *arg)
 {
 	struct cpu_stop_done done;
@@ -141,14 +184,29 @@ enum multi_stop_state {
 struct multi_stop_data {
 	int			(*fn)(void *);
 	void			*data;
+	
 	/* Like num_online_cpus(), but hotplug cpu uses us, so we need this. */
+	/* 表示当前一共有多少个 cpu 在执行 stop 任务 */
 	unsigned int		num_threads;
+
+	/* 表示当前处于 active 状态且可以用来执行 stop 任务的 cpu 掩码值，详情见 stop_two_cpus 函数 */
 	const struct cpumask	*active_cpus;
 
 	enum multi_stop_state	state;
+	
+	/* 表示当前还有多少个 cpu 的 stop 任务没执行完 */
 	atomic_t		thread_ack;
 };
 
+/*********************************************************************************************************
+** 函数名称: set_state
+** 功能描述: 把指定的 multi stop 状态机设置为指定的新状态
+** 输	 入: msdata - 指定的 multi stop 数据指针
+**         : newstate - 指定的新状态 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void set_state(struct multi_stop_data *msdata,
 		      enum multi_stop_state newstate)
 {
@@ -159,13 +217,30 @@ static void set_state(struct multi_stop_data *msdata,
 }
 
 /* Last one to ack a state moves to the next state. */
+/*********************************************************************************************************
+** 函数名称: ack_state
+** 功能描述: 在一个 cpu 执行完 stop 任务后调用这个函数来同步更新状态数据
+** 输	 入: msdata - 指定的 multi stop 数据指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void ack_state(struct multi_stop_data *msdata)
 {
+    /* 如果在当前状态下所有 cpu 的 stop 任务都执行完成，则进入到下一个状态 */
 	if (atomic_dec_and_test(&msdata->thread_ack))
 		set_state(msdata, msdata->state + 1);
 }
 
 /* This is the cpu_stop function which stops the CPU. */
+/*********************************************************************************************************
+** 函数名称: multi_cpu_stop
+** 功能描述: 当我们执行的是多个 cpu 的 stop 工作时，通过调用这个函数实现
+** 输	 入: data - 指定的 multi stop 数据指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int multi_cpu_stop(void *data)
 {
 	struct multi_stop_data *msdata = data;
@@ -189,6 +264,8 @@ static int multi_cpu_stop(void *data)
 	do {
 		/* Chill out and ensure we re-read multi_stop_state. */
 		cpu_relax();
+
+	    /* 当所有 cpu 在当前状态下的工作都执行完成后再一起更新到下一个状态继续执行 */
 		if (msdata->state != curstate) {
 			curstate = msdata->state;
 			switch (curstate) {
@@ -196,6 +273,8 @@ static int multi_cpu_stop(void *data)
 				local_irq_disable();
 				hard_irq_disable();
 				break;
+
+		    /* 只在指定的某个 cpu 上执行 stop 工作 */
 			case MULTI_STOP_RUN:
 				if (is_active)
 					err = msdata->fn(msdata->data);
@@ -223,6 +302,15 @@ struct irq_cpu_stop_queue_work_info {
  * This guarantees that both work1 and work2 get queued, before
  * our local migrate thread gets the chance to preempt us.
  */
+/*********************************************************************************************************
+** 函数名称: irq_cpu_stop_queue_work
+** 功能描述: 尝试把指定的 irq cpu stop 工作添加到对应的 cpu 上并唤醒对应的 stop 任务去执行这个工作
+** 注     释: 这个函数需要在关闭中断和关闭抢占的情况下调用
+** 输	 入: arg - 指定的 irq cpu stop 工作队列信息指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void irq_cpu_stop_queue_work(void *arg)
 {
 	struct irq_cpu_stop_queue_work_info *info = arg;
@@ -243,12 +331,15 @@ static void irq_cpu_stop_queue_work(void *arg)
  */
 /*********************************************************************************************************
 ** 函数名称: stop_two_cpus
-** 功能描述: 暂停运行指定的两个 cpu 并在其中一个 cpu 上运行指定的函数
+** 功能描述: 在关闭中断的情况下，在指定 cpu 中的某个 cpu 上“同步”执行指定的工作函数
+** 注     释: “同步”执行并不是指在每个 cpu 上都执行指定的工作函数，而是使这几个 cpu 同步经历指定的状态机
+**         : 状态，但是只在一个 cpu 上执行指定的工作函数，其他 cpu 只是同步的进行状态过渡
 ** 输	 入: cpu1 - 指定的第一个 cpu id 值
 **         : cpu2 - 指定的第二个 cpu id 值
 **         : fn - 指定的需要运行的函数指针
 **         : arg - 指定的函数参数
-** 输	 出: int - 运行函数的返回值
+** 输	 出: done.ret - stop 工作返回值
+**         : -ENOENT - 指定 cpu 上的 stop 任务没启动
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -260,10 +351,13 @@ int stop_two_cpus(unsigned int cpu1, unsigned int cpu2, cpu_stop_fn_t fn, void *
 	struct multi_stop_data msdata;
 
 	preempt_disable();
+	
 	msdata = (struct multi_stop_data){
 		.fn = fn,
 		.data = arg,
 		.num_threads = 2,
+		
+		/* 因为 stop 任务只需要在一个 cpu 上执行，所以我们默认选择在第一个 cpu 上执行 */
 		.active_cpus = cpumask_of(cpu1),
 	};
 
@@ -297,6 +391,7 @@ int stop_two_cpus(unsigned int cpu1, unsigned int cpu2, cpu_stop_fn_t fn, void *
 	}
 
 	lg_local_lock(&stop_cpus_lock);
+	
 	/*
 	 * Queuing needs to be done by the lowest numbered CPU, to ensure
 	 * that works are always queued in the same order on every CPU.
@@ -305,6 +400,7 @@ int stop_two_cpus(unsigned int cpu1, unsigned int cpu2, cpu_stop_fn_t fn, void *
 	smp_call_function_single(min(cpu1, cpu2),
 				 &irq_cpu_stop_queue_work,
 				 &call_args, 1);
+	
 	lg_local_unlock(&stop_cpus_lock);
 	preempt_enable();
 
@@ -327,6 +423,18 @@ int stop_two_cpus(unsigned int cpu1, unsigned int cpu2, cpu_stop_fn_t fn, void *
  * CONTEXT:
  * Don't care.
  */
+/*********************************************************************************************************
+** 函数名称: cpu_stop_queue_work
+** 功能描述: 尝试把指定的 cpu stop 工作添加到指定 cpu 上并唤醒对应的 stop 任务去执行这个工作
+** 注     释: 这个函数不会通过条件变量同步等待指定的工作执行完成在返回，而是立即返回
+** 输	 入: cpu - 指定的 cpu id 值
+**         : fn - 指定的需要运行的函数指针
+**         : arg - 指定的函数参数
+**         : work_buf - 指定的 cpu stop 工作描述缓冲区地址
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void stop_one_cpu_nowait(unsigned int cpu, cpu_stop_fn_t fn, void *arg,
 			struct cpu_stop_work *work_buf)
 {
@@ -338,6 +446,19 @@ void stop_one_cpu_nowait(unsigned int cpu, cpu_stop_fn_t fn, void *arg,
 static DEFINE_MUTEX(stop_cpus_mutex);
 static DEFINE_PER_CPU(struct cpu_stop_work, stop_cpus_work);
 
+/*********************************************************************************************************
+** 函数名称: queue_stop_cpus_work
+** 功能描述: 向指定的 cpu 位图表示的每一个 cpu 上都添加一个指定的 stop 工作函数并唤醒对应的 
+**         : stop 任务去执行这个工作
+** 注     释: 这个函数不会通过条件变量同步等待指定的工作执行完成在返回，而是立即返回
+** 输	 入: cpumask - 指定的 cpu 位图掩码值
+**         : fn - 指定的需要运行的函数指针
+**         : arg - 指定的函数参数
+**         : done - 指定的 cpu stop done 结构指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void queue_stop_cpus_work(const struct cpumask *cpumask,
 				 cpu_stop_fn_t fn, void *arg,
 				 struct cpu_stop_done *done)
@@ -364,6 +485,17 @@ static void queue_stop_cpus_work(const struct cpumask *cpumask,
 	lg_global_unlock(&stop_cpus_lock);
 }
 
+/*********************************************************************************************************
+** 函数名称: __stop_cpus
+** 功能描述: 向指定的 cpu 位图表示的每一个 cpu 上都添加一个指定的 stop 工作函数并等待它们执行完成
+** 输	 入: cpumask - 指定的 cpu 位图掩码值
+**         : fn - 指定的需要运行的函数指针
+**         : arg - 指定的函数参数
+** 输	 出: done.ret - stop 工作返回值
+**         : -ENOENT - 指定 cpu 上的 stop 任务没启动
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int __stop_cpus(const struct cpumask *cpumask,
 		       cpu_stop_fn_t fn, void *arg)
 {
@@ -403,6 +535,17 @@ static int __stop_cpus(const struct cpumask *cpumask,
  * @cpumask were offline; otherwise, 0 if all executions of @fn
  * returned 0, any non zero return value if any returned non zero.
  */
+/*********************************************************************************************************
+** 函数名称: __stop_cpus
+** 功能描述: 向指定的 cpu 位图表示的每一个 cpu 上都添加一个指定的 stop 工作函数并等待它们执行完成
+** 输	 入: cpumask - 指定的 cpu 位图掩码值
+**         : fn - 指定的需要运行的函数指针
+**         : arg - 指定的函数参数
+** 输	 出: done.ret - stop 工作返回值
+**         : -ENOENT - 指定 cpu 上的 stop 任务没启动
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int stop_cpus(const struct cpumask *cpumask, cpu_stop_fn_t fn, void *arg)
 {
 	int ret;
@@ -432,6 +575,18 @@ int stop_cpus(const struct cpumask *cpumask, cpu_stop_fn_t fn, void *arg)
  * offline; otherwise, 0 if all executions of @fn returned 0, any non
  * zero return value if any returned non zero.
  */
+/*********************************************************************************************************
+** 函数名称: try_stop_cpus
+** 功能描述: 尝试向指定的 cpu 位图表示的每一个 cpu 上都添加一个指定的 stop 工作函数并等待它们执行完成
+** 输	 入: cpumask - 指定的 cpu 位图掩码值
+**         : fn - 指定的需要运行的函数指针
+**         : arg - 指定的函数参数
+** 输	 出: done.ret - stop 工作返回值
+**         : -ENOENT - 指定 cpu 上的 stop 任务没启动
+**         : -EAGAIN - 执行失败需要重新尝试
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int try_stop_cpus(const struct cpumask *cpumask, cpu_stop_fn_t fn, void *arg)
 {
 	int ret;
@@ -444,6 +599,15 @@ int try_stop_cpus(const struct cpumask *cpumask, cpu_stop_fn_t fn, void *arg)
 	return ret;
 }
 
+/*********************************************************************************************************
+** 函数名称: cpu_stop_should_run
+** 功能描述: 判断指定的 cpu 上是否有待运行的 stop 工作函数
+** 输	 入: cpu - 指定的 cpu id 值
+** 输	 出: 1 - 有待运行的 stop 工作函数
+**         : 0 - 没有待运行的 stop 工作函数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int cpu_stop_should_run(unsigned int cpu)
 {
 	struct cpu_stopper *stopper = &per_cpu(cpu_stopper, cpu);
@@ -456,6 +620,14 @@ static int cpu_stop_should_run(unsigned int cpu)
 	return run;
 }
 
+/*********************************************************************************************************
+** 函数名称: cpu_stopper_thread
+** 功能描述: 表示指定 cpu 上用来运行 stop 工作函数任务实现
+** 输	 入: cpu - 指定的 cpu id 值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void cpu_stopper_thread(unsigned int cpu)
 {
 	struct cpu_stopper *stopper = &per_cpu(cpu_stopper, cpu);
@@ -463,6 +635,8 @@ static void cpu_stopper_thread(unsigned int cpu)
 	int ret;
 
 repeat:
+	
+	/* 尝试从指定的 cpu 上获取一个待运行的 stop 工作函数 */
 	work = NULL;
 	spin_lock_irq(&stopper->lock);
 	if (!list_empty(&stopper->works)) {
@@ -472,6 +646,7 @@ repeat:
 	}
 	spin_unlock_irq(&stopper->lock);
 
+    /* 如果成功获取到一个待运行的 stop 工作函数则直接运行它 */
 	if (work) {
 		cpu_stop_fn_t fn = work->fn;
 		void *arg = work->arg;
@@ -499,11 +674,27 @@ repeat:
 
 extern void sched_set_stop_task(int cpu, struct task_struct *stop);
 
+/*********************************************************************************************************
+** 函数名称: cpu_stop_create
+** 功能描述: 设置指定 cpu 上的 stop 任务函数
+** 输	 入: cpu - 指定的 cpu id 值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void cpu_stop_create(unsigned int cpu)
 {
 	sched_set_stop_task(cpu, per_cpu(cpu_stopper_task, cpu));
 }
 
+/*********************************************************************************************************
+** 函数名称: cpu_stop_park
+** 功能描述: 关闭指定 cpu 上的 stop 任务函数功能
+** 输	 入: cpu - 指定的 cpu id 值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void cpu_stop_park(unsigned int cpu)
 {
 	struct cpu_stopper *stopper = &per_cpu(cpu_stopper, cpu);
@@ -518,6 +709,14 @@ static void cpu_stop_park(unsigned int cpu)
 	spin_unlock_irqrestore(&stopper->lock, flags);
 }
 
+/*********************************************************************************************************
+** 函数名称: cpu_stop_park
+** 功能描述: 开启指定 cpu 上的 stop 任务函数功能
+** 输	 入: cpu - 指定的 cpu id 值
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void cpu_stop_unpark(unsigned int cpu)
 {
 	struct cpu_stopper *stopper = &per_cpu(cpu_stopper, cpu);
@@ -539,6 +738,14 @@ static struct smp_hotplug_thread cpu_stop_threads = {
 	.selfparking		= true,
 };
 
+/*********************************************************************************************************
+** 函数名称: cpu_stop_init
+** 功能描述: 初始当前系统的 stop 功能模块
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int __init cpu_stop_init(void)
 {
 	unsigned int cpu;
@@ -558,6 +765,18 @@ early_initcall(cpu_stop_init);
 
 #ifdef CONFIG_STOP_MACHINE
 
+/*********************************************************************************************************
+** 函数名称: __stop_machine
+** 功能描述: 如果当前系统已经初始化了 stop machine 功能模块，则尝试向每一个 online cpu 上都添加
+**         : 一个指定的 stop 工作函数并等待它们执行完成，否则只在当前 cpu 上执行指定的 stop 工作函数
+** 输	 入: fn - 指定的 stop 工作函数指针
+**         : data - 指定的 stop 工作函数参数指针
+**         : cpus - 指定的 cpu 位图掩码值
+** 输	 出: ret - stop 工作返回值
+**         : -ENOENT - 指定 cpu 上的 stop 任务没启动
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int __stop_machine(int (*fn)(void *), void *data, const struct cpumask *cpus)
 {
 	struct multi_stop_data msdata = {
@@ -591,6 +810,18 @@ int __stop_machine(int (*fn)(void *), void *data, const struct cpumask *cpus)
 	return stop_cpus(cpu_online_mask, multi_cpu_stop, &msdata);
 }
 
+/*********************************************************************************************************
+** 函数名称: stop_machine
+** 功能描述: 如果当前系统已经初始化了 stop machine 功能模块，则尝试向每一个 online cpu 上都添加
+**         : 一个指定的 stop 工作函数并等待它们执行完成，否则只在当前 cpu 上执行指定的 stop 工作函数
+** 输	 入: fn - 指定的 stop 工作函数指针
+**         : data - 指定的 stop 工作函数参数指针
+**         : cpus - 指定的 cpu 位图掩码值
+** 输	 出: ret - stop 工作返回值
+**         : -ENOENT - 指定 cpu 上的 stop 任务没启动
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int stop_machine(int (*fn)(void *), void *data, const struct cpumask *cpus)
 {
 	int ret;
@@ -625,6 +856,18 @@ EXPORT_SYMBOL_GPL(stop_machine);
  * 0 if all executions of @fn returned 0, any non zero return value if any
  * returned non zero.
  */
+/*********************************************************************************************************
+** 函数名称: stop_machine_from_inactive_cpu
+** 功能描述: 如果在 inactiv 状态的 cpu 上想要执行 stop 工作，则通过调用这个函数实现，常常在发生热插拔
+**         : 的 cpu 上调用这个函数
+** 输	 入: fn - 指定的 stop 工作函数指针
+**         : data - 指定的 stop 工作函数参数指针
+**         : cpus - 指定的 cpu 位图掩码值
+** 输	 出: 0 - 所有 cpu 都返回 0
+**         : other - 存在返回不是 0 的 cpu
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 int stop_machine_from_inactive_cpu(int (*fn)(void *), void *data,
 				  const struct cpumask *cpus)
 {

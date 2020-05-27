@@ -17,6 +17,7 @@ int default_wake_function(wait_queue_t *wait, unsigned mode, int flags, void *ke
 #define WQ_FLAG_EXCLUSIVE	0x01
 #define WQ_FLAG_WOKEN		0x02
 
+/* 定义了当前使用的等待者结构 */
 struct __wait_queue {
 	unsigned int		flags;
 	void			*private;
@@ -24,18 +25,26 @@ struct __wait_queue {
 	struct list_head	task_list;
 };
 
+/* 定义了当前系统使用的位变量等待者键值结构 */
 struct wait_bit_key {
+	/* 表示当前等待位标志变量队列中一共包含的位图掩码值 */
 	void			*flags;
+
+	/* 表示当前在位标志变量队列中睡眠等待的位变量的位置 */
 	int			bit_nr;
+	
 #define WAIT_ATOMIC_T_BIT_NR	-1
+    /* 表示当前位变量等待者等待超时时间点（绝对时间点）*/
 	unsigned long		timeout;
 };
 
+/* 定义了当前系统使用的位变量等待者结构 */
 struct wait_bit_queue {
 	struct wait_bit_key	key;
 	wait_queue_t		wait;
 };
 
+/* 定义了当前系统使用的等待队列头结构 */
 struct __wait_queue_head {
 	spinlock_t		lock;
 	struct list_head	task_list;
@@ -102,6 +111,15 @@ init_waitqueue_func_entry(wait_queue_t *q, wait_queue_func_t func)
 	q->func		= func;
 }
 
+/*********************************************************************************************************
+** 函数名称: waitqueue_active
+** 功能描述: 判断指定的等待队列中是否存在还未被唤醒的等待者成员
+** 输	 入: q - 指定的等待队列头指针
+** 输	 出: 1 - 存在
+**         : 0 - 不存在
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline int waitqueue_active(wait_queue_head_t *q)
 {
 	return !list_empty(&q->task_list);
@@ -111,6 +129,15 @@ extern void add_wait_queue(wait_queue_head_t *q, wait_queue_t *wait);
 extern void add_wait_queue_exclusive(wait_queue_head_t *q, wait_queue_t *wait);
 extern void remove_wait_queue(wait_queue_head_t *q, wait_queue_t *wait);
 
+/*********************************************************************************************************
+** 函数名称: __add_wait_queue
+** 功能描述: 将指定的等待者成员添加到指定的等待队列的“头”部位置
+** 输	 入: head - 指定的等待队列头指针
+**         : new - 指定的等待成员指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void __add_wait_queue(wait_queue_head_t *head, wait_queue_t *new)
 {
 	list_add(&new->task_list, &head->task_list);
@@ -119,6 +146,15 @@ static inline void __add_wait_queue(wait_queue_head_t *head, wait_queue_t *new)
 /*
  * Used for wake-one threads:
  */
+/*********************************************************************************************************
+** 函数名称: add_wait_queue
+** 功能描述: 将指定的等待者成员以“独占”方式添加到指定的等待队列的“头”部位置
+** 输	 入: q - 指定的等待队列头指针
+**         : wait - 指定的等待成员指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void
 __add_wait_queue_exclusive(wait_queue_head_t *q, wait_queue_t *wait)
 {
@@ -126,12 +162,30 @@ __add_wait_queue_exclusive(wait_queue_head_t *q, wait_queue_t *wait)
 	__add_wait_queue(q, wait);
 }
 
+/*********************************************************************************************************
+** 函数名称: __add_wait_queue
+** 功能描述: 将指定的等待者成员添加到指定的等待队列的“尾”部位置
+** 输	 入: head - 指定的等待队列头指针
+**         : new - 指定的等待成员指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void __add_wait_queue_tail(wait_queue_head_t *head,
 					 wait_queue_t *new)
 {
 	list_add_tail(&new->task_list, &head->task_list);
 }
 
+/*********************************************************************************************************
+** 函数名称: add_wait_queue
+** 功能描述: 将指定的等待者成员以“独占”方式添加到指定的等待队列的“尾”部位置
+** 输	 入: q - 指定的等待队列头指针
+**         : wait - 指定的等待成员指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void
 __add_wait_queue_tail_exclusive(wait_queue_head_t *q, wait_queue_t *wait)
 {
@@ -139,6 +193,15 @@ __add_wait_queue_tail_exclusive(wait_queue_head_t *q, wait_queue_t *wait)
 	__add_wait_queue_tail(q, wait);
 }
 
+/*********************************************************************************************************
+** 函数名称: __remove_wait_queue
+** 功能描述: 将指定的等待者成员从指定的等待队列中移除
+** 输	 入: head - 指定的等待队列头指针
+**         : new - 指定的等待成员指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline void
 __remove_wait_queue(wait_queue_head_t *head, wait_queue_t *old)
 {
@@ -918,6 +981,15 @@ int woken_wake_function(wait_queue_t *wait, unsigned mode, int sync, void *key);
 int autoremove_wake_function(wait_queue_t *wait, unsigned mode, int sync, void *key);
 int wake_bit_function(wait_queue_t *wait, unsigned mode, int sync, void *key);
 
+/*********************************************************************************************************
+** 函数名称: DEFINE_WAIT_FUNC
+** 功能描述: 根据指定的参数为当前正在运行的任务初始化一个等待者结构
+** 输	 入: name - 指定的等待者名称
+**         : function - 用来唤醒等待者的函数指针
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define DEFINE_WAIT_FUNC(name, function)				\
 	wait_queue_t name = {						\
 		.private	= current,				\
@@ -925,8 +997,26 @@ int wake_bit_function(wait_queue_t *wait, unsigned mode, int sync, void *key);
 		.task_list	= LIST_HEAD_INIT((name).task_list),	\
 	}
 
+/*********************************************************************************************************
+** 函数名称: DEFINE_WAIT
+** 功能描述: 根据指定的参数为当前正在运行的任务初始化一个等待者结构
+** 输	 入: name - 指定的等待者名称
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define DEFINE_WAIT(name) DEFINE_WAIT_FUNC(name, autoremove_wake_function)
 
+/*********************************************************************************************************
+** 函数名称: DEFINE_WAIT_BIT
+** 功能描述: 根据指定的参数为当前正在运行的任务初始化一个位变量等待者结构
+** 输	 入: name - 指定的等待者名称
+**         : word - 指定的等待位标志变量队列的位图掩码值
+**         : bit - 指定的我们关心的位变量在位图掩码值中的位置
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 #define DEFINE_WAIT_BIT(name, word, bit)				\
 	struct wait_bit_queue name = {					\
 		.key = __WAIT_BIT_KEY_INITIALIZER(word, bit),		\

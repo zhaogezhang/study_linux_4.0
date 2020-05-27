@@ -19,14 +19,14 @@
 #include <linux/bitops.h>
 
 struct clock_data {
-	ktime_t wrap_kt;
-	u64 epoch_ns;
-	u64 epoch_cyc;
-	seqcount_t seq;
-	unsigned long rate;
+	ktime_t wrap_kt;    /* 表示当前调度时钟模块经历多长时间计数值会溢出 */
+	u64 epoch_ns;       /* 表示上一次更新调度时钟时、上电后系统经历的时间，单位为 ns，详情见 update_sched_clock 函数 */
+	u64 epoch_cyc;      /* 表示上一次更新调度时钟时、上电后系统经历的时间，单位为一个时钟周期，详情见 update_sched_clock 函数 */
+	seqcount_t seq;     
+	unsigned long rate; /* 表示当前调度时钟模块的时钟频率 */
 	u32 mult;           /* 表示一个 HZ 对应多少个 ns */
-	u32 shift;
-	bool suspended;
+	u32 shift;          /* 表示当前调度时钟的转换精度位数，详情见 cyc_to_ns 函数 */
+	bool suspended;     /* 表示当前调度时钟是否被挂起，详情见 sched_clock_suspend 函数 */
 };
 
 static struct hrtimer sched_clock_timer;
@@ -39,8 +39,17 @@ static struct clock_data cd = {
 	.mult	= NSEC_PER_SEC / HZ,
 };
 
+/* 表示当前使用的调度时钟计数值的 bits 数 */
 static u64 __read_mostly sched_clock_mask;
 
+/*********************************************************************************************************
+** 函数名称: jiffy_sched_clock_read
+** 功能描述: 获取当前系统从上电开始一共经历的 jiffies 周期数
+** 输	 入: 
+** 输	 出: u64 - 经历的 jiffies 周期数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static u64 notrace jiffy_sched_clock_read(void)
 {
 	/*
@@ -50,8 +59,26 @@ static u64 notrace jiffy_sched_clock_read(void)
 	return (u64)(jiffies - INITIAL_JIFFIES);
 }
 
+/*********************************************************************************************************
+** 函数名称: jiffy_sched_clock_read
+** 功能描述: 获取当前系统从上电开始一共经历的 jiffies 周期数
+** 输	 入: 
+** 输	 出: u64 - 经历的 jiffies 周期数
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static u64 __read_mostly (*read_sched_clock)(void) = jiffy_sched_clock_read;
 
+/*********************************************************************************************************
+** 函数名称: cyc_to_ns
+** 功能描述: 根据指定的参数将指定的 jiffies 周期数转换成与其对应的时间，单位是 ns
+** 输	 入: cyc - 指定的 jiffies 周期数
+**         : mult - 指定的乘积因子
+**         : shift - 指定的转换精度位数
+** 输	 出: u64 - 对应的时间，单位是 ns
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static inline u64 notrace cyc_to_ns(u64 cyc, u32 mult, u32 shift)
 {
 	return (cyc * mult) >> shift;
@@ -89,6 +116,14 @@ unsigned long long notrace sched_clock(void)
 /*
  * Atomically update the sched_clock epoch.
  */
+/*********************************************************************************************************
+** 函数名称: update_sched_clock
+** 功能描述: 根据 read_sched_clock 时钟值同步更新当前调度时钟模块的时间信息
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void notrace update_sched_clock(void)
 {
 	unsigned long flags;
@@ -108,6 +143,14 @@ static void notrace update_sched_clock(void)
 	raw_local_irq_restore(flags);
 }
 
+/*********************************************************************************************************
+** 函数名称: sched_clock_poll
+** 功能描述: 更新当前调度时钟模块信息并重新启动调度时钟的高精度定时器
+** 输	 入: hrt - 当前调度时钟模块的高精度定时器指针
+** 输	 出: HRTIMER_RESTART - 表示重新启动了高精度定时器
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static enum hrtimer_restart sched_clock_poll(struct hrtimer *hrt)
 {
 	update_sched_clock();
@@ -115,6 +158,16 @@ static enum hrtimer_restart sched_clock_poll(struct hrtimer *hrt)
 	return HRTIMER_RESTART;
 }
 
+/*********************************************************************************************************
+** 函数名称: sched_clock_register
+** 功能描述: 根据函数指定的参数尝试注册一个新的调度时钟
+** 输	 入: read - 新的调度时钟的读函数指针
+**         : bits - 指定的调度时钟计数值的 bits 数
+**         : rate - 新的时钟频率
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void __init sched_clock_register(u64 (*read)(void), int bits,
 				 unsigned long rate)
 {
@@ -124,6 +177,7 @@ void __init sched_clock_register(u64 (*read)(void), int bits,
 	unsigned long r;
 	char r_unit;
 
+    /* 如果新注册的调度时钟精度更高，则更新调度时钟模块使用新的调度时钟 */
 	if (cd.rate > rate)
 		return;
 
@@ -178,6 +232,15 @@ void __init sched_clock_register(u64 (*read)(void), int bits,
 	pr_debug("Registered %pF as sched_clock source\n", read);
 }
 
+/*********************************************************************************************************
+** 函数名称: sched_clock_postinit
+** 功能描述: 注册默认的调度时钟并同步更新当前调度时钟模块的时钟信息，然后初始化并启动当前调度时钟
+**         : 模块的高精度定时器
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 void __init sched_clock_postinit(void)
 {
 	/*
@@ -198,6 +261,14 @@ void __init sched_clock_postinit(void)
 	hrtimer_start(&sched_clock_timer, cd.wrap_kt, HRTIMER_MODE_REL);
 }
 
+/*********************************************************************************************************
+** 函数名称: sched_clock_suspend
+** 功能描述: 挂起当前的调度时钟模块
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int sched_clock_suspend(void)
 {
 	update_sched_clock();
@@ -206,6 +277,14 @@ static int sched_clock_suspend(void)
 	return 0;
 }
 
+/*********************************************************************************************************
+** 函数名称: sched_clock_suspend
+** 功能描述: 恢复当前的调度时钟模块
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static void sched_clock_resume(void)
 {
 	cd.epoch_cyc = read_sched_clock();
@@ -218,6 +297,14 @@ static struct syscore_ops sched_clock_ops = {
 	.resume = sched_clock_resume,
 };
 
+/*********************************************************************************************************
+** 函数名称: sched_clock_syscore_init
+** 功能描述: 注册当前调度时钟模块的挂起和恢复操作函数指针
+** 输	 入: 
+** 输	 出: 
+** 全局变量: 
+** 调用模块: 
+*********************************************************************************************************/
 static int __init sched_clock_syscore_init(void)
 {
 	register_syscore_ops(&sched_clock_ops);
