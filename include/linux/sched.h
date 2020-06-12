@@ -1512,10 +1512,20 @@ struct sched_avg {
 	   详情见 __update_entity_runnable_avg 函数 */
 	u32 runnable_avg_sum, runnable_avg_period;
 
-	/* 表示上一次更新当前调度实例处于可运行状态时间的负载贡献值时的调度系统时间，单位是 ns */
+	/* 表示上一次更新当前调度实例处于可运行状态时间的负载贡献值时的调度系统时间，用来计算运行时间间隔，单位是 ns */
 	u64 last_runnable_update;
 
-    /* 表示当前调度实例需要对其负载贡献指定的衰减阶数 */
+	/*
+	 * We track migrations using entity decay_count <= 0, on a wake-up
+	 * migration we use a negative decay count to track the remote decays
+	 * accumulated while sleeping.
+	 *
+	 * Newly forked tasks are enqueued with se->avg.decay_count == 0, they
+	 * are seen by enqueue_entity_load_avg() as a migration with an already
+	 * constructed load_avg_contrib.
+	 */
+	/* 记录上次该调度实体离开 cfs 队列时 cfs 运行队列累计运行时间周期数，每个周期是 1ms
+	   如果为 0 表示当前调度实例的负载已经同步衰减到和其所属运行队列相同的阶数 */
 	s64 decay_count;
 	
 	/* [<- 1024us ->|<- 1024us ->|<- 1024us ->| ...
@@ -1527,7 +1537,7 @@ struct sched_avg {
 
 	   load_avg_contrib = u_0` + y*(u_0 + u_1*y + u_2*y^2 + ... )
 	    		        = u_0 + u_1*y + u_2*y^2 + ... [re-labeling u_i --> u_{i+1}] */
-    /* 表示当前调度实例过去“时间段”内经过衰减后的负载贡献值 */
+    /* 表示当前调度实例过去“时间段”内乘以了权重信息（se->load.weight）并经过衰减后的负载贡献值 */
 	unsigned long load_avg_contrib;
 };
 
@@ -1611,13 +1621,13 @@ struct sched_entity {
 	struct sched_entity	*parent;
 	
 	/* rq on which this entity is (to be) queued: */
-	/* 指向当前调度任务组实例所在的 cfs 运行队列指针，当前任务组相当于这个 cfs 运行队列上的一个
+	/* 指向当前调度任务组实例所在的 cfs 运行队列指针，当前任务组实例相当于这个 cfs 运行队列上的一个
 	   调度实例，即当前任务组相当于这个 cfs 运行队列红黑树上的一个节点 */
 	struct cfs_rq		*cfs_rq;
 	
 	/* rq "owned" by this entity/group: */
-	/* 如果当前调度实例代表的是一个任务组，则指向当前任务组拥有的 cfs 运行队列，这个 cfs 运行队
-	   列上包含了当前任务组拥有的所有调度实例，如果当前调度实例代表的是一个线程，则指向 NULL */
+	/* 如果当前调度实例代表的是一个任务组实例（每个 cpu 上一个），则指向当前任务组拥有的 cfs 运行队列，这个 cfs
+	   运行队列上包含了当前任务组拥有的所有调度实例，如果当前调度实例代表的是一个线程，则指向 NULL */
 	struct cfs_rq		*my_q;
 #endif
 

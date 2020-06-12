@@ -47,17 +47,8 @@
  * (to see the precise effective timeslice length of your workload,
  *  run vmstat and monitor the context-switches (cs) field)
  */
-/* 表示一个运行队列所有进程运行一次的周期，当前这个与运行队列的进程数有关
-   如果进程数超过 sched_nr_latency（这个变量不能通过/proc设置，它是由
-   (sysctl_sched_latency + sysctl_sched_min_granularity - 1) / sysctl_sched_min_granularity
-   确定的），那么调度周期就是 sched_min_granularity_ns * 运行队列里的进程数
-   与 sysctl_sched_latency 无关；否则队列进程数小于 sched_nr_latency，运行
-   周期就是 sysctl_sched_latency。显然这个数越小，一个运行队列支持的 sched_nr_latency
-   越少，而且当 sysctl_sched_min_granularity 越小时能支持的 sched_nr_latency
-   越多，那么每个进程在这个周期内能执行的时间也就越少，这也与上面 sysctl_sched_min_granularity
-   变量的讨论一致。其实 sched_nr_latency 也可以当做我们 cpu load 的基准值
-   如果 cpu 的 load 大于这个值，那么说明 cpu 不够使用了 */
-unsigned int sysctl_sched_latency = 6000000ULL;
+/* 表示 cpu 消耗性任务的最大抢占调度延迟时间，默认为 6ms * (1 + ilog(ncpus)) */
+unsigned int sysctl_sched_latency = 6000000ULL;  /* 6ms */
 
 unsigned int normalized_sysctl_sched_latency = 6000000ULL;
 
@@ -78,9 +69,7 @@ enum sched_tunable_scaling sysctl_sched_tunable_scaling
  * Minimal preemption granularity for CPU-bound tasks:
  * (default: 0.75 msec * (1 + ilog(ncpus)), units: nanoseconds)
  */
-/* 表示进程最少运行时间，防止频繁的切换，对于交互系统（如桌面）
-   该值可以设置得较小，这样可以保证交互得到更快的响应（见周期调
-   度器的 check_preempt_tick 过程）*/
+/* 表示 cpu 消耗型任务的最小抢占粒度，默认为 0.75ms * (1 + ilog(ncpus)) */
 unsigned int sysctl_sched_min_granularity = 750000ULL;
 
 unsigned int normalized_sysctl_sched_min_granularity = 750000ULL;
@@ -1012,7 +1001,8 @@ int sched_proc_update_handler(struct ctl_table *table, int write,
  */
 /*********************************************************************************************************
 ** 函数名称: calc_delta_fair
-** 功能描述: 计算指定的调度实例指定的 cpu 物理运行时间对应的虚拟运行时间
+** 功能描述: 计算指定的调度实例指定的 cpu 物理运行时间对应的虚拟运行时间，根据计算公式可以得出：
+**         : 当调度实例 se->load.weight 越小，物理运行时间对应的虚拟时间越大，即优先级越低
 ** 输	 入: delta - 指定的 cpu 物理运行时间
 **         : se - 指定的调度实例指针
 ** 输	 出: delta - 对应的虚拟运行时间
@@ -1022,7 +1012,7 @@ int sched_proc_update_handler(struct ctl_table *table, int write,
 static inline u64 calc_delta_fair(u64 delta, struct sched_entity *se)
 {
 	if (unlikely(se->load.weight != NICE_0_LOAD))
-		delta = __calc_delta(delta, NICE_0_LOAD, &se->load); /* delta_exec * weight / lw.weight */
+		delta = __calc_delta(delta, NICE_0_LOAD, &se->load); /* delta_exec * (NICE_0_LOAD / se->load.weight) */
 
 	return delta;
 }
@@ -1037,9 +1027,9 @@ static inline u64 calc_delta_fair(u64 delta, struct sched_entity *se)
  */
 /*********************************************************************************************************
 ** 函数名称: __sched_period
-** 功能描述: 根据当前正在运行的调度实例个数计算为每个调度实例分配的调度周期
+** 功能描述: 根据当前正在运行的调度实例个数计算每个任务运行一次需要的物理时间周期
 ** 输	 入: nr_running - 当前正在运行的调度实例个数
-** 输	 出: period - 每个调度实例分配的调度周期，单位 ns
+** 输	 出: period - 每个任务运行一次需要的时间周期，单位 ns
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -1065,7 +1055,7 @@ static u64 __sched_period(unsigned long nr_running)
 /*********************************************************************************************************
 ** 函数名称: sched_slice
 ** 功能描述: 计算指定的 cfs 运行队列上指定的调度实例（调度任务组实例）可以分配到的 cpu 物理运行
-**         : 时间，单位 ns
+**         : 时间片，单位 ns
 ** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
 **         : se - 指定的调度实例（调度任务组实例）指针
 ** 输	 出: slice - 指定调度实例可分配到的 cpu 物理运行时间，单位 ns
@@ -1148,7 +1138,11 @@ void init_task_runnable_average(struct task_struct *p)
  */
 /*********************************************************************************************************
 ** 函数名称: update_curr
-** 功能描述: 更新指定的 cfs 运行队列中当前正在运行的调度实例的运行时统计信息
+** 功能描述: 更新指定的 cfs 运行队列中当前正在运行的调度实例的运行时统计信息，操作如下：
+**         : 1. 更新当前正在运行的调度实例的物理运行时间
+**         : 2. 更新当前正在运行的调度实例的虚拟运行时间
+**         : 3. 更新当前 cfs 运行队列的 min_vruntime 成员值
+**         : 4. 统计当前 cfs 运行队列消耗的运行时间，主要在带宽控制时使用
 ** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
 ** 输	 出: 
 ** 全局变量: 
@@ -3234,8 +3228,10 @@ void task_tick_numa(struct rq *rq, struct task_struct *curr)
 	period = (u64)curr->numa_scan_period * NSEC_PER_MSEC;
 
 	if (now - curr->node_stamp > period) {
+		
 		if (!curr->node_stamp)
 			curr->numa_scan_period = task_scan_min(curr);
+		
 		curr->node_stamp += period;
 
         /* 如果到达了当前任务的 numa 扫描时间点则向系统内添加一个 task_numa_work 工作准备执行 */
@@ -3299,8 +3295,10 @@ static void
 account_entity_enqueue(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
 	update_load_add(&cfs_rq->load, se->load.weight);
+	
 	if (!parent_entity(se))
 		update_load_add(&rq_of(cfs_rq)->load, se->load.weight);
+	
 #ifdef CONFIG_SMP
 	if (entity_is_task(se)) {
 		struct rq *rq = rq_of(cfs_rq);
@@ -3341,7 +3339,7 @@ account_entity_dequeue(struct cfs_rq *cfs_rq, struct sched_entity *se)
 # ifdef CONFIG_SMP
 /*********************************************************************************************************
 ** 函数名称: calc_tg_weight
-** 功能描述: 计算指定任务组当前总的负载权重值
+** 功能描述: 计算指定任务组在其拥有的某个 cfs 运行队列上的负载权重值
 ** 输	 入: tg - 指定的任务组指针
 **         : cfs_rq - 指定的任务组拥有的 cfs 运行队列指针
 ** 输	 出: tg_weight - 总的负载权重值
@@ -3369,10 +3367,11 @@ static inline long calc_tg_weight(struct task_group *tg, struct cfs_rq *cfs_rq)
 
 /*********************************************************************************************************
 ** 函数名称: calc_cfs_shares
-** 功能描述: 计算指定任务组在任务组树中由其父节点看到的权重信息值
+** 功能描述: 计算指定任务组拥有的某个 cfs 运行队列的 cfs shares 值
+** 注     释: cfs shares - 表示任务组中的某个 cfs 运行队列占任务组权重的比例值
 ** 输	 入: cfs_rq - 指定的任务组拥有的 cfs 运行队列指针
 **         : tg - 指定的任务组指针
-** 输	 出: shares - 父节点看到的权重信息值
+** 输	 出: shares - cfs 运行队列的 shares 值
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -3397,10 +3396,11 @@ static long calc_cfs_shares(struct cfs_rq *cfs_rq, struct task_group *tg)
 # else /* CONFIG_SMP */
 /*********************************************************************************************************
 ** 函数名称: calc_cfs_shares
-** 功能描述: 计算指定任务组在任务组树中由其父节点看到的权重信息值
+** 功能描述: 计算指定任务组拥有的某个 cfs 运行队列的 shares 值
+** 注     释: cfs shares - 表示任务组中的某个 cfs 运行队列占任务组权重的比例值
 ** 输	 入: cfs_rq - 指定的任务组拥有的 cfs 运行队列指针
 **         : tg - 指定的任务组指针
-** 输	 出: shares - 父节点看到的权重信息值
+** 输	 出: shares - cfs 运行队列的 shares 值
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -3440,8 +3440,8 @@ static inline int throttled_hierarchy(struct cfs_rq *cfs_rq);
 
 /*********************************************************************************************************
 ** 函数名称: update_cfs_shares
-** 功能描述: 更新指定任务组的 cfs 运行队列在其所属 cpu 上的 shares 字段值
-**         : shares - 在任务组树形结构中，shares 表示的是由其父节点看到的权重比例信息
+** 功能描述: 更新指定任务组拥有的指定 cfs 运行队列在其所属任务组中的 shares 字段值
+**         : cfs shares - 表示任务组中的某个 cfs 运行队列占任务组权重的比例值
 ** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
 ** 输	 出: 
 ** 全局变量: 
@@ -3621,7 +3621,7 @@ static u32 __compute_runnable_contrib(u64 n)
 /*********************************************************************************************************
 ** 函数名称: __update_entity_runnable_avg
 ** 功能描述: 通过指定的当前系统时间更新指定实例的负载贡献统计结构的 runnable_avg_(sum/period) 字段值
-** 输	 入: now - 指定的当前系统时间，单位是 ns
+** 输	 入: now - 指定的当前任务运行时钟时间，单位是 ns
 **         : sa - 指定的负载贡献统计结构指针
 **         : runnable - 表示指定的调度实例是否处于可运行状态
 ** 输	 出: decayed - 本次负载对应的时间是否达到一个负载统计周期
@@ -3704,10 +3704,9 @@ static __always_inline int __update_entity_runnable_avg(u64 now,
 /* Synchronize an entity's decay with its parenting cfs_rq.*/
 /*********************************************************************************************************
 ** 函数名称: __synchronize_entity_decay
-** 功能描述: 把指定的调度实例的负载贡献衰减阶数同步到所属 cfs 运行队列中，同步后的调度实例的负载贡献
-**         : 就是对其所在 cfs 运行队列的无需衰减的负载贡献值
+** 功能描述: 把指定的调度实例的负载贡献衰减到和所属 cfs 运行队列相同的衰减阶数
 ** 输	 入: se - 指定的调度实例指针
-** 输	 出: decays - 同步后 cfs 运行队列的衰减阶数
+** 输	 出: decays - 本次新衰减的阶数
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -3716,14 +3715,16 @@ static inline u64 __synchronize_entity_decay(struct sched_entity *se)
 	struct cfs_rq *cfs_rq = cfs_rq_of(se);
 	u64 decays = atomic64_read(&cfs_rq->decay_counter);
 
-    /* se->avg.decay_count 是一个负值，详情见 migrate_task_rq_fair 函数 */
+    /* se->avg.decay_count 表示指定的调度实例负载已经衰减的阶数
+	   cfs_rq->decay_counter 表示这个调度实例所属 cfs 运行队列负载需要衰减的阶数
+	   decays -= se->avg.decay_count 表示指定的调度实例负载还需要再衰减的阶数 */
 	decays -= se->avg.decay_count;
 	
 	se->avg.decay_count = 0;
 	if (!decays)
 		return 0;
 
-    /* 同步更新调度实例对其所在 cfs 运行队列的负载贡献值 */
+    /* 把指定的调度实例负载贡献同步衰减到其所属 cfs 运行队列的负载衰减阶数 */
 	se->avg.load_avg_contrib = decay_load(se->avg.load_avg_contrib, decays);
 
 	return decays;
@@ -3732,7 +3733,7 @@ static inline u64 __synchronize_entity_decay(struct sched_entity *se)
 #ifdef CONFIG_FAIR_GROUP_SCHED
 /*********************************************************************************************************
 ** 函数名称: __update_cfs_rq_tg_load_contrib
-** 功能描述: 更新指定的 cfs 运行队列的调度任务组对系统综合平均负载贡献值信息
+** 功能描述: 更新指定任务组的 cfs 运行队列在过去“时间段”经过衰减且乘以权重信息的负载贡献值
 ** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
 **         : force_update - 是否强制更新
 ** 输	 出: 
@@ -3747,6 +3748,8 @@ static inline void __update_cfs_rq_tg_load_contrib(struct cfs_rq *cfs_rq,
 
     /* 计算当前任务组负载贡献统计值与上一次同步任务组负载贡献统计值的增量部分 */
 	tg_contrib = cfs_rq->runnable_load_avg + cfs_rq->blocked_load_avg;
+
+	/* 计算当前指定任务组的 cfs 运行队列的衰减加权贡献值的增量值 */
 	tg_contrib -= cfs_rq->tg_load_contrib;
 
 	if (!tg_contrib)
@@ -3766,8 +3769,10 @@ static inline void __update_cfs_rq_tg_load_contrib(struct cfs_rq *cfs_rq,
  */
 /*********************************************************************************************************
 ** 函数名称: __update_task_entity_contrib
-** 功能描述: 尝试更新指定的 cfs 运行队列以及所属任务组的 runnable_avg 贡献值信息
-** 输	 入: sa - 指定的平均负载贡献数据结构指针
+** 功能描述: 尝试更新任务组中指定的 cfs 运行队列对应的 sched_avg 结构的 runnable_avg 贡献值信息
+** 注     释: 任务组在每一个 cpu 上都有一个调度实例和一个 cfs 运行队列，这个函数的 sa 表示在当前 cpu 
+**         : 上调度实例的负载统计结构，cfs_rq 表示在当前 cpu 上的运行队列，sa 和 cfs 一一对应
+** 输	 入: sa - 指定 cfs 运行队列的平均负载贡献数据结构指针
 **         : cfs_rq - 指定的 cfs 运行队列指针
 ** 输	 出: 
 ** 全局变量: 
@@ -3789,8 +3794,12 @@ static inline void __update_tg_runnable_avg(struct sched_avg *sa,
 
 	contrib = div_u64((u64)sa->runnable_avg_sum << NICE_0_SHIFT,
 			  sa->runnable_avg_period + 1);
+
+
+    /* 计算当前调度实例对于任务组负载贡献的增量值 */
 	contrib -= cfs_rq->tg_runnable_contrib;
 
+    /* 在当前调度实例对任务组负载贡献的增量值大于 cfs_rq->tg_runnable_contrib / 64 时将其统计到对应的任务组负载贡献中 */
 	if (abs(contrib) > cfs_rq->tg_runnable_contrib / 64) {
 	     /*                                     sa->runnable_avg_sum << NICE_0_SHIFT
 	      tg->runnable_avg = tg->runnable_avg + ------------------------------------ - cfs_rq->tg_runnable_contrib
@@ -3813,7 +3822,7 @@ static inline void __update_tg_runnable_avg(struct sched_avg *sa,
 
 /*********************************************************************************************************
 ** 函数名称: __update_task_entity_contrib
-** 功能描述: 更新指定的调度任务组实例在过去“时间段”内经过衰减后的负载贡献值
+** 功能描述: 更新指定的调度任务组实例在过去“时间段”内经过衰减加权的负载贡献值
 ** 输	 入: se - 指定的调度任务组实例指针
 ** 输	 出: 
 ** 全局变量: 
@@ -3832,6 +3841,9 @@ static inline void __update_group_entity_contrib(struct sched_entity *se)
                                 = cfs_rq->tg_load_contrib * ----------------
                                                             tg->load_avg + 1   */
 	contrib = cfs_rq->tg_load_contrib * tg->shares;
+
+	/* 计算到这里 se->avg.load_avg_contrib 表示的是任务组在当前 cpu 上的 cfs 运行队列贡献
+	   的负载量占整个任务组负载贡献量的比例值，相当于当前 cpu 运行队列在任务组中的权重信息 */
 	se->avg.load_avg_contrib = div_u64(contrib,
 				     atomic_long_read(&tg->load_avg) + 1);
 	
@@ -3859,10 +3871,12 @@ static inline void __update_group_entity_contrib(struct sched_entity *se)
 	 * our upper bound of 1-cpu.
 	 */
 	runnable_avg = atomic_read(&tg->runnable_avg);
+
+	/* 为了避免 se->avg.runnable_avg_sum >= se->avg.runnable_avg_period 的情况 */
 	if (runnable_avg < NICE_0_LOAD) {
-		/*                                                      tg->runnable_avg
-          se->avg.load_avg_contrib = se->avg.load_avg_contrib * ----------------
-	                                                            2 ^ NICE_0_SHIFT */
+		/*                                              cfs_rq->tg_load_contrib * tg->shares
+          se->avg.load_avg_contrib = tg->runnable_avg * ------------------------------------
+	                                                            tg->load_avg + 1          */
 
 		se->avg.load_avg_contrib *= runnable_avg;
 		se->avg.load_avg_contrib >>= NICE_0_SHIFT;
@@ -3911,7 +3925,7 @@ static inline void __update_tg_runnable_avg(struct sched_avg *sa,
 
 /*********************************************************************************************************
 ** 函数名称: __update_task_entity_contrib
-** 功能描述: 更新指定的调度任务组在过去“时间段”内经过衰减后的负载贡献值
+** 功能描述: 更新指定的调度任务组实例在过去“时间段”内经过衰减加权的负载贡献值
 ** 输	 入: se - 指定的调度任务组实例指针
 ** 输	 出: 
 ** 全局变量: 
@@ -3933,7 +3947,7 @@ static inline void update_rq_runnable_avg(struct rq *rq, int runnable) {}
 
 /*********************************************************************************************************
 ** 函数名称: __update_task_entity_contrib
-** 功能描述: 更新指定的任务实例在过去“时间段”内经过衰减后的负载贡献值
+** 功能描述: 更新指定的任务实例在过去“时间段”内经过衰减加权的负载贡献值
 ** 输	 入: se - 指定的调度实例指针
 ** 输	 出: 
 ** 全局变量: 
@@ -3955,9 +3969,9 @@ static inline void __update_task_entity_contrib(struct sched_entity *se)
 /* Compute the current contribution to load_avg by se, return any delta */
 /*********************************************************************************************************
 ** 函数名称: __update_entity_load_avg_contrib
-** 功能描述: 更新指定的调度实例在过去“时间段”内经过衰减后的负载贡献值
+** 功能描述: 更新指定的调度实例在过去“时间段”内经过衰减加权后的负载贡献值
 ** 输	 入: se - 指定的调度实例指针
-** 输	 出: long - 本次更新负载贡献值的增量部分
+** 输	 出: long - 本次更新衰减加权负载贡献值的增量值
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -4090,10 +4104,10 @@ static void update_cfs_rq_blocked_load(struct cfs_rq *cfs_rq, int force_update)
 /* Add the load generated by se into cfs_rq's child load-average */
 /*********************************************************************************************************
 ** 函数名称: enqueue_entity_load_avg
-** 功能描述: 向指定的 cfs 运行队列中添加指定的调度实例时用来更新负载贡献相关数据
+** 功能描述: 向指定的 cfs 运行队列中添加指定的调度实例时用来同步负载贡献衰减阶数
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
 **         : se - 指定的调度实例指针
-**         : wakeup - 
+**         : wakeup - 表示是否包含 ENQUEUE_WAKEUP 标志
 ** 输	 出: 
 ** 全局变量: 
 ** 调用模块: 
@@ -4122,8 +4136,7 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 			 * approximate this using our carried decays, which are
 			 * explicitly atomically readable.
 			 */
-			se->avg.last_runnable_update -= (-se->avg.decay_count)
-							<< 20;
+			se->avg.last_runnable_update -= (-se->avg.decay_count) << 20;
 			update_entity_load_avg(se, 0);
 			/* Indicate that we're now synchronized and on-rq */
 			se->avg.decay_count = 0;
@@ -4239,10 +4252,10 @@ static inline void update_rq_runnable_avg(struct rq *rq, int runnable) {}
 
 /*********************************************************************************************************
 ** 函数名称: enqueue_entity_load_avg
-** 功能描述: 向指定的 cfs 运行队列中添加指定的调度实例时用来更新负载贡献相关数据
+** 功能描述: 向指定的 cfs 运行队列中添加指定的调度实例时用来同步负载贡献衰减阶数
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
 **         : se - 指定的调度实例指针
-**         : wakeup - 
+**         : wakeup - 表示是否包含 ENQUEUE_WAKEUP 标志
 ** 输	 出: 
 ** 全局变量: 
 ** 调用模块: 
@@ -4629,7 +4642,10 @@ dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 /*********************************************************************************************************
 ** 函数名称: check_preempt_tick
 ** 功能描述: 检查指定的正在运行的调度实例是否已经运行了足够时间并被抢占，如果可以则在指定的 cpu 运行
-**         : 队列上执行一次调度操作
+**         : 队列上执行一次调度操作，判断是否可以抢占有两个条件，如下：
+**         : 1. 如果当前正在执行的调度实例分配的物理时间片已经运行完，则表示可以被抢占 
+**         : 2. 如果当前正在执行的调度实例运行的物理时间大于最小调度粒度且减去红黑树上虚拟运行时间最小的
+**         :    调度实例的差值大于为当前调度实例分配的物理调度时间片，则表示可以被抢占
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
 **         : curr - 指定的当前 cpu 正在运行的调度实例指针
 ** 输	 出: 
@@ -4645,6 +4661,8 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 
 	ideal_runtime = sched_slice(cfs_rq, curr);
 	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
+	
+    /* 根据物理运行时间判断当前正在执行的调度实例是否可以被抢占 */
 	if (delta_exec > ideal_runtime) {
 		resched_curr(rq_of(cfs_rq));
 		/*
@@ -4669,6 +4687,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 	if (delta < 0)
 		return;
 
+    /* 根据虚拟运行时间判断当前正在执行的调度实例是否可以被抢占 */
 	if (delta > ideal_runtime)
 		resched_curr(rq_of(cfs_rq));
 }
@@ -4833,7 +4852,16 @@ static void put_prev_entity(struct cfs_rq *cfs_rq, struct sched_entity *prev)
 
 /*********************************************************************************************************
 ** 函数名称: entity_tick
-** 功能描述: 对当前正在运行的调度实例执行周期性操作，用来更新调度实例运行时统计信息
+** 功能描述: 对当前正在运行的调度实例执行周期性操作，用来更新调度实例运行时统计信息，操作如下：
+**         : 1. 更新当前运行队列的虚拟运行时间，物理运行时间，cfs 最小虚拟时间和带宽控制时间等时间信息
+**         : 2. 更新当前的调度实例处于可运行状态时间对系统平均负载贡献值信息
+**         : 3. 更新当前的 cfs 运行队列的阻塞负载贡献值以及综合平均负载贡献值信息
+**         : 4. 更新当前的 cfs 运行队列所属任务组的 tg->shares 字段值
+**         : 5. 检查指定的正在运行的调度实例是否已经运行了足够时间并被抢占，如果可以则在指定的 cpu 运行
+**         :    队列上执行一次调度操作，判断是否可以抢占有两个条件，如下：
+**         :    a. 如果当前正在执行的调度实例分配的物理时间片已经运行完，则表示可以被抢占 
+**         :    b. 如果当前正在执行的调度实例运行的物理时间大于最小调度粒度且减去红黑树上虚拟运行时间最
+**         :       小的调度实例的差值大于为当前调度实例分配的物理调度时间片，则表示可以被抢占
 ** 输	 入: cfs_rq- 指定的调度实例所属 cfs 运行队列指针
 **         : curr - 指定的当前正在运行的调度实例指针
 **         : queued - 当前 tick 是否为 queued ticks
@@ -5002,7 +5030,7 @@ static inline struct cfs_bandwidth *tg_cfs_bandwidth(struct task_group *tg)
 /* rq->task_clock normalized against any time this cfs_rq has spent throttled */
 /*********************************************************************************************************
 ** 函数名称: cfs_rq_clock_task
-** 功能描述: 获取指定的 cfs 运行队列的任务时钟信息，单位是 ns
+** 功能描述: 获取指定的 cfs 运行队列的任务时钟信息（在任务上下文的执行时间长度），单位是 ns
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
 ** 输	 出: u64 - cfs 运行队列的任务时钟信息
 ** 全局变量: 
@@ -5138,7 +5166,7 @@ static void __account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
 	cfs_rq->runtime_remaining -= delta_exec;
 	expire_cfs_rq_runtime(cfs_rq);
 
-    /* 判断当前 cfs 运行队列带宽控制时间片是否已经用尽 */
+    /* 判断当前 cfs 运行队列带宽控制时间片是否已经用尽，如果没用尽则直接返回 */
 	if (likely(cfs_rq->runtime_remaining > 0))
 		return;
 
@@ -5955,7 +5983,7 @@ static void __maybe_unused unthrottle_offline_cfs_rqs(struct rq *rq)
 #else /* CONFIG_CFS_BANDWIDTH */
 /*********************************************************************************************************
 ** 函数名称: cfs_rq_clock_task
-** 功能描述: 获取指定的 cfs 运行队列的任务时钟信息，单位是 ns
+** 功能描述: 获取指定的 cfs 运行队列的任务时钟信息（在任务上下文的执行时间长度），单位是 ns
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
 ** 输	 出: u64 - cfs 运行队列的任务时钟信息
 ** 全局变量: 
@@ -10948,7 +10976,10 @@ static void rq_offline_fair(struct rq *rq)
  */
 /*********************************************************************************************************
 ** 函数名称: task_tick_fair
-** 功能描述: 当前系统 cfs 调度类的 tick 处理函数，在 cpu 正在运行的任务是 cfs 任务时调用
+** 功能描述: 当前系统 cfs 调度类的 tick 处理函数，在 cpu 正在运行的任务是 cfs 任务时调用，操作如下：
+**         : 1. 对当前正在运行的调度实例执行周期性操作，用来更新调度实例运行时统计信息
+**         : 2. 检查当前 cpu 运行队列的 numa 扫描周期时间是否已经到达，如果已经到达了则执行相关的扫描操作
+**         : 3. 更新当前 cpu 运行队列的 runnable_avg 贡献值信息，包括任务和任务组的
 ** 输	 入: rq - 指定的 cpu 运行队列指针
 **         : curr - 当前正在运行的 cfs 任务指针
 **         : queued - 当前 tick 是否为 queued ticks

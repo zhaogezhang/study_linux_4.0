@@ -373,18 +373,11 @@ struct task_group {
 	unsigned long shares;
 
 #ifdef	CONFIG_SMP
-	/* 表示当前任务组在过去“时间段”内经过衰减后的负载贡献值
+	/* 表示当前任务组在过去“时间段”内经过衰减加权的负载贡献值
 	   这个负载贡献统计值的更新可能具有延迟性，详情见 __update_cfs_rq_tg_load_contrib 函数 */
 	atomic_long_t load_avg;
 
-    /* 表示当前任务组在指定的“统计周期”内没经过衰减的负载贡献值 */
-	/*									   sa->runnable_avg_sum << NICE_0_SHIFT
-	 tg->runnable_avg = tg->runnable_avg + ------------------------------------ - cfs_rq->tg_runnable_contrib
-											   sa->runnable_avg_period + 1 
-									
-										   sa->runnable_avg_sum_new << NICE_0_SHIFT   sa->runnable_avg_sum_old << NICE_0_SHIFT
-					  = tg->runnable_avg + ---------------------------------------- - ----------------------------------------						  
-											   sa->runnable_avg_period_new + 1			  sa->runnable_avg_period_old + 1	*/
+    /* 表示当前任务组在过去“时间段”内经过衰减的负载贡献值 */
 	atomic_t runnable_avg;
 #endif
 #endif
@@ -551,11 +544,10 @@ struct cfs_rq {
 	   详情见 update_entity_load_avg 函数以及 subtract_blocked_load_contrib 函数 */
 	unsigned long runnable_load_avg, blocked_load_avg;
 
-    /* 表示当前 cfs 运行队列对属于它的所有任务执行的负载贡献衰减阶数
-       详情见 update_cfs_rq_blocked_load 函数 */
+    /* 表示当前 cfs 运行队列累计运行时间周期数，每个周期是 1ms，详情见 update_cfs_rq_blocked_load 函数 */
 	atomic64_t decay_counter;
 
-	/* 表是当前 cfs 运行队列上一次对负载执行衰减操作时的运行队列时钟，单位是 ms
+	/* 表是当前 cfs 运行队列上一次对负载执行衰减操作时累计运行时间周期数，每个周期是 1ms
 	   详情见 update_cfs_rq_blocked_load 函数 */
 	u64 last_decay;
 
@@ -565,14 +557,16 @@ struct cfs_rq {
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* Required to track per-cpu representation of a task_group */
-    /* 表示当前 cfs 运行队列所属任务组在指定的“统计周期”内没经过衰减的负载贡献值 
-
+    /* 表示当前 cfs 运行队列对其“所属任务组”在在过去“时间段”内贡献的、经过衰减的负载贡献值 
+       因为一个任务组可能存在多个 cfs 运行队列，所以这部分只是一个任务组总负载中的一部分
+       详情见 __update_tg_runnable_avg 函数：
+       
                                      sched_avg->runnable_avg_sum << NICE_0_SHIFT
        cfs_rq->tg_runnable_contrib = -------------------------------------------
 	                                     sched_avg->runnable_avg_period + 1   */
 	u32 tg_runnable_contrib;
 
-	/* 表示当前 cfs 运行队列所属任务组在过去“时间段”内经过衰减后的负载贡献值
+	/* 表示当前 cfs 运行队列对其“所属任务组”在过去“时间段”内贡献的、经过衰减且乘以任务组权重信息的负载贡献值
 	   这个负载贡献统计值的更新可能具有延迟性，详情见 __update_cfs_rq_tg_load_contrib 函数 */
 	unsigned long tg_load_contrib;
 
@@ -632,7 +626,7 @@ struct cfs_rq {
     /* 表示当前 cfs 运行队列带宽控制的当前统计周期的到期时间 */
 	u64 runtime_expires;
 
-	/* 表示当前 cfs 运行队列还剩余的可运行时间，主要在带宽控制时使用 */
+	/* 表示当前 cfs 运行队列当前带宽统计周期还剩余的可运行时间，主要在带宽控制时使用 */
 	s64 runtime_remaining;
 
     /* throttled_clock - 表是当前 cfs 运行队列上一次执行 throttled 操作时所属 cpu 运行队列的时钟值

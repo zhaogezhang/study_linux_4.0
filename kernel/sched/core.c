@@ -834,12 +834,14 @@ void resched_curr(struct rq *rq)
 
 	cpu = cpu_of(rq);
 
+    /* 如果指定的 cpu 运行队列是当前正在执行的 cpu 的运行队列，则设置 TIF_NEED_RESCHED 标志并返回 */
 	if (cpu == smp_processor_id()) {
 		set_tsk_need_resched(curr);
 		set_preempt_need_resched();
 		return;
 	}
 
+    /* 如果指定的 cpu 运行队列是其他 cpu 上的运行队列，则设置 TIF_NEED_RESCHED 标志并发送 IPI_RESCHEDULE 核间中断 */
 	if (set_nr_and_not_polling(curr))
 		smp_send_reschedule(cpu);
 	else
@@ -3555,7 +3557,17 @@ unsigned long long task_sched_runtime(struct task_struct *p)
  */
 /*********************************************************************************************************
 ** 函数名称: scheduler_tick
-** 功能描述: 当前调度子系统的 tick 函数，在关中断的状态下由定时器处理函数调用
+** 功能描述: 当前调度子系统的 tick 函数，在关中断的状态下由定时器处理函数调用，具体操作如下：
+**         : 1. 更新当前调度子系统的调度时钟信息
+**         : 2. 更新当前运行队列的任务运行时间信息
+**         : 3. 执行当前正在运行任务所属调度类的 task_tick 函数（以下以 CFS 调度类为例）
+**         :    a. 对当前正在运行的调度实例执行周期性操作，用来更新调度实例运行时统计信息
+**         :    b. 检查指定的任务的 numa 扫描周期时间是否已经到达，如果已经到达了则执行相关的扫描操作
+**         :    c. 更新指定的 cpu 运行队列的 runnable_avg 贡献值信息，包括任务和任务组的
+**         : 4. 更新当前 cpu 运行队列的 cpu 负载贡献值
+**         : 5. perf_event_task_tick
+**         : 6. 尝试在当前 cpu 上触发一次负载均衡操作
+**         : 7. 更新当前 cpu 运行队列的 last_sched_tick 字段值
 ** 注     释: 如果是多核，那么每个核上都会有自己的定时器，所以这个函数会按照 HZ 周期在每一个核上执行
 ** 输	 入: 
 ** 输	 出: 
