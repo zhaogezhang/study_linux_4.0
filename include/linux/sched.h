@@ -1525,7 +1525,10 @@ struct sched_avg {
 	 * constructed load_avg_contrib.
 	 */
 	/* 记录上次该调度实体离开 cfs 队列时 cfs 运行队列累计运行时间周期数，每个周期是 1ms
-	   如果为 0 表示当前调度实例的负载已经同步衰减到和其所属运行队列相同的阶数 */
+	   如果为 0 表示当前调度实例的负载已经同步衰减到和其所属运行队列相同的阶数，详情见 enqueue_entity_load_avg 函数
+	   如果大于 0，则表示当前调度实例上次睡眠时已经衰减的阶数（累计运行时间周期数），详情见 dequeue_entity_load_avg 函数
+	   如果小于 0，则表示当前调度实例在任务迁移前，和其所属 cfs 运行队列任务时钟相比，负载还需要再衰减的阶数（衰减后的负载
+	   是和所属 cfs 运行队列任务时钟同步的负载），详情见 migrate_task_rq_fair 函数和 enqueue_entity_load_avg 函数 */
 	s64 decay_count;
 	
 	/* [<- 1024us ->|<- 1024us ->|<- 1024us ->| ...
@@ -1587,7 +1590,7 @@ struct sched_entity {
     /* 通过这个红黑树节点把当前调度实例添加到调度器的红黑树上 */	
 	struct rb_node		run_node;
 
-    /* 通过链表的方式把属于同一个 cpu 运行队列的所有调度实例链接起来 */
+    /* 通过链表的方式把属于同一个 cpu 运行队列的所有 cfs 调度实例链接起来 */
 	struct list_head	group_node;
 
 	/* 表示当前调度实例是否已经在所属的运行队列上 */
@@ -1617,17 +1620,21 @@ struct sched_entity {
     /* 表示当前调度任务组实例在任务组树形结构中的深度 */
 	int			depth;
 
-	/* 指向当前调度任务组实例的父任务组节点实例指针，详情见 init_tg_cfs_entry 函数 */
+	/* 指向当前任务组调度实例的父任务组调度实例指针，se->parent = parent_tg->se[cpu_id]，
+	   因为“根任务组”的 root_task_group->se[cpu_id] = NULL，所以 root_task_group 的所有
+	   子任务组调度实例的 child_se->parent = NULL，详情见 init_tg_cfs_entry 函数 */
 	struct sched_entity	*parent;
 	
 	/* rq on which this entity is (to be) queued: */
-	/* 指向当前调度任务组实例所在的 cfs 运行队列指针，当前任务组实例相当于这个 cfs 运行队列上的一个
-	   调度实例，即当前任务组相当于这个 cfs 运行队列红黑树上的一个节点 */
+	/* 指向当前任务组调度实例所在的 cfs 运行队列指针（每 cpu 变量类型），当前任务组实例
+	   相当于这个 cfs 运行队列上的一个调度实例，即当前任务组调度实例相当于这个 cfs 运行
+	   队列红黑树上的一个节点 */
 	struct cfs_rq		*cfs_rq;
 	
 	/* rq "owned" by this entity/group: */
-	/* 如果当前调度实例代表的是一个任务组实例（每个 cpu 上一个），则指向当前任务组拥有的 cfs 运行队列，这个 cfs
-	   运行队列上包含了当前任务组拥有的所有调度实例，如果当前调度实例代表的是一个线程，则指向 NULL */
+	/* 如果当前调度实例代表的是一个任务组实例（每 cpu 变量类型），则指向当前任务组拥有的 
+	   cfs 运行队列，这个 cfs 运行队列上包含了当前任务组在指定 cpu 上拥有的所有调度实例
+	   如果当前调度实例代表的是一个线程，则指向 NULL */
 	struct cfs_rq		*my_q;
 #endif
 
@@ -2118,14 +2125,15 @@ struct task_struct {
 	unsigned long numa_migrate_retry;
 	u64 node_stamp;			/* migration stamp  */
 
-	/* 表示当前任务最后一次执行 task_numa_placement 函数时的运行队列时钟值
-	   详情见 numa_get_avg_runtime 函数 */
+	/* 表示当前任务最后一次执行 task_numa_placement 函数时的运行队列时钟值，在 fork 时
+	   初始化为 0，详情见 numa_get_avg_runtime 函数 */
 	u64 last_task_numa_placement;
 
 	/* 表示当前任务最后一次执行 task_numa_placement 函数时的总计运行的 cpu 物理
 	   运行时间，详情见 numa_get_avg_runtime 函数 */
 	u64 last_sum_exec_runtime;
-	
+
+	/* 表示当前任务待处理的 work 链表，详情见 task_tick_numa 函数 */
 	struct callback_head numa_work;
 
 	struct list_head numa_entry;

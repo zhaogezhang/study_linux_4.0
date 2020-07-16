@@ -362,11 +362,13 @@ struct task_group {
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* schedulable entities of this group on each cpu */
-    /* 这是一个二维数组指针，表示的是当前任务组在每一个 cpu 上的任务组实例结构指针，详情见 sched_init 函数 */
+    /* 这是一个二维数组指针，表示的是当前任务组在每一个 cpu 上的任务组实例结构指针
+       “根”任务组的 tg->se[cpu] = NULL，详情见 init_tg_cfs_entry 函数 */
 	struct sched_entity **se;
 
 	/* runqueue "owned" by this group on each cpu */
-    /* 这是一个二维数组指针，表示的是当前任务组在每一个 cpu 上拥有的 cfs 运行队列指针，详情见 sched_init 函数 */
+    /* 这是一个二维数组指针，表示的是当前任务组在每一个 cpu 上拥有的 cfs 运行队列指针
+       “根”任务组的 tg->cfs_rq[cpu] = &rq->cfs，详情见 init_tg_cfs_entry 函数 */
 	struct cfs_rq **cfs_rq;
 
 	/* 表示当前任务组由其父节点看到的权重值，在计算这个任务组树的总权重时使用 */
@@ -395,7 +397,7 @@ struct task_group {
 	struct rcu_head rcu;
 	struct list_head list;
 
-    /* 指向当前任务组的父任务组节点指针 */
+    /* 指向当前任务组的父任务组节点指针，“根”任务组的 tg->parent = NULL */
 	struct task_group *parent;
 
     /* 通过链表的方式把当前任务组的所有兄弟任务组节点链接起来 */
@@ -531,16 +533,20 @@ struct cfs_rq {
 	 */
 	/* runnable_load_avg - 表示当前 cfs 运行队列上所有调度实例在指定的“时间段”内
 	   经过衰减后的处于可运行状态（运行态）时间的平均负载贡献值，计算公式如下：
+	   
 	                       se->avg.runnable_avg_sum * se->load.weight
 	   runnable_load_avg = ------------------------------------------
 	                            se->avg.runnable_avg_period + 1 
+	                            
 	   详情见 update_entity_load_avg 函数
 	   
 	   blocked_load_avg  - 表示当前 cfs 运行队列上所有调度实例在指定的“时间段”内
 	   经过衰减后的处于被阻塞状态（睡眠态）时间的平均负载贡献值，计算公式如下：
+	   
 	                      se->avg.runnable_avg_sum * se->load.weight
 	   blocked_load_avg = ------------------------------------------
 	                           se->avg.runnable_avg_period + 1 
+	                           
 	   详情见 update_entity_load_avg 函数以及 subtract_blocked_load_contrib 函数 */
 	unsigned long runnable_load_avg, blocked_load_avg;
 
@@ -557,7 +563,7 @@ struct cfs_rq {
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* Required to track per-cpu representation of a task_group */
-    /* 表示当前 cfs 运行队列对其“所属任务组”在在过去“时间段”内贡献的、经过衰减的负载贡献值 
+    /* 表示当前 cfs 运行队列对其“所属任务组”在在过去“时间段”内贡献的、经过衰减的负载贡献值
        因为一个任务组可能存在多个 cfs 运行队列，所以这部分只是一个任务组总负载中的一部分
        详情见 __update_tg_runnable_avg 函数：
        
@@ -575,25 +581,27 @@ struct cfs_rq {
 	 *
 	 * Where f(tg) is the recursive weight fraction assigned to this group.
 	 */
-    /* h_load 表示当前 cfs 运行队列所属任务组的负载贡献统计值对其父任务组节点的负载贡献量
+    /* h_load 表示当前任务组的 cfs 运行队列（每 cpu 类型变量）在任务组树形结构中的加权负载贡献值
        计算公式如下：
-                              parent_cfs_rq->h_load * child_se->avg.load_avg_contrib
-	   child_cfs_rq->h_load = ------------------------------------------------------
-		                              parent_cfs_rq->runnable_load_avg + 1
-		                              
-	   当 parent_cfs_rq 为任务组树形结构的根节点时，parent_cfs_rq->h_load = 1，所以有如下公式：
-	   
-	                             child_se->avg.load_avg_contrib
-	   child_cfs_rq->h_load = ------------------------------------
-		                      parent_cfs_rq->runnable_load_avg + 1
-		                      
-	   详情见 update_cfs_rq_h_load 函数 */
+                                                        child_se->avg.load_avg_contrib
+	   child_cfs_rq->h_load = parent_cfs_rq->h_load * ------------------------------------
+		                                              parent_cfs_rq->runnable_load_avg + 1
+
+										                child_cfs_rq->runnable_load_avg
+			                = parent_cfs_rq->h_load * ------------------------------------
+										              parent_cfs_rq->runnable_load_avg + 1 
+
+              child_cfs_rq->runnable_load_avg
+       其中 ------------------------------------ 表示的是任务组子节点加权负载占任务组父节点加权负载的比例
+            parent_cfs_rq->runnable_load_avg + 1
+            
+	   当 cfs_rq = &rq->cfs 时，cfs_rq->h_load = cfs_rq->runnable_load_avg，详情见 update_cfs_rq_h_load 函数 */
 	unsigned long h_load;
 
 	/* 上次更新当前任务组的 h_load 数据时的系统时间，详情见 update_cfs_rq_h_load 函数 */
 	u64 last_h_load_update;
 
-    /* 表是下一个需要更新负载贡献值的调度实例指针，详情见 update_cfs_rq_h_load 函数 */
+    /* 表是当前 cfs 运行队列中下一次需要更新负载贡献值的调度实例指针，详情见 update_cfs_rq_h_load 函数 */
 	struct sched_entity *h_load_next;
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 #endif /* CONFIG_SMP */
@@ -613,7 +621,9 @@ struct cfs_rq {
 	/* 在当前运行队列属于某个任务组的时候，表示当前运行队列是否已经添加到了所属的 cpu 运行队列上 */
 	int on_list;
 
-	/* 通过这个链表节点把当前 cfs 运行队列添加到所属的 cpu 运行队列上，详情见 enqueue_entity 函数 */
+    /* 通过链表的方式把当前 cpu 运行队列上的所有任务组的叶子节点的 cfs 运行队列链接起来
+       （即这些 cfs 运行队列上的成员都是调度任务实例，而不是任务组树形结构的中间节点）
+       我们可以通过这个链表快速遍历 cpu 运行队列上的所有任务组调度实例，详情见 enqueue_entity 函数 */
 	struct list_head leaf_cfs_rq_list;
 
 	/* 在当前运行队列属于某个任务组的时候，表示当前运行队列所属的任务组 */
@@ -623,10 +633,10 @@ struct cfs_rq {
     /* 表示是否使能当前 cfs 运行队列的带宽控制功能，详情见 update_runtime_enabled 函数 */
 	int runtime_enabled;
 
-    /* 表示当前 cfs 运行队列带宽控制的当前统计周期的到期时间 */
+    /* 表示当前 cfs 运行队列带宽控制的当前统计周期的到期物理时间 */
 	u64 runtime_expires;
 
-	/* 表示当前 cfs 运行队列当前带宽统计周期还剩余的可运行时间，主要在带宽控制时使用 */
+	/* 表示当前 cfs 运行队列当前带宽统计周期还剩余的可运行物理时间，主要在带宽控制时使用 */
 	s64 runtime_remaining;
 
     /* throttled_clock - 表是当前 cfs 运行队列上一次执行 throttled 操作时所属 cpu 运行队列的时钟值
@@ -848,7 +858,9 @@ struct rq {
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* list of leaf cfs_rq on this cpu: */
-    /* 通过链表的方式把当前 cpu 运行队列上的所有 cfs 运行队列链接起来，详情见 enqueue_entity 函数 */
+    /* 通过链表的方式把当前 cpu 运行队列上的所有任务组的叶子节点的 cfs 运行队列链接起来
+       （即这些 cfs 运行队列上的成员都是调度任务实例，而不是任务组树形结构的中间节点）
+       我们可以通过这个链表快速遍历 cpu 运行队列上的所有任务组调度实例，详情见 enqueue_entity 函数 */
 	struct list_head leaf_cfs_rq_list;
 
 	struct sched_avg avg;
@@ -921,7 +933,7 @@ struct rq {
 	/* 表示当前 cpu 运行队列状态，1 表示 online，0 表示 offline，详情见 set_rq_online 函数 */
 	int online;
 
-    /* 把属于当前 cpu 运行队列的所有任务通过链表链接起来 */
+    /* 把属于当前 cpu 运行队列的所有 cfs 任务通过链表链接起来 */
 	struct list_head cfs_tasks;
 
     /* 表示当前 cpu 运行队列内实时调度实例在过去一段“时间内”经过减半衰减的运行时间统计信息
@@ -1105,7 +1117,7 @@ static inline void rq_clock_skip_update(struct rq *rq, bool skip)
 #ifdef CONFIG_NUMA
 /* 定义当前系统支持的节点拓扑结构类型，详情见 init_numa_topology_type 函数 */
 enum numa_topology_type {
-	NUMA_DIRECT,        /* 表示所有节点是直接连接在一起活着不是 NUMA 系统，他们之间可以直接通信 */
+	NUMA_DIRECT,        /* 表示所有节点是直接连接在一起或者不是 NUMA 系统，他们之间可以直接通信 */
 	NUMA_GLUELESS_MESH, /* 表示当前系统有的节点间通信需要经过一个中间节点才可以完成 */
 	NUMA_BACKPLANE,     /* 表示当前系统有的节点间通信需要通过专有控制器才可以完成 */
 };
@@ -1682,7 +1694,8 @@ static const u32 prio_to_wmult[40] = {
  /*  15 */ 119304647, 148102320, 186737708, 238609294, 286331153,
 };
 
-/* 表示在把指定的调度实例添加到运行队列中后要及时唤醒并运行这个调度实例 */
+/* 表示被唤醒的调度实例为睡眠态，我们需要对这个调度实例做一些时间补偿，这样就可以及时运行它
+   详情见 enqueue_entity 函数 */
 #define ENQUEUE_WAKEUP		1
 
 #define ENQUEUE_HEAD		2

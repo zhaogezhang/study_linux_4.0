@@ -388,8 +388,10 @@ static inline struct task_struct *task_of(struct sched_entity *se)
 /* Walk up scheduling entities hierarchy */
 /*********************************************************************************************************
 ** 函数名称: for_each_sched_entity
-** 功能描述: 遍历指定的调度任务组实例所属任务组树形结构中的路径，根节点挂在 cpu cfs 运行队列的红黑树上
-** 输	 入: se - 指定的调度实体指针
+** 功能描述: 遍历指定的任务组调度实例到“根任务组”之间遍历路径的每一个任务组调度实例
+**         : 因为“根任务组”的 root_task_group->se[cpu_id] = NULL，所以 root_task_group 的所有
+**         : 子任务组调度实例的 child_se->parent = NULL，详情见 init_tg_cfs_entry 函数
+** 输	 入: se - 指定的任务组调度实例指针
 ** 输	 出: se - 遍历过程中可操作的临时变量指针
 ** 全局变量: 
 ** 调用模块: 
@@ -497,8 +499,8 @@ static inline void list_del_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 /* Iterate thr' all leaf cfs_rq's on a runqueue */
 /*********************************************************************************************************
 ** 函数名称: for_each_leaf_cfs_rq
-** 功能描述: 遍历指定的 cpu 运行队列的所有的 cfs 运行队列（因为调度组有自己的 cfs 运行队列，所以一个
-**         : cpu 运行队列上可能包含多个 cfs 运行队列）
+** 功能描述: 遍历指定的 cpu 运行队列的所有任务组叶子节点的 cfs 运行队列（因为调度组有自己的 cfs 运行
+**         : 队列，且一个 cpu 运行队列上可能包含多个 cfs 运行队列）
 ** 输	 入: rq - 指定的 cpu 运行队列指针
 **         : cfs_rq - 遍历时使用的临时变量指针
 ** 输	 出: 
@@ -511,11 +513,11 @@ static inline void list_del_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 /* Do the two (enqueued) entities belong to the same group ? */
 /*********************************************************************************************************
 ** 函数名称: is_same_group
-** 功能描述: 判断指定的两个调度实例是否属于相同的 cfs 运行队列
+** 功能描述: 判断指定的两个调度实例是否在同一个调度组中
 ** 输	 入: se - 指定的第一个调度实例指针
 **         : pse - 指定的第二个调度实例指针
-** 输	 出: se->cfs_rq - 他们共同所属的 cfs 运行队列指针
-**         : NULL - 不属于同一个 cfs 运行队列
+** 输	 出: se->cfs_rq - 他们共同所属调度组的 cfs 运行队列（每 cpu 类型变量）指针
+**         : NULL - 不属于同一个调度组
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -530,9 +532,9 @@ is_same_group(struct sched_entity *se, struct sched_entity *pse)
 
 /*********************************************************************************************************
 ** 函数名称: parent_entity
-** 功能描述: 获取指定的调度任务组实例的父节点指针
-** 输	 入: se - 指定的调度任务组实例指针
-** 输	 出: se->parent - 父节点指针
+** 功能描述: 获取指定的任务组调度实例的父调度实例节点指针
+** 输	 入: se - 指定的任务组调度实例指针
+** 输	 出: se->parent - 父调度实例节点指针
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -543,11 +545,11 @@ static inline struct sched_entity *parent_entity(struct sched_entity *se)
 
 /*********************************************************************************************************
 ** 函数名称: find_matching_se
-** 功能描述: 获取指定的两个调度任务组实例在任务组树形结构上相同深度的父节点调度任务组实例指针
-** 输	 入: se - 指定的第一个调度任务组实例指针
-**         : pse - 指定的第二个调度任务组实例指针
-** 输	 出: *se - 第一个调度任务组实例的父节点指针
-**         : *pse - 第二个调度任务组实例的父节点指针
+** 功能描述: 获取指定的两个任务组调度实例在任务组树形结构上深度相同且同属一个任务组的调度实例指针
+** 输	 入: se - 指定的第一个任务组调度实例指针
+**         : pse - 指定的第二个任务组调度实例指针
+** 输	 出: *se - 第一个任务组调度实例节点指针
+**         : *pse - 第二个任务组调度实例节点指针
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -627,8 +629,10 @@ static inline struct rq *rq_of(struct cfs_rq *cfs_rq)
 
 /*********************************************************************************************************
 ** 函数名称: for_each_sched_entity
-** 功能描述: 遍历指定的调度任务组实例所属任务组树形结构中的路径，根节点挂在 cpu cfs 运行队列的红黑树上
-** 输	 入: se - 指定的调度实体指针
+** 功能描述: 遍历指定的任务组调度实例到“根任务组”之间遍历路径的每一个任务组调度实例
+**         : 因为“根任务组”的 root_task_group->se[cpu_id] = NULL，所以 root_task_group 的所有
+**         : 子任务组调度实例的 child_se->parent = NULL，详情见 init_tg_cfs_entry 函数
+** 输	 入: se - 指定的任务组调度实例指针
 ** 输	 出: se - 遍历过程中可操作的临时变量指针
 ** 全局变量: 
 ** 调用模块: 
@@ -811,7 +815,8 @@ static inline int entity_before(struct sched_entity *a,
 
 /*********************************************************************************************************
 ** 函数名称: update_min_vruntime
-** 功能描述: 更新指定的 cfs 运行队列的 min_vruntime 成员值
+** 功能描述: 更新指定的 cfs 运行队列的 min_vruntime 成员值，可能的值为 cfs_rq->min_vruntime
+**         : cfs_rq->curr->vruntime 和 cfs_rq->rb_leftmost->vruntime
 ** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
 ** 输	 出: 
 ** 全局变量: 
@@ -917,7 +922,7 @@ static void __dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
 ** 功能描述: 获取指定的 cfs 运行队列 cfs_rq->rb_leftmost 指向的调度实例指针
 ** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
 ** 输	 出: sched_entity * - 调度实例指针
-**         : NULL - cfs_rq->rb_leftmost 为空
+**         : NULL - 获取失败
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -933,9 +938,10 @@ struct sched_entity *__pick_first_entity(struct cfs_rq *cfs_rq)
 
 /*********************************************************************************************************
 ** 函数名称: __pick_next_entity
-** 功能描述: 获取指定的 cfs 运行队列中第二个需要运行的调度实例指针
-** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 功能描述: 获取和指定的调度实例的虚拟时间最接近的下一个调度实例指针
+** 输	 入: se - 指定的调度实例指针
 ** 输	 出: sched_entity * - 获取的调度实例指针
+**         : NULL - 获取失败
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -952,9 +958,10 @@ static struct sched_entity *__pick_next_entity(struct sched_entity *se)
 #ifdef CONFIG_SCHED_DEBUG
 /*********************************************************************************************************
 ** 函数名称: __pick_next_entity
-** 功能描述: 获取指定的 cfs 运行队列中最后一个需要运行的调度实例指针
+** 功能描述: 获取指定的 cfs 运行队列中虚拟时间最大的调度实例指针
 ** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
 ** 输	 出: sched_entity * - 获取的调度实例指针
+**         : NULL - 获取失败
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -1142,7 +1149,7 @@ void init_task_runnable_average(struct task_struct *p)
 **         : 1. 更新当前正在运行的调度实例的物理运行时间
 **         : 2. 更新当前正在运行的调度实例的虚拟运行时间
 **         : 3. 更新当前 cfs 运行队列的 min_vruntime 成员值
-**         : 4. 统计当前 cfs 运行队列消耗的运行时间，主要在带宽控制时使用
+**         : 4. 统计当前 cfs 运行队列消耗的物理运行时间，主要在带宽控制时使用
 ** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
 ** 输	 出: 
 ** 全局变量: 
@@ -1324,7 +1331,7 @@ unsigned int sysctl_numa_balancing_scan_delay = 1000;
 
 /*********************************************************************************************************
 ** 函数名称: task_nr_scan_windows
-** 功能描述: 根据指定任务占用的物理内存页数计算出对应的扫描窗口个数
+** 功能描述: 根据指定任务占用的物理内存页数计算一轮内存扫描需要占用多少个扫描窗口
 ** 输	 入: p - 指定的任务指针
 ** 输	 出: unsigned int - 扫描窗口个数
 ** 全局变量: 
@@ -1448,8 +1455,8 @@ struct numa_group {
 	 * towards the CPU. As a consequence, these stats are weighted
 	 * more by CPU use than by memory faults.
 	 */
-    /* 用来记录系统内所有 node 节点在当前 numa 组内发生的 numa_pte faults 相关统计数据
-       触发 numa_pte faults 的函数是 task_numa_work */
+    /* faults_cpu 是用来判断内存是否需要移动到指定 cpu 处，因此，这些统计数据
+       更注重的是 cpu 对物理内存的使用率而不是发生 pte faults 的物理内存页数 */
 	unsigned long *faults_cpu;
 
 	/* numa_faults 是按照指定顺序划分成四个区域的数组指针，划分顺序分别是
@@ -1556,10 +1563,10 @@ static inline int task_faults_idx(enum numa_faults_stats s, int nid, int priv)
 
 /*********************************************************************************************************
 ** 函数名称: task_faults
-** 功能描述: 计算指定的任务在指定的 node 节点上发生过 numa_pte faults 的物理内存页个数
+** 功能描述: 计算指定的任务在指定的 node 节点上发生过 NUMA_MEM 类型的 task pte faults 的物理内存页个数
 ** 输	 入: p - 指定的任务指针
 **         : nid - 指定的 node id
-** 输	 出: int - 发生 numa_pte faults 的物理内存页个数
+** 输	 出: int - 发生过 NUMA_MEM 类型的 pte faults 的物理内存页个数
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -1574,7 +1581,7 @@ static inline unsigned long task_faults(struct task_struct *p, int nid)
 
 /*********************************************************************************************************
 ** 函数名称: task_faults
-** 功能描述: 计算指定的任务在指定的 node 节点上发生过 numa_group_pte faults 的物理内存页个数
+** 功能描述: 计算指定的任务在指定的 node 节点上发生过 NUMA_MEM 类型的 group pte faults 的物理内存页个数
 ** 输	 入: p - 指定的任务指针
 **         : nid - 指定的 node id
 ** 输	 出: int - 发生过 numa_group_pte faults 的物理内存页个数
@@ -1592,7 +1599,7 @@ static inline unsigned long group_faults(struct task_struct *p, int nid)
 
 /*********************************************************************************************************
 ** 函数名称: task_faults
-** 功能描述: 计算指定的 numa_group 在指定的 node 节点上发生过 numa_pte faults 的物理内存页个数
+** 功能描述: 计算指定的任务在指定的 node 节点上发生过 NUMA_MEM 类型的 group cpu pte faults 的物理内存页个数
 ** 输	 入: group - 指定的 numa 组指针
 **         : nid - 指定的 node id
 ** 输	 出: int - 发生过 numa_pte faults 的物理内存页个数
@@ -1694,7 +1701,7 @@ static unsigned long score_nearby_nodes(struct task_struct *p, int nid,
 /*********************************************************************************************************
 ** 函数名称: task_weight
 ** 功能描述: 计算指定的任务在指定的 node 节点上的 numa_pte faults 占这个任务在指定距离内的所有 node 
-**         : 上的 numa_pte faults 的比例值
+**         : 上的 numa_pte faults 的比例值，比例越高，内存访问性能越好
 ** 输	 入: p - 指定的任务指针
 **         : nid - 指定的 node id
 **         : maxdist - 为 NUMA_BACKPLANE 拓扑类型指定的最大统计范围距离
@@ -1715,6 +1722,7 @@ static inline unsigned long task_weight(struct task_struct *p, int nid,
 	if (!total_faults)
 		return 0;
 
+    /* 计算指定的任务一共发生了 task pte faults 的内存页数 */
 	faults = task_faults(p, nid);
 	faults += score_nearby_nodes(p, nid, dist, true);
 
@@ -1724,7 +1732,7 @@ static inline unsigned long task_weight(struct task_struct *p, int nid,
 /*********************************************************************************************************
 ** 函数名称: group_weight
 ** 功能描述: 计算指定的任务组在指定的 node 节点上的 numa_group_pte faults 占这个任务在指定距离内的
-**         : 所有 node 上的 numa_group_pte faults 的比例值
+**         : 所有 node 上的 numa_group_pte faults 的比例值，比例越高，内存访问性能越好
 ** 输	 入: p - 指定的任务组指针
 **         : nid - 指定的 node id
 **         : maxdist - 为 NUMA_BACKPLANE 拓扑类型指定的最大统计范围距离
@@ -1745,6 +1753,7 @@ static inline unsigned long group_weight(struct task_struct *p, int nid,
 	if (!total_faults)
 		return 0;
 
+    /* 计算指定的任务一共发生了 group pte faults 的内存页数 */
 	faults = group_faults(p, nid);
 	faults += score_nearby_nodes(p, nid, dist, false);
 
@@ -1755,6 +1764,7 @@ static inline unsigned long group_weight(struct task_struct *p, int nid,
 ** 函数名称: should_numa_migrate_memory
 ** 功能描述: 判断指定任务中指定的物理内存页是否需要从指定的源 node 内存空间中迁移到指定的目的
 **         : cpu 所在 node 的内存空间中
+** 注     释: 我们通过将内存访问的物理内存页平均分布到不同的 node 上可以分散内存访问负载，提高内存访问带宽
 ** 输	 入: p - 指定的任务组指针
 **         : page - 指定的物理内存页指针
 **         : src_nid - 指定的源 node id 值
@@ -1792,6 +1802,8 @@ bool should_numa_migrate_memory(struct task_struct *p, struct page * page,
 	 */
 	/* 设置指定的物理内存页的 _last_cpupid 字段为指定的值并返回原来的旧值 */
 	last_cpupid = page_cpupid_xchg_last(page, this_cpupid);
+
+	/* 如果上一次访问这个物理内存页的进程的 node id 不等于指定的目的 node id 则不迁移内存 */
 	if (!cpupid_pid_unset(last_cpupid) &&
 				cpupid_to_nid(last_cpupid) != dst_nid)
 		return false;
@@ -1825,6 +1837,7 @@ bool should_numa_migrate_memory(struct task_struct *p, struct page * page,
 	 * heavily used ones, spreading the load around.
 	 * Use a 1/4 hysteresis to avoid spurious page movement.
 	 */
+	/* 我们通过将内存访问的物理内存页平均分布到不同的 node 上可以分散内存访问负载，提高内存访问带宽 */
 	return group_faults(p, dst_nid) < (group_faults(p, src_nid) * 3 / 4);
 }
 
@@ -1836,21 +1849,21 @@ static long effective_load(struct task_group *tg, int cpu, long wl, long wg);
 
 /* Cached statistics for all CPUs within a node */
 struct numa_stats {
-    /* 表示当前 node 上所有 cpu 的运行队列中包含的调度实例总和数据信息 */
+    /* 表示当前 node 上所有 cpu 上的调度实例总和 */
 	unsigned long nr_running;
 	
-    /* 表示当前 node 上所有 cpu 的上的 cfs 运行队列实际运行负载数据的总和 */
+    /* 表示当前 node 上所有 cpu 上的 cfs 运行队列的衰减加权负载贡献总和 */
 	unsigned long load;
 
 	/* Total compute capacity of CPUs on a node */	
-    /* 表示当前 node 上所有 cpu 的算力数据信息的总和 */
+    /* 表示当前 node 上所有 cpu 的算力总和 */
 	unsigned long compute_capacity;
 
 	/* Approximate capacity in terms of runnable tasks on a node */
-	/* 表示当前 node 上所有 cpu 的可以运行的任务数量的总和 */
+	/* 表示当前 node 上所有 cpu 可以运行的任务数量总和 */
 	unsigned long task_capacity;
 
-    /* 表示当前 node 上是否还有剩余算力 */
+    /* 表示当前 node 上所有 cpu 是否还有剩余算力 */
 	int has_free_capacity;
 };
 
@@ -1859,7 +1872,7 @@ struct numa_stats {
  */
 /*********************************************************************************************************
 ** 函数名称: should_numa_migrate_memory
-** 功能描述: 根据当前运行状态更新指定的 node id 上的 numa_stats 数据信息
+** 功能描述: 根据指定 node id 的运行状态更新与其对应的 numa_stats 数据信息
 ** 输	 入: nid - 指定的 node id 值
 **         : ns - 需要更新的 numa_stats 结构指针
 ** 输	 出: ns - 更新后的 numa_stats 结构数据
@@ -1915,28 +1928,29 @@ struct task_numa_env {
     /* 分别任务迁移起点 node 的 numa_stats 数据和任务迁移终点 node 的 numa_stats 数据 */
 	struct numa_stats src_stats, dst_stats;
 
-    /* 表示允许的负载失衡阈值百分比 */
+    /* 表示允许的算力负载失衡阈值百分比 */
 	int imbalance_pct;
 
 	/* 为 NUMA_BACKPLANE 拓扑类型指定的最大统计范围距离 */
 	int dist;
 
-    /* 详情见 task_numa_compare 函数和 task_numa_assign 函数 */
+    /* 在内存负载迁移过程中，记录用来交换迁移的“目的任务”指针，如果为 NULL 表示只做“源任务”
+       到目的 cpu 上的单向迁移，不需要执行双向交换迁移 */
 	struct task_struct *best_task;
 
-    /* "imp" is the numa_pte fault differential for the source task between the
-	 * source and destination node */
+    /* 表示当前内存负载迁移过程中，最大的内存负载增量值（这个值越大，表示内存访问性能越高）*/
 	long best_imp;
-	
+
+	/* 在内存负载迁移过程中，记录内存负载增量值最大的目的 cpu id 值 */
 	int best_cpu;
 };
 
 /*********************************************************************************************************
 ** 函数名称: task_numa_assign
-** 功能描述: 为指定的 task_numa_env 分配新的任务信息
+** 功能描述: 为指定的 task_numa_env 分配最优内存负载迁移任务信息
 ** 输	 入: env - 指定的 task_numa_env 结构指针
-**         : p - 指定的任务指针
-**         : imp - 指定的 imp 数据
+**         : p - 指定的最优任务指针
+**         : imp - 指定的最优 imp 数据
 ** 输	 出: 
 ** 全局变量: 
 ** 调用模块: 
@@ -1957,12 +1971,12 @@ static void task_numa_assign(struct task_numa_env *env,
 /*********************************************************************************************************
 ** 函数名称: load_too_imbalanced
 ** 功能描述: 根据指定的负载数据计算在指定的 task_numa_env 环境下是否负载失衡且超过设定的阈值
-**         : 如果之前负载已经失衡，则返回指定的负载是否会是负载失衡状态更严重
+**         : 如果之前负载已经失衡，则返回指定的负载是否会使负载失衡状态更严重
 ** 输	 入: src_load - 指定的源负载数据
 **         : dst_load - 指定的目的负载数据
 **         : env - task_numa_env 结构指针
-** 输	 出: 1 - 超过了
-**         : 0 - 没超过
+** 输	 出: 1 - 负载失衡且变的更糟糕
+**         : 0 - 负载没失衡或者失衡情况转好
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -2029,9 +2043,10 @@ static bool load_too_imbalanced(long src_load, long dst_load,
  */
 /*********************************************************************************************************
 ** 函数名称: task_numa_compare
-** 功能描述: 根据指定的 task_numa_env 计算指定的任务迁移前后是否会提高系统性能
+** 功能描述: 根据指定的 task_numa_env 计算指定的任务迁移前后是否会提高内存负载（内存负载越高，访问
+**         : 性能越好），如果可以提高，则更新最优内存负载迁移任务信息
 ** 输	 入: env - 指定的 task_numa_env 结构指针
-**         : taskimp - 指定的源任务在源 node 和目的 node 上的 numa_pte faults 差值
+**         : taskimp - 指定的源任务在源 node 和目的 node 上的 numa_task_pte faults 差值
 **         : groupimp - 指定的源任务组在源 node 和目的 node 上的 numa_group_pte faults 差值
 ** 输	 出: env - 如果迁移后会有性能提高，则把目标地址信息保存在这里，详细看函数结尾的 task_numa_assign
 ** 全局变量: 
@@ -2068,6 +2083,7 @@ static void task_numa_compare(struct task_numa_env *env,
 	 * Because we have preemption enabled we can get migrated around and
 	 * end try selecting ourselves (current == env->p) as a swap candidate.
 	 */
+	/* 如果我们想要迁移的“源任务”正在目的 cpu 上执行则直接退出 */
 	if (cur == env->p)
 		goto unlock;
 
@@ -2087,8 +2103,8 @@ static void task_numa_compare(struct task_numa_env *env,
 		 * If dst and source tasks are in the same NUMA group, or not
 		 * in any group then look only at task weights.
 		 */
-		/* 表示两个任务在相同的 numa 组内或者都不属于任何 numa 组，则直接对比迁移前后
-		   的任务权重信息，否则对他迁移前后的任务组权重信息 */
+		/* 如果两个任务在相同的 numa 组内或者都不属于任何 numa 组，则计算迁移前后“总的”任务内存负载
+		   增量值，增量值越大，内存访问性能越高 */
 		if (cur->numa_group == env->p->numa_group) {
 			imp = taskimp + task_weight(cur, env->src_nid, dist) -
 			      task_weight(cur, env->dst_nid, dist);
@@ -2104,6 +2120,8 @@ static void task_numa_compare(struct task_numa_env *env,
 			 * itself (not part of a group), use the task weight
 			 * instead.
 			 */
+			/* 如果两个任务不在相同的 numa 组内则计算迁移前后“总的”任务内存负载变化或者“总的” numa 组
+			   内存负载增量值，增量值越大，内存访问性能越高 */
 			if (cur->numa_group)
 				imp += group_weight(cur, env->src_nid, dist) -
 				       group_weight(cur, env->dst_nid, dist);
@@ -2113,9 +2131,11 @@ static void task_numa_compare(struct task_numa_env *env,
 		}
 	}
 
+    /* 如果迁移前后“总的”内存负载增量以及迁移前后“源”任务内存负载增量都在都比较小（不会有太大内存性能提升），则直接返回 */
 	if (imp <= env->best_imp && moveimp <= env->best_imp)
 		goto unlock;
 
+    /* 如果目的 cpu 当前为空闲状态且目的 cpu 有空闲算力，则执行负载均衡操作，否则直接返回 */
 	if (!cur) {
 		/* Is there capacity at our destination? */
 		if (env->src_stats.nr_running <= env->src_stats.task_capacity &&
@@ -2126,6 +2146,8 @@ static void task_numa_compare(struct task_numa_env *env,
 	}
 
 	/* Balance doesn't matter much if we're running a task per cpu */
+	/* 如果源 cpu 和目的 cpu 上都只有一个任务在运行且“总的”内存负载增量值 imp > env->best_imp 则更新
+	   当前 task_numa_env 的最优内存负载迁移任务信息并返回 */
 	if (imp > env->best_imp && src_rq->nr_running == 1 &&
 			dst_rq->nr_running == 1)
 		goto assign;
@@ -2138,6 +2160,8 @@ balance:
 	dst_load = env->dst_stats.load + load;
 	src_load = env->src_stats.load - load;
 
+    /* moveimp - 表示只有“源任务”执行迁移前后“总的”内存负载增量值
+       imp - 表示“源任务”和“目标任务”同时迁移前后“总的”内存负载增量值 */
 	if (moveimp > imp && moveimp > env->best_imp) {
 		/*
 		 * If the improvement from just moving env->p direction is
@@ -2145,6 +2169,8 @@ balance:
 		 * possible. Store a slightly smaller score than moveimp,
 		 * so an actually idle CPU will win.
 		 */
+		/* 如果只迁移“源任务”会有更高的内存负载增量值，则判断这种情况下算力负载是否均衡
+		   如果算力负载仍然均衡，则只迁移“源任务” */
 		if (!load_too_imbalanced(src_load, dst_load, env)) {
 			imp = moveimp - 1;
 			cur = NULL;
@@ -2161,6 +2187,7 @@ balance:
 		src_load += load;
 	}
 
+    /* 计算在“源任务”和“目标任务”同时迁移前后负载失衡且变的更糟糕则直接返回 */
 	if (load_too_imbalanced(src_load, dst_load, env))
 		goto unlock;
 
@@ -2172,6 +2199,7 @@ balance:
 		env->dst_cpu = select_idle_sibling(env->p, env->dst_cpu);
 
 assign:
+    /* 为指定的 task_numa_env 分配最优内存负载迁移任务信息 */
 	task_numa_assign(env, cur, imp);
 unlock:
 	rcu_read_unlock();
@@ -2255,7 +2283,9 @@ static int task_numa_migrate(struct task_struct *p)
 		return -EINVAL;
 	}
 
+	/* 在需要执行任务迁移的任务的 preferred node 上查找最优的迁移目标 cpu */
 	env.dst_nid = p->numa_preferred_nid;
+
 	dist = env.dist = node_distance(env.src_nid, env.dst_nid);
 	taskweight = task_weight(p, env.src_nid, dist);
 	groupweight = group_weight(p, env.src_nid, dist);
@@ -2265,7 +2295,6 @@ static int task_numa_migrate(struct task_struct *p)
 	update_numa_stats(&env.dst_stats, env.dst_nid);
 
 	/* Try to find a spot on the preferred nid. */
-	/* 在需要执行任务迁移的任务的 preferred node 上查找最优的迁移目标 cpu */
 	task_numa_find_cpu(&env, taskimp, groupimp);
 
 	/*
@@ -2332,6 +2361,8 @@ static int task_numa_migrate(struct task_struct *p)
 	 */
 	p->numa_scan_period = task_scan_min(p);
 
+    /* env.best_task 在内存负载迁移过程中，记录用来交换迁移的“目的任务”指针，如果为 NULL 表示
+       只做“源任务”到目的 cpu 上的单向迁移，不需要执行双向交换迁移 */
 	if (env.best_task == NULL) {
 		ret = migrate_task_to(p, env.best_cpu);
 		if (ret != 0)
@@ -2400,7 +2431,7 @@ static void update_numa_active_node_mask(struct numa_group *numa_group)
 	unsigned long faults, max_faults = 0;
 	int nid;
 
-    /* 获取当前系统内所有 node 节点在指定的 numa 组内发生 numa_pte faults 最多的次数 */
+    /* 获取当前系统内所有 node 节点在指定的 numa 组内发生 group cpu pte faults 最多的次数 */
 	for_each_online_node(nid) {
 		faults = group_faults_cpu(numa_group, nid);
 		if (faults > max_faults)
@@ -2478,7 +2509,10 @@ static void update_task_scan_period(struct task_struct *p,
 	 *       <  NUMA_PERIOD_THRESHOLD scan period decreases (scan faster)
 	 *	 >= NUMA_PERIOD_THRESHOLD scan period increases (scan slower)
 	 */
+	 
+    /* 计算当前 numa_scan_period 平均到每一个 NUMA_PERIOD_SLOTS 中，每一个 SLOTS 占用的时间长度 */
 	period_slot = DIV_ROUND_UP(p->numa_scan_period, NUMA_PERIOD_SLOTS);
+	
 	ratio = (local * NUMA_PERIOD_SLOTS) / (local + remote);
 
 	/* 如果 local 比例大于百分之 70 则扩大 muna 扫描周期，否则减小 numa 扫描周期 */
@@ -2551,7 +2585,8 @@ static u64 numa_get_avg_runtime(struct task_struct *p, u64 *period)
  */
 /*********************************************************************************************************
 ** 函数名称: preferred_group_nid
-** 功能描述: 根据函数指定的参数在系统所有 online node 中为指定的任务查找一个 preferred node id
+** 功能描述: 在系统内处于 online 状态的 node 节点中根据 numa_group_pte faults 为指定任务其找出 
+**         : preferred node id，找到的 node 是指定任务发生 numa_group_pte faults 次数最多的 node
 ** 输	 入: p - 指定的任务指针
 **         : nid - 指定任务所属任务组发生的 numa_group_pte faults 次数最多的 numa 组 id
 ** 输	 出: nid - preferred node id
@@ -2606,7 +2641,7 @@ static int preferred_group_nid(struct task_struct *p, int nid)
 		/* Are there nodes at this distance from each other? */
 		if (!find_numa_distance(dist))
 			continue;
-
+		
 		for_each_node_mask(a, nodes) {
 			unsigned long faults = 0;
 			nodemask_t this_group;
@@ -2633,7 +2668,9 @@ static int preferred_group_nid(struct task_struct *p, int nid)
 				nid = a;
 			}
 		}
-		/* Next round, evaluate the nodes within max_group. */
+		
+		/* Next round, evaluate the nodes within max_group. */		
+        /* nodes - 用来记录当前需要遍历的 numa group 内包含的 node 节点位图（numa 组可能是个树形结构）*/
 		nodes = max_group;
 	}
 	return nid;
@@ -2660,6 +2697,7 @@ static void task_numa_placement(struct task_struct *p)
 	seq = ACCESS_ONCE(p->mm->numa_scan_seq);
 	if (p->numa_scan_seq == seq)
 		return;
+	
 	p->numa_scan_seq = seq;
 	p->numa_scan_period_max = task_scan_max(p);
 
@@ -2716,7 +2754,13 @@ static void task_numa_placement(struct task_struct *p)
 			/* 清空本次 numa 扫描周期内发生的 cpu numa_pte faults 次数记录数据 */
 			p->numa_faults[cpubuf_idx] = 0;
 
+            /* p->numa_faults[mem_idx] = p->numa_faults[mem_idx] -
+                                        (p->numa_faults[mem_idx] / 2) +
+			                             p->numa_faults[membuf_idx]
+			   对原有的、旧的 p->numa_faults[mem_idx] 进行减半衰减并加上
+			   在新的扫描周期内、新发生的 p->numa_faults[membuf_idx] 统计数据 */
 			p->numa_faults[mem_idx] += diff;
+			
 			p->numa_faults[cpu_idx] += f_diff;
 			faults += p->numa_faults[mem_idx];
 			p->total_numa_faults += diff;
@@ -2989,6 +3033,8 @@ void task_numa_fault(int last_cpupid, int mem_node, int pages, int flags)
 	 * First accesses are treated as private, otherwise consider accesses
 	 * to be private if the accessing pid has not changed
 	 */
+	/* 1. 如果本次访问的内存是第一次被访问到，则设置为私有访问
+	   2. 如果本次访问和上一次访问这个内存的进程的 pid 相同，也设置为私有访问 */
 	if (unlikely(last_cpupid == (-1 & LAST_CPUPID_MASK))) {
 		priv = 1;
 	} else {
@@ -3296,6 +3342,8 @@ account_entity_enqueue(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
 	update_load_add(&cfs_rq->load, se->load.weight);
 	
+	/* 如果当前调度实例的任务组父节点为 NULL，则表示这个调度实例直接挂载在 cpu 运行队列
+	   上，所以我们需要同时更新 cpu 运行队列的权重信息 */
 	if (!parent_entity(se))
 		update_load_add(&rq_of(cfs_rq)->load, se->load.weight);
 	
@@ -3324,7 +3372,8 @@ account_entity_dequeue(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
 	update_load_sub(&cfs_rq->load, se->load.weight);
 
-	/* 判断当前调度实例是否是任务组树形结构的根节点 */
+	/* 如果当前调度实例的任务组父节点为 NULL，则表示这个调度实例直接挂载在 cpu 运行队列
+	   上，所以我们需要同时更新 cpu 运行队列的权重信息 */
 	if (!parent_entity(se))
 		update_load_sub(&rq_of(cfs_rq)->load, se->load.weight);
 	
@@ -3383,6 +3432,10 @@ static long calc_cfs_shares(struct cfs_rq *cfs_rq, struct task_group *tg)
 	load = cfs_rq->load.weight;
 
 	shares = (tg->shares * load);
+
+	/*              cfs_rq->load.weight
+	   cfs shares = ------------------- * tg->shares
+	                    tg_weight    */
 	if (tg_weight)
 		shares /= tg_weight;
 
@@ -4126,7 +4179,12 @@ static inline void enqueue_entity_load_avg(struct cfs_rq *cfs_rq,
 	 * constructed load_avg_contrib.
 	 */
 	if (unlikely(se->avg.decay_count <= 0)) {
+
+	    /* 将新入队列调度实例的负载更新时钟和其所入 cfs 运行队列的任务时钟同步 */
 		se->avg.last_runnable_update = rq_clock_task(rq_of(cfs_rq));
+
+	    /* 如果 se->avg.decay_count 小于 0，则表示当前调度实例在任务迁移前，和其所属 cfs 运行队列任务时钟
+	       相比，负载还需要再衰减的阶数（衰减后的负载是和所属 cfs 运行队列任务时钟同步的负载）*/
 		if (se->avg.decay_count) {
 			/*
 			 * In a wake-up migration we have to approximate the
@@ -4181,6 +4239,7 @@ static inline void dequeue_entity_load_avg(struct cfs_rq *cfs_rq,
 	update_cfs_rq_blocked_load(cfs_rq, !sleep);
 
 	cfs_rq->runnable_load_avg -= se->avg.load_avg_contrib;
+	
 	if (sleep) {
 		cfs_rq->blocked_load_avg += se->avg.load_avg_contrib;
 		se->avg.decay_count = atomic64_read(&cfs_rq->decay_counter);
@@ -4392,8 +4451,8 @@ static void check_spread(struct cfs_rq *cfs_rq, struct sched_entity *se)
 
 /*********************************************************************************************************
 ** 函数名称: place_entity
-** 功能描述: 更新指定的 cfs 运行队列中指定的调度实例的虚拟时间信息
-** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
+** 功能描述: 更新/设置指定的 cfs 运行队列中指定的调度实例的虚拟时间信息
+** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
 **         : se - 指定的调度实例指针
 **         : initial - 是否初始化新的调度实例的虚拟运行时间
 ** 输	 出: 
@@ -5155,7 +5214,7 @@ static void expire_cfs_rq_runtime(struct cfs_rq *cfs_rq)
 ** 函数名称: __account_cfs_rq_runtime
 ** 功能描述: 用来处理指定的 cfs 运行队列消耗的指定的运行时间，主要在带宽控制时使用
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
-**         : delta_exec - 指定的运行时间
+**         : delta_exec - 指定的物理运行时间
 ** 输	 出: 
 ** 全局变量: 
 ** 调用模块: 
@@ -5182,9 +5241,9 @@ static void __account_cfs_rq_runtime(struct cfs_rq *cfs_rq, u64 delta_exec)
 
 /*********************************************************************************************************
 ** 函数名称: account_cfs_rq_runtime
-** 功能描述: 用来统计指定的 cfs 运行队列消耗的指定的运行时间，主要在带宽控制时使用
+** 功能描述: 用来统计指定的 cfs 运行队列消耗的指定的物理运行时间，主要在带宽控制时使用
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
-**         : delta_exec - 指定的运行时间
+**         : delta_exec - 指定的物理运行时间
 ** 输	 出: 
 ** 全局变量: 
 ** 调用模块: 
@@ -5996,9 +6055,9 @@ static inline u64 cfs_rq_clock_task(struct cfs_rq *cfs_rq)
 
 /*********************************************************************************************************
 ** 函数名称: account_cfs_rq_runtime
-** 功能描述: 用来统计指定的 cfs 运行队列消耗的指定的运行时间，主要在带宽控制时使用
+** 功能描述: 用来统计指定的 cfs 运行队列消耗的指定的物理运行时间，主要在带宽控制时使用
 ** 输	 入: cfs_rq- 指定的 cfs 运行队列指针
-**         : delta_exec - 指定的运行时间
+**         : delta_exec - 指定的物理运行时间
 ** 输	 出: 
 ** 全局变量: 
 ** 调用模块: 
@@ -8269,7 +8328,7 @@ static void attach_tasks(struct lb_env *env)
  */
 /*********************************************************************************************************
 ** 函数名称: __update_blocked_averages_cpu 
-** 功能描述: 更新指定的 cpu 上指定的 cfs 运行队列的阻塞负载贡献值以及平均负载贡献值信息
+** 功能描述: 更新指定的 cpu 上指定任务组的阻塞负载贡献值以及平均负载贡献值信息
 ** 输	 入: tg - 指定的任务组指针
 **         : cpu - 指定的 cpu id
 ** 输	 出: 
@@ -8308,7 +8367,7 @@ static void __update_blocked_averages_cpu(struct task_group *tg, int cpu)
 
 /*********************************************************************************************************
 ** 函数名称: update_blocked_averages 
-** 功能描述: 更新指定的 cpu 运行队列上每一个 cfs 运行队列的阻塞负载贡献统计值
+** 功能描述: 更新指定的 cpu 运行队列上每一个任务组叶子节点的 cfs 运行队列的阻塞负载贡献统计值
 ** 输	 入: cpu - 指定的 cpu id
 ** 输	 出: 
 ** 全局变量: 
@@ -8345,8 +8404,8 @@ static void update_blocked_averages(int cpu)
  */
 /*********************************************************************************************************
 ** 函数名称: update_cfs_rq_h_load
-** 功能描述: 更新指定的 cfs 运行队列所属任务组当前负载贡献统计对其父任务组节点的负载贡献量
-** 输	 入: cfs_rq - 指定的 cfs 运行队列指针
+** 功能描述: 从任务组中指定的 cfs 运行队列到“根任务组”更新遍历路径成员在任务组树形结构中的加权负载贡献值
+** 输	 入: cfs_rq - 指定的任务组 cfs 运行队列指针
 ** 输	 出: 
 ** 全局变量: 
 ** 调用模块: 
@@ -8363,29 +8422,40 @@ static void update_cfs_rq_h_load(struct cfs_rq *cfs_rq)
 
 	cfs_rq->h_load_next = NULL;
 
-	/* 在 cfs 运行队列中包含的任务组是按照树形结构组织起来的，for_each_sched_entity 
-	   函数会从指定的调度任务组一直找到任务组树的根节点 */
+	/* 遍历指定的任务组调度实例到“根任务组”之间遍历路径的每一个任务组调度实例
+       因为“根任务组”的 root_task_group->se[cpu_id] = NULL，所以 root_task_group 的所有
+       子任务组调度实例的 child_se->parent = NULL，详情见 init_tg_cfs_entry 函数 */
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
 
-		/* 通过 cfs_rq->h_load_next 指针记录当前遍历树形结构的路径信息 */
+		/* 设置当前 cfs 运行队列中下一次需要更新 h_load 负载贡献值的调度实例 */
 		cfs_rq->h_load_next = se;
 		
 		if (cfs_rq->last_h_load_update == now)
 			break;
 	}
 
-    /* 如果找到了任务组树的根节点，则直接更新整个树对系统的负载贡献信息 */
+    /* 如果 child_se->parent = NULL，此时 cfs_rq 为 root_task_group 的一级子任务组调度节点的 cfs 运行队列 */
 	if (!se) {
 		cfs_rq->h_load = cfs_rq->runnable_load_avg;
 		cfs_rq->last_h_load_update = now;
 	}
 
-    /* 如果没到任务组树的根节点，则更新遍历路径中每个节点对系统的负载贡献信息 */
+    /* 从任务组树形结构中，按照从上到下的顺序，根据子任务组负载贡献值占据父任务组负载贡献值
+       的比例，顺序更新子任务组的 cfs_rq->h_load 字段值 */
 	while ((se = cfs_rq->h_load_next) != NULL) {
+		
 		/*                        parent_cfs_rq->h_load * child_se->avg.load_avg_contrib
 		   child_cfs_rq->h_load = ------------------------------------------------------
-		                                  parent_cfs_rq->runnable_load_avg + 1        */
+		                                  parent_cfs_rq->runnable_load_avg + 1
+
+                                                             child_se->avg.load_avg_contrib
+                                = parent_cfs_rq->h_load * ------------------------------------
+                                                          parent_cfs_rq->runnable_load_avg + 1 
+
+                                                            child_cfs_rq->runnable_load_avg
+                                = parent_cfs_rq->h_load * ------------------------------------
+                                                          parent_cfs_rq->runnable_load_avg + 1 */
 		load = cfs_rq->h_load;
 		load = div64_ul(load * se->avg.load_avg_contrib,
 				cfs_rq->runnable_load_avg + 1);
@@ -8398,9 +8468,9 @@ static void update_cfs_rq_h_load(struct cfs_rq *cfs_rq)
 
 /*********************************************************************************************************
 ** 函数名称: task_h_load
-** 功能描述: 更新并返回指定的 cfs 运行队列所属任务组当前负载贡献统计对其父任务组节点的负载贡献量
+** 功能描述: 更新并返回任务组中的指定任务在任务组树形结构中的加权负载贡献值
 ** 输	 入: p - 指定的任务指针
-** 输	 出: unsigned long - 对父任务组节点的负载贡献量
+** 输	 出: unsigned long - 在任务组树形结构中的加权负载贡献值
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -8408,14 +8478,19 @@ static unsigned long task_h_load(struct task_struct *p)
 {
 	struct cfs_rq *cfs_rq = task_cfs_rq(p);
 
+    /* 从任务组中指定的 cfs 运行队列到“根任务组”更新遍历路径成员在任务组树形结构中的加权负载贡献值 */
 	update_cfs_rq_h_load(cfs_rq);
+
+	/*                                 p->se.avg.load_avg_contrib
+	   task_h_load = cfs_rq->h_load * -----------------------------
+	                                  cfs_rq->runnable_load_avg + 1 */
 	return div64_ul(p->se.avg.load_avg_contrib * cfs_rq->h_load,
 			cfs_rq->runnable_load_avg + 1);
 }
 #else
 /*********************************************************************************************************
 ** 函数名称: update_blocked_averages 
-** 功能描述: 更新指定的 cpu 运行队列上每一个 cfs 运行队列的阻塞负载贡献统计值
+** 功能描述: 更新指定的 cpu 运行队列上每一个任务组叶子节点的 cfs 运行队列的阻塞负载贡献统计值
 ** 输	 入: cpu - 指定的 cpu id
 ** 输	 出: 
 ** 全局变量: 
@@ -8427,9 +8502,9 @@ static inline void update_blocked_averages(int cpu)
 
 /*********************************************************************************************************
 ** 函数名称: task_h_load
-** 功能描述: 更新并返回指定的 cfs 运行队列所属任务组当前负载贡献统计对其父任务组节点的负载贡献量
+** 功能描述: 更新并返回任务组中的指定任务在任务组树形结构中的加权负载贡献值
 ** 输	 入: p - 指定的任务指针
-** 输	 出: unsigned long - 对父任务组节点的负载贡献量
+** 输	 出: unsigned long - 在任务组树形结构中的加权负载贡献值
 ** 全局变量: 
 ** 调用模块: 
 *********************************************************************************************************/
@@ -10198,7 +10273,7 @@ static int idle_balance(struct rq *this_rq)
 	 */
 	raw_spin_unlock(&this_rq->lock);
 
-	/* 更新指定的 cpu 运行队列上每一个 cfs 运行队列的阻塞负载贡献统计值 */
+	/* 更新指定的 cpu 运行队列上每一个任务组叶子节点的 cfs 运行队列的阻塞负载贡献统计值 */
 	update_blocked_averages(this_cpu);
 	
 	rcu_read_lock();
@@ -10631,7 +10706,7 @@ static void rebalance_domains(struct rq *rq, enum cpu_idle_type idle)
 	int need_serialize, need_decay = 0;
 	u64 max_cost = 0;
 
-    /* 更新指定的 cpu 运行队列上每一个 cfs 运行队列的阻塞负载贡献统计值 */
+    /* 更新指定的 cpu 运行队列上每一个任务组叶子节点的 cfs 运行队列的阻塞负载贡献统计值 */
 	update_blocked_averages(cpu);
 
 	rcu_read_lock();
